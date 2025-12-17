@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聊天对话查看器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --lavender: #D4C5E2;
+            --lavender-light: #E8DFF0;
+            --lavender-dark: #B8A3CC;
+            --mint: #B8E6D5;
+            --mint-light: #D1F2E8;
+            --mint-dark: #9CCFBC;
+            --text-dark: #4A4458;
+            --text-light: #6B5F7A;
+            --border: #C9BBDB;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+            background: linear-gradient(135deg, var(--lavender-light) 0%, var(--lavender) 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--text-dark);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .header h1 {
+            color: var(--lavender-dark);
+            margin-bottom: 16px;
+            font-size: 28px;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .metadata-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .metadata-btn {
+            padding: 8px 12px;
+            font-size: 13px;
+            min-width: 70px;
+        }
+
+        input, select, button {
+            padding: 10px 14px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--mint-dark);
+        }
+
+        input[type="file"] {
+            background: white;
+        }
+
+        .search-box {
+            background: var(--mint-light);
+            border-color: var(--mint);
+        }
+
+        .search-container {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .search-btn {
+            padding: 10px 20px;
+            background: var(--mint);
+            min-width: 80px;
+        }
+
+        button {
+            background: var(--mint);
+            border: none;
+            color: var(--text-dark);
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: var(--mint-dark);
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .conversation-list {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .metadata-section {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .metadata-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            padding: 12px;
+            background: var(--lavender-light);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+
+        .metadata-toggle:hover {
+            background: var(--lavender);
+        }
+
+        .metadata-content {
+            padding: 12px;
+            background: white;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            line-height: 1.6;
+            display: none;
+        }
+
+        .metadata-content.show {
+            display: block;
+        }
+
+        .metadata-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .metadata-tab {
+            padding: 8px 16px;
+            background: var(--lavender-light);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .metadata-tab:hover {
+            background: var(--lavender);
+        }
+
+        .metadata-tab.active {
+            background: var(--mint);
+            font-weight: 600;
+        }
+
+        .conversation-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            background: var(--lavender-light);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .conversation-item:hover {
+            background: var(--lavender);
+            transform: translateX(4px);
+        }
+
+        .conversation-item.active {
+            background: var(--mint);
+            border-left: 4px solid var(--mint-dark);
+        }
+
+        .messages-container {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .message {
+            margin-bottom: 24px;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            gap: 8px;
+        }
+
+        .sender-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .human-badge {
+            background: var(--mint-light);
+            color: var(--text-dark);
+        }
+
+        .assistant-badge {
+            background: var(--lavender-light);
+            color: var(--text-dark);
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: var(--text-light);
+        }
+
+        .thinking-block {
+            background: #F5F3F7;
+            border-left: 4px solid var(--lavender-dark);
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--text-light);
+            white-space: pre-wrap;
+        }
+
+        .thinking-label {
+            font-weight: 600;
+            color: var(--lavender-dark);
+            margin-bottom: 8px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .content-block {
+            background: white;
+            border: 2px solid var(--border);
+            padding: 16px;
+            border-radius: 8px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+        }
+
+        .export-section {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .export-range {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+
+        .export-range input {
+            width: 80px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-light);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .highlight {
+            background: var(--mint-light);
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 0;
+            }
+            
+            .controls {
+                grid-template-columns: 1fr;
+            }
+            
+            .search-container {
+                grid-column: 1;
+            }
+            
+            .export-section {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💬 聊天对话查看器</h1>
+            
+            <div class="controls">
+                <input type="file" id="fileInput" accept=".json" title="上传对话JSON文件">
+                <input type="file" id="memoriesInput" accept=".json" title="上传memories.json（可选）" style="display: none;">
+                <input type="file" id="projectsInput" accept=".json" title="上传projects.json（可选）" style="display: none;">
+                <input type="file" id="usersInput" accept=".json" title="上传users.json（可选）" style="display: none;">
+                <div class="metadata-buttons">
+                    <button class="metadata-btn" onclick="document.getElementById('memoriesInput').click()">📝 记忆</button>
+                    <button class="metadata-btn" onclick="document.getElementById('projectsInput').click()">📁 项目</button>
+                    <button class="metadata-btn" onclick="document.getElementById('usersInput').click()">👤 用户</button>
+                </div>
+                <input type="text" id="userNameInput" placeholder="用户名称" value="User">
+                <input type="text" id="modelNameInput" placeholder="模型名称" value="Assistant">
+                <div class="search-container">
+                    <input type="text" id="searchInput" class="search-box" placeholder="🔍 搜索消息..." style="flex: 1;">
+                    <button class="search-btn" onclick="handleSearchClick()">搜索</button>
+                </div>
+            </div>
+
+            <div class="export-section" id="exportSection" style="display: none;">
+                <div class="export-range">
+                    <span>导出范围：</span>
+                    <input type="number" id="exportStart" min="1" placeholder="起始">
+                    <span>到</span>
+                    <input type="number" id="exportEnd" min="1" placeholder="结束">
+                </div>
+                <button onclick="exportAsText()">导出 TXT</button>
+                <button onclick="exportAsEpub()">导出 EPUB</button>
+            </div>
+        </div>
+
+        <div class="metadata-section" id="metadataSection" style="display: none;">
+            <div class="metadata-toggle" onclick="toggleMetadata()">
+                <h3 style="margin: 0; color: var(--text-dark);">📊 额外信息（记忆/项目/用户）</h3>
+                <span id="metadataToggleIcon">▼</span>
+            </div>
+            <div id="metadataContent" class="metadata-content">
+                <div class="metadata-tabs">
+                    <button class="metadata-tab active" onclick="showMetadataTab('memories')">记忆</button>
+                    <button class="metadata-tab" onclick="showMetadataTab('projects')">项目</button>
+                    <button class="metadata-tab" onclick="showMetadataTab('users')">用户</button>
+                </div>
+                <div id="metadataDisplay"></div>
+            </div>
+        </div>
+
+        <div class="conversation-list" id="conversationList" style="display: none;">
+            <h3 style="margin-bottom: 12px; color: var(--text-dark);">对话列表</h3>
+            <div id="conversationItems"></div>
+        </div>
+
+        <div class="messages-container">
+            <div id="messagesView">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📁</div>
+                    <h3>请上传对话文件</h3>
+                    <p style="margin-top: 8px;">支持 Claude 导出的 JSON 格式</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        let conversations = [];
+        let currentConversation = null;
+        let filteredMessages = [];
+        let userName = 'User';
+        let modelName = 'Assistant';
+        let metadata = {
+            memories: null,
+            projects: null,
+            users: null
+        };
+        let currentMetadataTab = 'memories';
+
+        document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+        document.getElementById('memoriesInput').addEventListener('change', (e) => handleMetadataUpload(e, 'memories'));
+        document.getElementById('projectsInput').addEventListener('change', (e) => handleMetadataUpload(e, 'projects'));
+        document.getElementById('usersInput').addEventListener('change', (e) => handleMetadataUpload(e, 'users'));
+        document.getElementById('searchInput').addEventListener('input', handleSearch);
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleSearch(e);
+            }
+        });
+        document.getElementById('userNameInput').addEventListener('input', (e) => {
+            userName = e.target.value || 'User';
+            renderMessages();
+        });
+        document.getElementById('modelNameInput').addEventListener('input', (e) => {
+            modelName = e.target.value || 'Assistant';
+            renderMessages();
+        });
+
+        function handleMetadataUpload(event, type) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    metadata[type] = JSON.parse(e.target.result);
+                    document.getElementById('metadataSection').style.display = 'block';
+                    showMetadataTab(type);
+                } catch (error) {
+                    alert(`${type} JSON 解析失败: ` + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function toggleMetadata() {
+            const content = document.getElementById('metadataContent');
+            const icon = document.getElementById('metadataToggleIcon');
+            
+            if (content.classList.contains('show')) {
+                content.classList.remove('show');
+                icon.textContent = '▼';
+            } else {
+                content.classList.add('show');
+                icon.textContent = '▲';
+                showMetadataTab(currentMetadataTab);
+            }
+        }
+
+        function showMetadataTab(tab) {
+            currentMetadataTab = tab;
+            
+            // Update tab buttons
+            document.querySelectorAll('.metadata-tab').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.includes('记忆') && tab === 'memories') {
+                    btn.classList.add('active');
+                } else if (btn.textContent.includes('项目') && tab === 'projects') {
+                    btn.classList.add('active');
+                } else if (btn.textContent.includes('用户') && tab === 'users') {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Display content
+            const display = document.getElementById('metadataDisplay');
+            const data = metadata[tab];
+            
+            if (!data) {
+                display.innerHTML = '<p style="color: var(--text-light);">尚未上传此类型的文件</p>';
+                return;
+            }
+            
+            let content = '';
+            
+            if (tab === 'memories') {
+                if (data[0]?.conversations_memory) {
+                    content += '<h4 style="color: var(--lavender-dark); margin-bottom: 8px;">全局记忆</h4>';
+                    content += `<div style="margin-bottom: 16px;">${escapeHtml(data[0].conversations_memory)}</div>`;
+                }
+                
+                if (data[0]?.project_memories) {
+                    content += '<h4 style="color: var(--lavender-dark); margin-bottom: 8px;">项目记忆</h4>';
+                    for (const [projectId, memory] of Object.entries(data[0].project_memories)) {
+                        content += `<div style="margin-bottom: 12px; padding: 12px; background: var(--lavender-light); border-radius: 8px;">`;
+                        content += `<div style="font-size: 12px; color: var(--text-light); margin-bottom: 4px;">项目ID: ${projectId}</div>`;
+                        content += escapeHtml(memory);
+                        content += `</div>`;
+                    }
+                }
+            } else if (tab === 'projects') {
+                data.forEach(project => {
+                    content += `<div style="margin-bottom: 12px; padding: 12px; background: var(--lavender-light); border-radius: 8px;">`;
+                    content += `<div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(project.name)}</div>`;
+                    if (project.description) {
+                        content += `<div style="margin-bottom: 4px;">${escapeHtml(project.description)}</div>`;
+                    }
+                    content += `<div style="font-size: 12px; color: var(--text-light);">创建于: ${new Date(project.created_at).toLocaleString('zh-CN')}</div>`;
+                    content += `<div style="font-size: 12px; color: var(--text-light);">文档数: ${project.docs?.length || 0}</div>`;
+                    content += `</div>`;
+                });
+            } else if (tab === 'users') {
+                data.forEach(user => {
+                    content += `<div style="padding: 12px; background: var(--lavender-light); border-radius: 8px;">`;
+                    content += `<div style="font-weight: 600; margin-bottom: 4px;">${escapeHtml(user.full_name)}</div>`;
+                    content += `<div style="font-size: 14px;">${escapeHtml(user.email_address)}</div>`;
+                    if (user.verified_phone_number) {
+                        content += `<div style="font-size: 14px; color: var(--text-light);">电话: ${escapeHtml(user.verified_phone_number)}</div>`;
+                    }
+                    content += `</div>`;
+                });
+            }
+            
+            display.innerHTML = content;
+        }
+
+        function handleSearchClick() {
+            const searchInput = document.getElementById('searchInput');
+            handleSearch({ target: searchInput });
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    conversations = JSON.parse(e.target.result);
+                    if (conversations.length > 0) {
+                        displayConversationList();
+                        selectConversation(0);
+                    }
+                } catch (error) {
+                    alert('JSON 解析失败: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function displayConversationList() {
+            const listContainer = document.getElementById('conversationList');
+            const itemsContainer = document.getElementById('conversationItems');
+            
+            // 过滤掉空对话 - 更严格的检查
+            const nonEmptyConvs = conversations.filter(conv => {
+                if (!conv.chat_messages || conv.chat_messages.length === 0) return false;
+                
+                // 检查是否有至少一条有实质内容的消息
+                return conv.chat_messages.some(msg => {
+                    if (!msg.content || !Array.isArray(msg.content)) return false;
+                    
+                    // 检查是否有text或thinking内容
+                    for (const block of msg.content) {
+                        if (block.type === 'text' && block.text && block.text.trim().length > 0) {
+                            return true;
+                        }
+                        if (block.type === 'thinking' && block.thinking && block.thinking.trim().length > 0) {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+            });
+            
+            if (nonEmptyConvs.length === 0) {
+                listContainer.style.display = 'none';
+                return;
+            }
+            
+            listContainer.style.display = 'block';
+            itemsContainer.innerHTML = '';
+
+            nonEmptyConvs.forEach((conv, index) => {
+                const item = document.createElement('div');
+                item.className = 'conversation-item';
+                
+                const title = conv.name || conv.summary || `对话 ${index + 1}`;
+                const date = new Date(conv.created_at).toLocaleDateString('zh-CN');
+                const messageCount = conv.chat_messages?.length || 0;
+                
+                item.innerHTML = `
+                    <div style="font-weight: 600; margin-bottom: 4px;">${title}</div>
+                    <div style="font-size: 12px; color: var(--text-light);">
+                        ${date} · ${messageCount} 条消息
+                    </div>
+                `;
+                
+                // 找到原始索引
+                const originalIndex = conversations.indexOf(conv);
+                item.onclick = () => selectConversation(originalIndex);
+                itemsContainer.appendChild(item);
+            });
+        }
+
+        function selectConversation(index) {
+            currentConversation = conversations[index];
+            filteredMessages = currentConversation.chat_messages || [];
+            
+            // Update active state
+            document.querySelectorAll('.conversation-item').forEach((item, i) => {
+                item.classList.toggle('active', i === index);
+            });
+            
+            renderMessages();
+            document.getElementById('exportSection').style.display = 'flex';
+            document.getElementById('exportStart').max = filteredMessages.length;
+            document.getElementById('exportEnd').max = filteredMessages.length;
+            document.getElementById('exportEnd').value = filteredMessages.length;
+        }
+
+        function handleSearch(event) {
+            const query = event.target.value.toLowerCase().trim();
+            
+            if (!currentConversation) return;
+            
+            if (!query) {
+                filteredMessages = currentConversation.chat_messages || [];
+            } else {
+                filteredMessages = (currentConversation.chat_messages || []).filter(msg => {
+                    if (!msg.content) return false;
+                    
+                    // 搜索所有content块
+                    for (const block of msg.content) {
+                        if (block.type === 'thinking' && block.thinking?.toLowerCase().includes(query)) {
+                            return true;
+                        }
+                        if (block.type === 'text' && block.text?.toLowerCase().includes(query)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+            }
+            
+            renderMessages();
+        }
+
+        function renderMessages() {
+            const container = document.getElementById('messagesView');
+            
+            if (filteredMessages.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <h3>没有找到消息</h3>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = '';
+            const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+
+            filteredMessages.forEach((msg, index) => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                messageDiv.id = `message-${index}`;
+
+                const senderName = msg.sender === 'human' ? userName : modelName;
+                const badgeClass = msg.sender === 'human' ? 'human-badge' : 'assistant-badge';
+                const timestamp = new Date(msg.created_at).toLocaleString('zh-CN');
+
+                let html = `
+                    <div class="message-header">
+                        <span class="sender-badge ${badgeClass}">${senderName}</span>
+                        <span class="timestamp">${timestamp}</span>
+                    </div>
+                `;
+
+                // 解析content数组
+                if (msg.content && Array.isArray(msg.content)) {
+                    // 收集thinking块
+                    const thinkingBlocks = msg.content.filter(c => c.type === 'thinking' && c.thinking);
+                    // 收集text块
+                    const textBlocks = msg.content.filter(c => c.type === 'text' && c.text);
+                    
+                    // 渲染thinking
+                    thinkingBlocks.forEach(block => {
+                        const thinkingText = highlightText(block.thinking, searchQuery);
+                        html += `
+                            <div class="thinking-block">
+                                <div class="thinking-label">💭 Thinking Process</div>
+                                <div>${thinkingText}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    // 渲染text
+                    if (textBlocks.length > 0) {
+                        const combinedText = textBlocks.map(b => b.text).join('\n\n');
+                        const highlightedContent = highlightText(combinedText, searchQuery);
+                        html += `
+                            <div class="content-block">${highlightedContent}</div>
+                        `;
+                    }
+                } else if (msg.text) {
+                    // 兼容老格式
+                    const highlightedContent = highlightText(msg.text, searchQuery);
+                    html += `
+                        <div class="content-block">${highlightedContent}</div>
+                    `;
+                }
+
+                messageDiv.innerHTML = html;
+                container.appendChild(messageDiv);
+            });
+        }
+
+        function highlightText(text, query) {
+            if (!query) return escapeHtml(text);
+            
+            const escaped = escapeHtml(text);
+            const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+            return escaped.replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function escapeRegex(text) {
+            return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function exportAsText() {
+            if (!currentConversation) return;
+
+            const start = parseInt(document.getElementById('exportStart').value) || 1;
+            const end = parseInt(document.getElementById('exportEnd').value) || filteredMessages.length;
+            
+            const messages = filteredMessages.slice(start - 1, end);
+            let content = '';
+
+            messages.forEach((msg, index) => {
+                const senderName = msg.sender === 'human' ? userName : modelName;
+                const timestamp = new Date(msg.created_at).toLocaleString('zh-CN');
+                
+                content += `[${senderName}] ${timestamp}\n`;
+                content += '='.repeat(60) + '\n\n';
+                
+                // 提取thinking和text
+                if (msg.content && Array.isArray(msg.content)) {
+                    const thinkingBlocks = msg.content.filter(c => c.type === 'thinking' && c.thinking);
+                    const textBlocks = msg.content.filter(c => c.type === 'text' && c.text);
+                    
+                    // 输出thinking
+                    thinkingBlocks.forEach(block => {
+                        content += '━'.repeat(60) + '\n';
+                        content += 'Thinking Process:\n';
+                        content += '━'.repeat(60) + '\n';
+                        content += block.thinking + '\n';
+                        content += '━'.repeat(60) + '\n\n';
+                    });
+                    
+                    // 输出text
+                    if (textBlocks.length > 0) {
+                        const text = textBlocks.map(b => b.text).join('\n\n');
+                        content += text + '\n\n';
+                    }
+                } else if (msg.text) {
+                    content += msg.text + '\n\n';
+                }
+                
+                content += '\n';
+            });
+
+            downloadFile(content, 'conversation.txt', 'text/plain');
+        }
+
+        async function exportAsEpub() {
+            if (!currentConversation) return;
+
+            const start = parseInt(document.getElementById('exportStart').value) || 1;
+            const end = parseInt(document.getElementById('exportEnd').value) || filteredMessages.length;
+            
+            const messages = filteredMessages.slice(start - 1, end);
+            
+            // Create EPUB content
+            let htmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Conversation</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; }
+        .message { margin-bottom: 2em; page-break-inside: avoid; }
+        .sender { font-weight: bold; color: #666; }
+        .timestamp { font-size: 0.9em; color: #999; }
+        .thinking { 
+            background: #f5f5f5; 
+            border-left: 4px solid #ccc; 
+            padding: 1em; 
+            margin: 1em 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .thinking-label { font-weight: bold; margin-bottom: 0.5em; }
+        .content { white-space: pre-wrap; }
+        hr { border: none; border-top: 1px solid #eee; margin: 2em 0; }
+    </style>
+</head>
+<body>
+`;
+
+            messages.forEach((msg) => {
+                const senderName = msg.sender === 'human' ? userName : modelName;
+                const timestamp = new Date(msg.created_at).toLocaleString('zh-CN');
+                
+                htmlContent += `
+<div class="message">
+    <div class="sender">${escapeHtml(senderName)}</div>
+    <div class="timestamp">${timestamp}</div>
+`;
+                
+                // 提取thinking和text
+                if (msg.content && Array.isArray(msg.content)) {
+                    const thinkingBlocks = msg.content.filter(c => c.type === 'thinking' && c.thinking);
+                    const textBlocks = msg.content.filter(c => c.type === 'text' && c.text);
+                    
+                    // 渲染thinking
+                    thinkingBlocks.forEach(block => {
+                        htmlContent += `
+    <div class="thinking">
+        <div class="thinking-label">💭 Thinking Process</div>
+        <div class="thinking-content">${escapeHtml(block.thinking)}</div>
+    </div>
+`;
+                    });
+                    
+                    // 渲染text
+                    if (textBlocks.length > 0) {
+                        const text = textBlocks.map(b => b.text).join('\n\n');
+                        htmlContent += `
+    <div class="content">${escapeHtml(text)}</div>
+`;
+                    }
+                } else if (msg.text) {
+                    htmlContent += `
+    <div class="content">${escapeHtml(msg.text)}</div>
+`;
+                }
+                
+                htmlContent += `
+</div>
+<hr/>
+`;
+            });
+
+            htmlContent += `
+</body>
+</html>
+`;
+
+            // Create EPUB using JSZip
+            const zip = new JSZip();
+            
+            // mimetype (必须是第一个文件，无压缩)
+            zip.file('mimetype', 'application/epub+zip', {compression: 'STORE'});
+            
+            // META-INF/container.xml
+            zip.folder('META-INF').file('container.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles>
+        <rootfile full-path="content.opf" media-type="application/oebps-package+xml"/>
+    </rootfiles>
+</container>`);
+            
+            // content.opf
+            const timestamp = new Date().toISOString();
+            zip.file('content.opf', `<?xml version="1.0" encoding="UTF-8"?>
+<package version="2.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:title>Conversation Export</dc:title>
+        <dc:language>zh</dc:language>
+        <dc:identifier id="BookId">conversation-${timestamp}</dc:identifier>
+        <dc:creator>Chat Viewer</dc:creator>
+    </metadata>
+    <manifest>
+        <item id="content" href="content.xhtml" media-type="application/xhtml+xml"/>
+    </manifest>
+    <spine>
+        <itemref idref="content"/>
+    </spine>
+</package>`);
+            
+            // content.xhtml (注意扩展名)
+            zip.file('content.xhtml', htmlContent);
+            
+            // Generate EPUB with correct settings
+            const epubBlob = await zip.generateAsync({
+                type: 'blob',
+                mimeType: 'application/epub+zip',
+                compression: 'DEFLATE',
+                compressionOptions: { level: 9 }
+            });
+            
+            // 直接下载为.epub文件
+            const url = URL.createObjectURL(epubBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'conversation.epub';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadFile(content, filename, type) {
+            let blob;
+            if (content instanceof Blob) {
+                blob = content;
+            } else {
+                // 对于文本文件，添加UTF-8 BOM以确保正确编码
+                if (type === 'text/plain') {
+                    const BOM = '\uFEFF';
+                    blob = new Blob([BOM + content], { type: type + ';charset=utf-8' });
+                } else {
+                    blob = new Blob([content], { type });
+                }
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
