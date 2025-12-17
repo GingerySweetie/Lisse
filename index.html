@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>ChatGPT / Claude 对话查看器</title>
+  <style>
+    :root {
+      --mint: #a7f3d0;
+      --mint-border: #34d399;
+      --lavender-bg: #f3e8ff;
+      --lavender-card: #f5f3ff;
+      --accent: #8b5cf6;
+      --accent-soft: #ddd6fe;
+      --text-main: #1f2933;
+      --text-muted: #6b7280;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+      background: var(--lavender-bg);
+      color: var(--text-main);
+    }
+
+    .app {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 16px 20px 24px;
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+    }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 8px;
+    }
+
+    header h1 {
+      font-size: 20px;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    header h1 span.badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    header p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .top-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 2.3fr) minmax(260px, 1fr);
+      gap: 16px;
+      margin-top: 12px;
+      margin-bottom: 12px;
+    }
+
+    .panel {
+      background: var(--lavender-card);
+      border-radius: 14px;
+      padding: 12px 12px 10px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+    }
+
+    .panel h2 {
+      font-size: 13px;
+      margin: 0 0 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .panel h2 span.sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .panel label {
+      font-size: 12px;
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text-muted);
+    }
+
+    textarea#jsonInput {
+      width: 100%;
+      min-height: 90px;
+      resize: vertical;
+      padding: 8px 10px;
+      font-size: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--mint-border);
+      background: var(--mint);
+      outline: none;
+      line-height: 1.4;
+      white-space: pre;
+    }
+
+    textarea#jsonInput:focus {
+      box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.4);
+    }
+
+    .import-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 6px;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .import-actions .left {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      border-radius: 999px;
+      border: none;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      transition: transform 0.05s ease, box-shadow 0.05s ease,
+        background 0.15s ease;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 8px 20px rgba(129, 140, 248, 0.4);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(129, 140, 248, 0.45);
+    }
+
+    .btn-outline {
+      border: 1px solid rgba(148, 163, 184, 0.8);
+      background: rgba(255, 255, 255, 0.6);
+      color: var(--text-main);
+    }
+
+    .btn-outline:hover {
+      background: white;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding-inline: 4px;
+    }
+
+    .btn-ghost:hover {
+      color: var(--accent);
+    }
+
+    .name-settings {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .name-settings-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .name-settings input {
+      width: 100%;
+      padding: 6px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.8);
+      font-size: 12px;
+      outline: none;
+      background: white;
+    }
+
+    .name-settings input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.25);
+    }
+
+    .name-settings small {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 14px;
+      margin-top: 6px;
+      min-height: 440px;
+    }
+
+    .conversation-list {
+      background: var(--lavender-card);
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .conversation-list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .conversation-list-header h2 {
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .conversation-list-header span {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .conversation-items {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .conv-item {
+      padding: 6px 8px;
+      margin-bottom: 4px;
+      border-radius: 10px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      font-size: 12px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2px;
+    }
+
+    .conv-item:hover {
+      background: rgba(255, 255, 255, 0.7);
+      border-color: rgba(148, 163, 184, 0.7);
+    }
+
+    .conv-item.active {
+      background: white;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.2);
+    }
+
+    .conv-title {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .conv-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .provider-pill {
+      padding: 0 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      background: rgba(129, 140, 248, 0.12);
+      color: var(--accent);
+    }
+
+    .conversation-view {
+      background: var(--lavender-card);
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .conversation-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.5);
+      padding-bottom: 6px;
+      margin-bottom: 6px;
+    }
+
+    .conversation-header-main h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .conversation-header-main p {
+      margin: 0;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .export-buttons {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 4px 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .empty-state {
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 24px 8px;
+      text-align: center;
+    }
+
+    .message-wrapper {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      align-items: stretch;
+      gap: 6px;
+    }
+
+    .msg-select {
+      display: flex;
+      align-items: flex-start;
+      padding-top: 6px;
+    }
+
+    .msg-select input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+
+    .message {
+      border-radius: 12px;
+      padding: 6px 8px;
+      background: white;
+      border: 1px solid rgba(148, 163, 184, 0.7);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 4px;
+    }
+
+    .message.user {
+      border-left: 3px solid var(--mint-border);
+    }
+
+    .message.assistant {
+      border-left: 3px solid var(--accent);
+    }
+
+    .message-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .message-header strong {
+      font-size: 12px;
+    }
+
+    .message-header span.meta {
+      font-size: 10px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .message-header span.role-tag {
+      padding: 1px 5px;
+      border-radius: 999px;
+      font-size: 9px;
+      border: 1px solid rgba(148, 163, 184, 0.7);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .message-body {
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .assistant-blocks {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 4px;
+    }
+
+    .thinking-block,
+    .output-block {
+      border-radius: 10px;
+      padding: 4px 6px 4px;
+      border: 1px solid rgba(148, 163, 184, 0.7);
+      background: rgba(255, 255, 255, 0.95);
+    }
+
+    .thinking-block {
+      background: #eef2ff;
+    }
+
+    .thinking-block .block-header {
+      font-size: 10px;
+      font-weight: 600;
+      color: #4f46e5;
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .output-block .block-header {
+      font-size: 10px;
+      font-weight: 600;
+      color: #0369a1;
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .block-body {
+      font-size: 11px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+    }
+
+    .message-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .message-footer span.index {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    }
+
+    .message-footer span.provider {
+      font-size: 10px;
+    }
+
+    .hint {
+      font-size: 10px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 4px;
+    }
+
+    .hint code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      font-size: 10px;
+      background: rgba(15, 23, 42, 0.03);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+
+    .error {
+      color: var(--danger);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 900px) {
+      .top-controls {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .main {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .conversation-view {
+        min-height: 420px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>
+          对话查看器
+          <span class="badge">ChatGPT / Claude</span>
+        </h1>
+        <p>支持 thinking / output 分框显示 · 片段切割导出 TXT · 自定义昵称</p>
+      </div>
+    </header>
+
+    <div class="top-controls">
+      <section class="panel">
+        <h2>
+          导入对话 JSON
+          <span class="sub">只在本地浏览器里处理，不会上传</span>
+        </h2>
+        <label for="jsonInput">在此粘贴 JSON（或用右侧按钮选择 .json 文件）</label>
+        <textarea id="jsonInput" placeholder='示例结构：
+{
+  "conversations": [
+    {
+      "id": "conv1",
+      "title": "示例对话",
+      "provider": "chatgpt",
+      "messages": [
+        { "role": "user", "content": "你好" },
+        {
+          "role": "assistant",
+          "thinking": "内部思考内容...",
+          "content": "你好，我在。"
+        }
+      ]
+    }
+  ]
+}'></textarea>
+        <div class="import-actions">
+          <div class="left">
+            <button class="btn btn-primary" id="loadJsonBtn">从文本载入</button>
+            <label class="btn btn-outline">
+              <input
+                type="file"
+                id="fileInput"
+                accept=".json"
+                style="display: none"
+              />
+              从文件载入
+            </label>
+          </div>
+          <button class="btn btn-ghost" id="loadDemoBtn">填充示例数据</button>
+        </div>
+        <div id="importError" class="error" style="display: none"></div>
+        <div class="hint">
+          <span>字段约定：</span>
+          <code>thinking</code>
+          <span>→ thinking process 内容</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>
+          显示设置
+          <span class="sub">只是前端展示名，不改原始内容</span>
+        </h2>
+        <div class="name-settings">
+          <div class="name-settings-row">
+            <div>
+              <label for="userNameInput">用户显示名</label>
+              <input
+                id="userNameInput"
+                type="text"
+                value="User"
+                autocomplete="off"
+              />
+            </div>
+            <div>
+              <label for="modelNameInput">模型显示名</label>
+              <input
+                id="modelNameInput"
+                type="text"
+                value="Assistant"
+                autocomplete="off"
+              />
+            </div>
+          </div>
+          <small>用于替换消息前缀，比如「User」→「Uzumi」、「Assistant」→「Rhema酱」之类的骚操作。</small>
+        </div>
+      </section>
+    </div>
+
+    <div class="main">
+      <aside class="conversation-list">
+        <div class="conversation-list-header">
+          <h2>对话列表</h2>
+          <span id="convCountLabel">0 条</span>
+        </div>
+        <div class="conversation-items" id="conversationList"></div>
+      </aside>
+
+      <section class="conversation-view">
+        <div class="conversation-header">
+          <div class="conversation-header-main">
+            <h2 id="convTitle">未选择对话</h2>
+            <p id="convMeta">导入 JSON 后从左侧选择一条对话。</p>
+          </div>
+          <div class="export-buttons">
+            <button class="btn btn-outline" id="exportSelectedBtn">
+              导出选中为 TXT
+            </button>
+            <button class="btn btn-outline" id="exportAllBtn">
+              导出整段为 TXT
+            </button>
+          </div>
+        </div>
+        <div class="messages" id="messagesContainer">
+          <div class="empty-state">
+            没有内容。先在上方导入一份对话 JSON，体面地旁观下模型的小脑抽搐过程。
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // 简单状态
+    let conversations = [];
+    let currentIndex = -1;
+    const viewState = {
+      userName: "User",
+      modelName: "Assistant",
+    };
+
+    const els = {
+      jsonInput: document.getElementById("jsonInput"),
+      loadJsonBtn: document.getElementById("loadJsonBtn"),
+      loadDemoBtn: document.getElementById("loadDemoBtn"),
+      fileInput: document.getElementById("fileInput"),
+      importError: document.getElementById("importError"),
+      userNameInput: document.getElementById("userNameInput"),
+      modelNameInput: document.getElementById("modelNameInput"),
+      conversationList: document.getElementById("conversationList"),
+      convCountLabel: document.getElementById("convCountLabel"),
+      convTitle: document.getElementById("convTitle"),
+      convMeta: document.getElementById("convMeta"),
+      messagesContainer: document.getElementById("messagesContainer"),
+      exportSelectedBtn: document.getElementById("exportSelectedBtn"),
+      exportAllBtn: document.getElementById("exportAllBtn"),
+    };
+
+    function safeStr(x) {
+      return x == null ? "" : String(x);
+    }
+
+    function parseImportedJson(str) {
+      let data;
+      try {
+        data = JSON.parse(str);
+      } catch (e) {
+        throw new Error("JSON 解析失败：" + e.message);
+      }
+
+      // 支持几种懒人结构：
+      // 1) { conversations: [...] }
+      // 2) [ { messages: [...] }, ... ]
+      // 3) 单一对话 { messages: [...] }
+      let convs = [];
+
+      if (Array.isArray(data)) {
+        convs = data;
+      } else if (Array.isArray(data.conversations)) {
+        convs = data.conversations;
+      } else if (Array.isArray(data.messages)) {
+        convs = [data];
+      } else {
+        throw new Error("未识别的结构：需要 conversations 或 messages 字段。");
+      }
+
+      return convs.map((c, idx) => {
+        const messages = Array.isArray(c.messages) ? c.messages : [];
+        return {
+          id: safeStr(c.id) || "conv_" + (idx + 1),
+          title:
+            safeStr(c.title) ||
+            "对话 " + (idx + 1) + (c.provider ? " · " + c.provider : ""),
+          provider: safeStr(c.provider || "unknown").toLowerCase(),
+          messages:
+            messages.map((m, mIdx) => ({
+              role: m.role || (m.author && m.author.role) || "assistant",
+              content: safeStr(m.content || m.text || ""),
+              thinking: safeStr(m.thinking || m.thoughts || ""),
+              timestamp: safeStr(m.timestamp || m.time || ""),
+              _index: mIdx,
+              _selected: false,
+            })) || [],
+        };
+      });
+    }
+
+    function setError(msg) {
+      if (!msg) {
+        els.importError.style.display = "none";
+        els.importError.textContent = "";
+      } else {
+        els.importError.style.display = "block";
+        els.importError.textContent = msg;
+      }
+    }
+
+    function loadConversationsFromText() {
+      const text = els.jsonInput.value.trim();
+      if (!text) {
+        setError("你没贴东西。模型再聪明也不能凭空读心。");
+        return;
+      }
+      try {
+        const parsed = parseImportedJson(text);
+        conversations = parsed;
+        currentIndex = parsed.length ? 0 : -1;
+        setError("");
+        renderConversationList();
+        renderConversation();
+      } catch (e) {
+        setError(e.message);
+      }
+    }
+
+    function loadDemoData() {
+      const demo = {
+        conversations: [
+          {
+            id: "demo_chatgpt",
+            title: "示例：ChatGPT 思考 + 输出",
+            provider: "chatgpt",
+            messages: [
+              {
+                role: "user",
+                content: "给我讲讲你是怎么思考问题的？",
+                timestamp: "2025-12-17T12:00:00Z",
+              },
+              {
+                role: "assistant",
+                thinking:
+                  "1. 识别用户问题意图\n2. 提取关键点：解释思考过程\n3. 用易懂比喻描述推理步骤\n4. 注意别泄露隐私数据\n5. 语气稍微正常点，不要写成公司公关稿",
+                content:
+                  "大概流程是：\n- 先分析你问的是什么、想解决什么问题；\n- 再把相关的信息在内部过一遍，做一串推理；\n- 最后把结果翻译成相对人话一点的输出给你。\n\n你看到的是最后一步，前面的脑内碎碎念就藏在 thinking 里了。",
+                timestamp: "2025-12-17T12:00:05Z",
+              },
+              {
+                role: "user",
+                content: "那 Claude 呢？",
+                timestamp: "2025-12-17T12:00:10Z",
+              },
+            ],
+          },
+          {
+            id: "demo_claude",
+            title: "示例：Claude 对话",
+            provider: "claude",
+            messages: [
+              {
+                role: "user",
+                content: "简单来个自我介绍。",
+                timestamp: "2025-12-17T13:00:00Z",
+              },
+              {
+                role: "assistant",
+                thinking:
+                  "简短自我介绍；保持礼貌；不要写成简历；别跟 ChatGPT 搅一起；\n好，差不多行了。",
+                content: "我是 Claude 系列模型，用文本陪你折腾各种想法。",
+                timestamp: "2025-12-17T13:00:03Z",
+              },
+            ],
+          },
+        ],
+      };
+
+      try {
+        const parsed = parseImportedJson(JSON.stringify(demo));
+        conversations = parsed;
+        currentIndex = parsed.length ? 0 : -1;
+        setError("");
+        renderConversationList();
+        renderConversation();
+        els.jsonInput.value = JSON.stringify(demo, null, 2);
+      } catch (e) {
+        setError("示例数据竟然都解析不了？问题不在你，在代码。");
+      }
+    }
+
+    function renderConversationList() {
+      const list = els.conversationList;
+      list.innerHTML = "";
+      els.convCountLabel.textContent = conversations.length + " 条";
+
+      if (!conversations.length) {
+        list.innerHTML =
+          '<div class="empty-state" style="padding:12px 4px;">没有数据。左上角先导入一份 JSON。</div>';
+        return;
+      }
+
+      conversations.forEach((conv, idx) => {
+        const item = document.createElement("div");
+        item.className =
+          "conv-item" + (idx === currentIndex ? " active" : "");
+        item.addEventListener("click", () => {
+          currentIndex = idx;
+          renderConversationList();
+          renderConversation();
+        });
+
+        const title = document.createElement("div");
+        title.className = "conv-title";
+        title.textContent = conv.title || "对话 " + (idx + 1);
+
+        const meta = document.createElement("div");
+        meta.className = "conv-meta";
+
+        const provider = document.createElement("span");
+        provider.className = "provider-pill";
+        provider.textContent =
+          conv.provider === "claude"
+            ? "Claude"
+            : conv.provider === "chatgpt"
+            ? "ChatGPT"
+            : conv.provider || "未知";
+
+        const count = document.createElement("span");
+        count.textContent = conv.messages.length + " 条消息";
+
+        meta.appendChild(provider);
+        meta.appendChild(count);
+
+        item.appendChild(title);
+        item.appendChild(meta);
+        list.appendChild(item);
+      });
+    }
+
+    function renderConversation() {
+      const container = els.messagesContainer;
+      container.innerHTML = "";
+
+      if (currentIndex < 0 || !conversations[currentIndex]) {
+        els.convTitle.textContent = "未选择对话";
+        els.convMeta.textContent = "导入 JSON 后从左侧选择一条对话。";
+        container.innerHTML =
+          '<div class="empty-state">左边点一条对话，咱再开始围观思维现场。</div>';
+        return;
+      }
+
+      const conv = conversations[currentIndex];
+      els.convTitle.textContent = conv.title || "对话 " + (currentIndex + 1);
+      els.convMeta.textContent =
+        (conv.provider ? "来源：" + conv.provider + " · " : "") +
+        conv.messages.length +
+        " 条消息";
+
+      if (!conv.messages.length) {
+        container.innerHTML =
+          '<div class="empty-state">这条对话是空的。也算一种沉默的艺术。</div>';
+        return;
+      }
+
+      conv.messages.forEach((msg, idx) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = "message-wrapper";
+
+        // 选中复选框
+        const selectBox = document.createElement("div");
+        selectBox.className = "msg-select";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = !!msg._selected;
+        checkbox.addEventListener("change", () => {
+          msg._selected = checkbox.checked;
+        });
+        selectBox.appendChild(checkbox);
+
+        // 消息主体
+        const msgDiv = document.createElement("div");
+        const isUser = (msg.role || "").toLowerCase() === "user";
+        msgDiv.className = "message " + (isUser ? "user" : "assistant");
+
+        // 头部
+        const header = document.createElement("div");
+        header.className = "message-header";
+
+        const name = document.createElement("strong");
+        name.textContent = isUser ? viewState.userName : viewState.modelName;
+
+        const meta = document.createElement("span");
+        meta.className = "meta";
+
+        const roleTag = document.createElement("span");
+        roleTag.className = "role-tag";
+        roleTag.textContent = isUser ? "USER" : "ASSISTANT";
+
+        const time = document.createElement("span");
+        time.textContent = msg.timestamp || "";
+
+        meta.appendChild(roleTag);
+        if (time.textContent) meta.appendChild(time);
+
+        header.appendChild(name);
+        header.appendChild(meta);
+
+        msgDiv.appendChild(header);
+
+        // 内容区
+        if (isUser) {
+          const body = document.createElement("div");
+          body.className = "message-body";
+          body.textContent = msg.content || "";
+          msgDiv.appendChild(body);
+        } else {
+          const blocks = document.createElement("div");
+          blocks.className = "assistant-blocks";
+
+          if (msg.thinking && msg.thinking.trim().length > 0) {
+            const thinkingBlock = document.createElement("div");
+            thinkingBlock.className = "thinking-block";
+
+            const bh = document.createElement("div");
+            bh.className = "block-header";
+            bh.textContent = "THINKING PROCESS";
+
+            const bb = document.createElement("div");
+            bb.className = "block-body";
+            bb.textContent = msg.thinking;
+
+            thinkingBlock.appendChild(bh);
+            thinkingBlock.appendChild(bb);
+            blocks.appendChild(thinkingBlock);
+          }
+
+          const outputBlock = document.createElement("div");
+          outputBlock.className = "output-block";
+
+          const oh = document.createElement("div");
+          oh.className = "block-header";
+          oh.textContent = "OUTPUT";
+
+          const ob = document.createElement("div");
+          ob.className = "block-body";
+          ob.textContent = msg.content || "";
+
+          outputBlock.appendChild(oh);
+          outputBlock.appendChild(ob);
+          blocks.appendChild(outputBlock);
+
+          msgDiv.appendChild(blocks);
+        }
+
+        // 底部
+        const footer = document.createElement("div");
+        footer.className = "message-footer";
+
+        const idxSpan = document.createElement("span");
+        idxSpan.className = "index";
+        idxSpan.textContent = "#" + (idx + 1);
+
+        const provSpan = document.createElement("span");
+        provSpan.className = "provider";
+        provSpan.textContent =
+          conv.provider === "claude"
+            ? "Claude"
+            : conv.provider === "chatgpt"
+            ? "ChatGPT"
+            : conv.provider || "";
+
+        footer.appendChild(idxSpan);
+        footer.appendChild(provSpan);
+
+        msgDiv.appendChild(footer);
+
+        wrapper.appendChild(selectBox);
+        wrapper.appendChild(msgDiv);
+        container.appendChild(wrapper);
+      });
+
+      // 滚到顶部
+      container.scrollTop = 0;
+    }
+
+    function buildTxtFromMessages(conv, msgs) {
+      const lines = [];
+      const userName = viewState.userName || "User";
+      const modelName = viewState.modelName || "Assistant";
+
+      msgs.forEach((m, idx) => {
+        const isUser = (m.role || "").toLowerCase() === "user";
+        const idxLabel = "[" + (idx + 1) + "]";
+
+        if (isUser) {
+          lines.push(
+            idxLabel + " " + userName + ":\n" + (m.content || "") + "\n"
+          );
+        } else {
+          if (m.thinking && m.thinking.trim()) {
+            lines.push(
+              idxLabel +
+                " " +
+                modelName +
+                " [thinking]:\n" +
+                m.thinking +
+                "\n"
+            );
+          }
+          lines.push(
+            idxLabel + " " + modelName + ":\n" + (m.content || "") + "\n"
+          );
+        }
+      });
+
+      return (
+        "# " +
+        (conv.title || conv.id || "对话") +
+        "\n" +
+        (conv.provider ? "Provider: " + conv.provider + "\n\n" : "\n") +
+        lines.join("\n")
+      );
+    }
+
+    function downloadTxt(filename, content) {
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 0);
+    }
+
+    function exportSelected() {
+      if (currentIndex < 0 || !conversations[currentIndex]) return;
+      const conv = conversations[currentIndex];
+      const selected = conv.messages.filter((m) => m._selected);
+      if (!selected.length) {
+        alert("你一个都没勾选，导出个空气吗。");
+        return;
+      }
+      const txt = buildTxtFromMessages(conv, selected);
+      const nameSafe =
+        (conv.title || conv.id || "conversation")
+          .replace(/[\\/:*?"<>|]/g, "_")
+          .slice(0, 40) || "conversation";
+      downloadTxt(nameSafe + "_selected.txt", txt);
+    }
+
+    function exportAll() {
+      if (currentIndex < 0 || !conversations[currentIndex]) return;
+      const conv = conversations[currentIndex];
+      if (!conv.messages.length) {
+        alert("这条对话是空的，没啥好导出的。");
+        return;
+      }
+      const txt = buildTxtFromMessages(conv, conv.messages);
+      const nameSafe =
+        (conv.title || conv.id || "conversation")
+          .replace(/[\\/:*?"<>|]/g, "_")
+          .slice(0, 40) || "conversation";
+      downloadTxt(nameSafe + "_full.txt", txt);
+    }
+
+    // 事件绑定
+    els.loadJsonBtn.addEventListener("click", loadConversationsFromText);
+    els.loadDemoBtn.addEventListener("click", loadDemoData);
+
+    els.fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        els.jsonInput.value = ev.target.result;
+        loadConversationsFromText();
+      };
+      reader.readAsText(file, "utf-8");
+      e.target.value = "";
+    });
+
+    els.userNameInput.addEventListener("input", (e) => {
+      viewState.userName = e.target.value || "User";
+      renderConversation();
+    });
+
+    els.modelNameInput.addEventListener("input", (e) => {
+      viewState.modelName = e.target.value || "Assistant";
+      renderConversation();
+    });
+
+    els.exportSelectedBtn.addEventListener("click", exportSelected);
+    els.exportAllBtn.addEventListener("click", exportAll);
+
+    // 初始：给一点空壳
+    renderConversationList();
+    renderConversation();
+  </script>
+</body>
+</html>
