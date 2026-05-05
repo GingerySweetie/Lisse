@@ -1,0 +1,480 @@
+import { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { db } from '../db';
+import type { Endpoint, EndpointFormat } from '../types';
+import { newId } from '../lib/id';
+import { streamChat } from '../api';
+
+export default function SettingsPage() {
+  const endpoints = useLiveQuery(
+    () => db.endpoints.orderBy('createdAt').toArray(),
+    [],
+    [],
+  );
+  const [editing, setEditing] = useState<Endpoint | null>(null);
+  const [creating, setCreating] = useState(false);
+
+  return (
+    <div className="flex h-full w-full flex-col">
+      <header className="flex items-center gap-3 border-b border-lavender-200 bg-white/60 px-3 py-3 pl-14 backdrop-blur md:px-6 md:pl-6">
+        <Link
+          to="/chat"
+          className="hidden items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-500 transition hover:bg-lavender-50 md:inline-flex"
+        >
+          <ChevronLeft size={16} />
+          返回
+        </Link>
+        <h2 className="text-base font-semibold text-ink-900">设置 · Endpoints</h2>
+      </header>
+
+      <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm text-ink-500">
+              添加 OpenAI 兼容或 Anthropic 原生格式的 endpoint。<br />
+              所有数据只存在浏览器本地。
+            </p>
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+            >
+              <Plus size={16} />
+              添加
+            </button>
+          </div>
+
+          {endpoints && endpoints.length === 0 && !creating && (
+            <EmptyState onCreate={() => setCreating(true)} />
+          )}
+
+          <ul className="flex flex-col gap-3">
+            {endpoints?.map((ep) => (
+              <li key={ep.id}>
+                <EndpointCard
+                  endpoint={ep}
+                  onEdit={() => setEditing(ep)}
+                />
+              </li>
+            ))}
+          </ul>
+
+          {(creating || editing) && (
+            <EndpointEditor
+              endpoint={editing}
+              onClose={() => {
+                setCreating(false);
+                setEditing(null);
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-lavender-300 bg-white/50 p-8 text-center">
+      <p className="text-ink-700">
+        还没有 endpoint 喵。<br />
+        点上面的"添加"或下面这个按钮开始：
+      </p>
+      <button
+        type="button"
+        onClick={onCreate}
+        className="mt-4 rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+      >
+        添加 endpoint
+      </button>
+    </div>
+  );
+}
+
+function EndpointCard({
+  endpoint,
+  onEdit,
+}: {
+  endpoint: Endpoint;
+  onEdit: () => void;
+}) {
+  const [testStatus, setTestStatus] = useState<
+    'idle' | 'testing' | 'ok' | 'fail'
+  >('idle');
+  const [testMsg, setTestMsg] = useState<string>('');
+
+  async function handleDelete() {
+    if (!confirm(`删除 endpoint "${endpoint.name}"？`)) return;
+    await db.endpoints.delete(endpoint.id);
+  }
+
+  async function handleTest() {
+    setTestStatus('testing');
+    setTestMsg('');
+    const model = endpoint.chatModels[0];
+    if (!model) {
+      setTestStatus('fail');
+      setTestMsg('没有配置模型');
+      return;
+    }
+    try {
+      let acc = '';
+      let errored = false;
+      let errorMessage = '';
+      for await (const evt of streamChat({
+        endpoint,
+        model,
+        messages: [{ role: 'user', content: 'Hi (one short word)' }],
+        maxTokens: 16,
+      })) {
+        if (evt.type === 'delta' && evt.delta) acc += evt.delta;
+        else if (evt.type === 'error') {
+          errored = true;
+          errorMessage = evt.errorMessage ?? '';
+          break;
+        }
+      }
+      if (errored) {
+        setTestStatus('fail');
+        setTestMsg(errorMessage || '未知错误');
+      } else if (!acc.trim()) {
+        setTestStatus('fail');
+        setTestMsg('返回为空');
+      } else {
+        setTestStatus('ok');
+        setTestMsg(`回复：${acc.slice(0, 80)}`);
+      }
+    } catch (err) {
+      setTestStatus('fail');
+      setTestMsg(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-lavender-200 bg-white/80 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-base font-semibold text-ink-900">
+              {endpoint.name}
+            </h3>
+            <span
+              className={`rounded px-1.5 py-0.5 text-xs ${
+                endpoint.format === 'anthropic'
+                  ? 'bg-lavender-100 text-lavender-600'
+                  : 'bg-mint-100 text-mint-500'
+              }`}
+            >
+              {endpoint.format}
+            </span>
+          </div>
+          <div className="mt-1 truncate text-xs text-ink-500">
+            {endpoint.baseUrl}
+          </div>
+          {endpoint.chatModels.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {endpoint.chatModels.map((m) => (
+                <span
+                  key={m}
+                  className="rounded bg-lavender-50 px-1.5 py-0.5 text-xs text-ink-700"
+                >
+                  {m}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="rounded-lg p-2 text-ink-500 transition hover:bg-lavender-50 hover:text-ink-900"
+            aria-label="编辑"
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="rounded-lg p-2 text-ink-500 transition hover:bg-rose-50 hover:text-rose-500"
+            aria-label="删除"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleTest}
+          disabled={testStatus === 'testing'}
+          className="rounded-lg border border-mint-300 bg-mint-50 px-3 py-1.5 text-xs font-medium text-mint-500 transition hover:bg-mint-100 disabled:opacity-60"
+        >
+          {testStatus === 'testing' ? '测试中…' : '测试连接'}
+        </button>
+        {testStatus === 'ok' && (
+          <span className="flex items-center gap-1 text-xs text-mint-500">
+            <CheckCircle2 size={14} />
+            <span className="truncate">{testMsg}</span>
+          </span>
+        )}
+        {testStatus === 'fail' && (
+          <span className="flex items-center gap-1 text-xs text-rose-500">
+            <XCircle size={14} />
+            <span className="truncate">{testMsg}</span>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface EditorProps {
+  endpoint: Endpoint | null;
+  onClose: () => void;
+}
+
+const PRESETS: Record<string, Partial<Endpoint>> = {
+  'AIHubMix (OpenAI 格式)': {
+    baseUrl: 'https://aihubmix.com/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['gpt-4o', 'gpt-4o-mini'],
+    embeddingModels: ['text-embedding-3-small'],
+  },
+  'AIHubMix (Anthropic 格式)': {
+    baseUrl: 'https://aihubmix.com/v1',
+    format: 'anthropic',
+    authStyle: 'x-api-key',
+    chatModels: ['claude-sonnet-4-5', 'claude-opus-4-5'],
+    embeddingModels: [],
+  },
+  'SiliconFlow': {
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-72B-Instruct'],
+    embeddingModels: ['BAAI/bge-m3'],
+  },
+  'Anthropic 官方': {
+    baseUrl: 'https://api.anthropic.com/v1',
+    format: 'anthropic',
+    authStyle: 'x-api-key',
+    chatModels: ['claude-sonnet-4-5', 'claude-opus-4-5', 'claude-haiku-4-5'],
+    embeddingModels: [],
+  },
+  'OpenAI 官方': {
+    baseUrl: 'https://api.openai.com/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['gpt-4o', 'gpt-4o-mini', 'o1-mini'],
+    embeddingModels: ['text-embedding-3-small', 'text-embedding-3-large'],
+  },
+};
+
+function EndpointEditor({ endpoint, onClose }: EditorProps) {
+  const [name, setName] = useState(endpoint?.name ?? '');
+  const [baseUrl, setBaseUrl] = useState(endpoint?.baseUrl ?? '');
+  const [apiKey, setApiKey] = useState(endpoint?.apiKey ?? '');
+  const [format, setFormat] = useState<EndpointFormat>(
+    endpoint?.format ?? 'openai',
+  );
+  const [authStyle, setAuthStyle] = useState<'bearer' | 'x-api-key'>(
+    endpoint?.authStyle ?? 'bearer',
+  );
+  const [chatModelsText, setChatModelsText] = useState(
+    endpoint?.chatModels.join('\n') ?? '',
+  );
+  const [embeddingModelsText, setEmbeddingModelsText] = useState(
+    endpoint?.embeddingModels.join('\n') ?? '',
+  );
+
+  function applyPreset(presetName: string) {
+    const p = PRESETS[presetName];
+    if (!p) return;
+    if (!name) setName(presetName);
+    if (p.baseUrl) setBaseUrl(p.baseUrl);
+    if (p.format) setFormat(p.format);
+    if (p.authStyle) setAuthStyle(p.authStyle);
+    if (p.chatModels) setChatModelsText(p.chatModels.join('\n'));
+    if (p.embeddingModels) setEmbeddingModelsText(p.embeddingModels.join('\n'));
+  }
+
+  async function handleSave() {
+    if (!name.trim() || !baseUrl.trim() || !apiKey.trim()) {
+      alert('名字、Base URL、API Key 都不能空');
+      return;
+    }
+    const now = Date.now();
+    const data: Endpoint = {
+      id: endpoint?.id ?? newId(),
+      name: name.trim(),
+      baseUrl: baseUrl.trim(),
+      apiKey: apiKey.trim(),
+      format,
+      authStyle,
+      chatModels: parseList(chatModelsText),
+      embeddingModels: parseList(embeddingModelsText),
+      createdAt: endpoint?.createdAt ?? now,
+      updatedAt: now,
+    };
+    await db.endpoints.put(data);
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/30 backdrop-blur-sm md:items-center"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl md:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-semibold text-ink-900">
+          {endpoint ? '编辑 endpoint' : '添加 endpoint'}
+        </h3>
+
+        {!endpoint && (
+          <div className="mt-3">
+            <label className="mb-1 block text-xs font-medium text-ink-500">
+              快速套用
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.keys(PRESETS).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className="rounded-lg border border-lavender-200 bg-lavender-50 px-2 py-1 text-xs text-ink-700 transition hover:bg-lavender-100"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-col gap-3 text-sm">
+          <Field label="名字">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="比如：AIHubMix (Claude)"
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+            />
+          </Field>
+
+          <Field label="Base URL">
+            <input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://aihubmix.com/v1"
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-mint-300"
+            />
+          </Field>
+
+          <Field label="API Key">
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-..."
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-mint-300"
+            />
+          </Field>
+
+          <div className="flex gap-3">
+            <Field label="格式" className="flex-1">
+              <select
+                value={format}
+                onChange={(e) => setFormat(e.target.value as EndpointFormat)}
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+              >
+                <option value="openai">OpenAI 兼容</option>
+                <option value="anthropic">Anthropic 原生</option>
+              </select>
+            </Field>
+            <Field label="认证方式" className="flex-1">
+              <select
+                value={authStyle}
+                onChange={(e) =>
+                  setAuthStyle(e.target.value as 'bearer' | 'x-api-key')
+                }
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+              >
+                <option value="bearer">Authorization: Bearer</option>
+                <option value="x-api-key">x-api-key</option>
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Chat 模型（每行一个）">
+            <textarea
+              value={chatModelsText}
+              onChange={(e) => setChatModelsText(e.target.value)}
+              placeholder="claude-sonnet-4-5&#10;gpt-4o-mini"
+              rows={3}
+              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-mint-300"
+            />
+          </Field>
+
+          <Field label="Embedding 模型（可空）">
+            <textarea
+              value={embeddingModelsText}
+              onChange={(e) => setEmbeddingModelsText(e.target.value)}
+              placeholder="text-embedding-3-small"
+              rows={2}
+              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-mint-300"
+            />
+          </Field>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-lavender-200 px-4 py-2 text-sm text-ink-700 transition hover:bg-lavender-50"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <label className={`flex flex-col gap-1 ${className ?? ''}`}>
+      <span className="text-xs font-medium text-ink-500">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function parseList(text: string): string[] {
+  return text
+    .split(/\n|,/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
