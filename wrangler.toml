@@ -1,3 +1,10 @@
 name = "lisse"
 compatibility_date = "2026-01-01"
-pages_build_output_dir = "dist"
+
+# Static-only SPA. No Worker code; Cloudflare serves dist/ directly with
+# SPA routing fallback. Works for both:
+#   - Workers + Static Assets (current default for new accounts)
+#   - Cloudflare Pages (legacy flow; also reads [assets].directory)
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
