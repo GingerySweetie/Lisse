@@ -63,6 +63,25 @@ export interface AppSettings {
   /** Selected endpoint+model used when creating new conversations. */
   defaultEndpointId: string | null;
   defaultModel: string | null;
+  /** Selected persona used when creating new conversations. */
+  defaultPersonaId: string | null;
   /** Theme preference, future: 'light' | 'dark' | 'auto'. */
   theme: 'light';
+}
+
+export interface Persona {
+  id: string;
+  name: string;
+  /** Short tag/avatar character (emoji or 1-2 letters). */
+  avatar: string;
+  /** Accent color used for chips/badges. */
+  color: string;
+  /** System prompt injected at the start of every conversation using this persona. */
+  systemPrompt: string;
+  /** Free-form notes for the user; not sent to the model. */
+  notes?: string;
+  /** Built-in personas can't be deleted, only edited. */
+  builtin?: boolean;
+  createdAt: number;
+  updatedAt: number;
 }

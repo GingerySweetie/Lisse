@@ -45,3 +45,16 @@ export async function getActiveLeafFrom(
     id = m.activeChildId;
   }
 }
+
+/** Sibling info: the active message's index among siblings + total sibling count. */
+export interface SiblingInfo {
+  index: number;
+  total: number;
+  siblings: Message[];
+}
+
+export async function getSiblingInfo(message: Message): Promise<SiblingInfo> {
+  const siblings = await getSiblings(message);
+  const index = siblings.findIndex((s) => s.id === message.id);
+  return { index, total: siblings.length, siblings };
+}

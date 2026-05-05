@@ -1,6 +1,6 @@
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { MessageSquarePlus, Settings, Trash2 } from 'lucide-react';
+import { MessageSquarePlus, Settings, Trash2, Users } from 'lucide-react';
 import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
 import { relativeTime } from '../lib/format';
@@ -86,7 +86,21 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </ul>
       </div>
 
-      <div className="border-t border-lavender-200 px-2 py-2">
+      <div className="flex flex-col gap-0.5 border-t border-lavender-200 px-2 py-2">
+        <NavLink
+          to="/personas"
+          onClick={() => onNavigate?.()}
+          className={({ isActive }) =>
+            `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+              isActive
+                ? 'bg-lavender-100 text-ink-900'
+                : 'text-ink-700 hover:bg-lavender-50'
+            }`
+          }
+        >
+          <Users size={16} />
+          人格
+        </NavLink>
         <NavLink
           to="/settings"
           onClick={() => onNavigate?.()}
