@@ -3,6 +3,7 @@ import type {
   AppSettings,
   Conversation,
   Endpoint,
+  MemoryFact,
   Message,
   Persona,
 } from '../types';
@@ -11,33 +12,36 @@ export interface BackupBundle {
   /** Format identifier for sanity-checking. */
   __lisse: 'backup';
   /** Schema version of the bundle (not Dexie's). */
-  version: 1;
+  version: 2;
   exportedAt: number;
   settings: AppSettings;
   endpoints: Endpoint[];
   personas: Persona[];
   conversations: Conversation[];
   messages: Message[];
+  memoryFacts?: MemoryFact[];
 }
 
 export async function exportBackup(): Promise<BackupBundle> {
-  const [settings, endpoints, personas, conversations, messages] =
+  const [settings, endpoints, personas, conversations, messages, memoryFacts] =
     await Promise.all([
       getSettings(),
       db.endpoints.toArray(),
       db.personas.toArray(),
       db.conversations.toArray(),
       db.messages.toArray(),
+      db.memoryFacts.toArray(),
     ]);
   return {
     __lisse: 'backup',
-    version: 1,
+    version: 2,
     exportedAt: Date.now(),
     settings,
     endpoints,
     personas,
     conversations,
     messages,
+    memoryFacts,
   };
 }
 
@@ -51,6 +55,7 @@ export interface ImportBackupResult {
   personasAdded: number;
   conversationsAdded: number;
   messagesAdded: number;
+  memoryFactsAdded: number;
   settingsApplied: boolean;
 }
 
@@ -78,12 +83,13 @@ export async function importBackup(
   if (opts.mode === 'replace') {
     await db.transaction(
       'rw',
-      [db.endpoints, db.personas, db.conversations, db.messages, db.kv],
+      [db.endpoints, db.personas, db.conversations, db.messages, db.memoryFacts, db.kv],
       async () => {
         await db.endpoints.clear();
         await db.personas.clear();
         await db.conversations.clear();
         await db.messages.clear();
+        await db.memoryFacts.clear();
         await db.kv.clear();
       },
     );
@@ -94,12 +100,13 @@ export async function importBackup(
     personasAdded: 0,
     conversationsAdded: 0,
     messagesAdded: 0,
+    memoryFactsAdded: 0,
     settingsApplied: false,
   };
 
   await db.transaction(
     'rw',
-    [db.endpoints, db.personas, db.conversations, db.messages],
+    [db.endpoints, db.personas, db.conversations, db.messages, db.memoryFacts],
     async () => {
       for (const e of bundle.endpoints ?? []) {
         const exists = await db.endpoints.get(e.id);
@@ -124,6 +131,12 @@ export async function importBackup(
         if (exists && opts.mode === 'merge') continue;
         await db.messages.put(m);
         result.messagesAdded++;
+      }
+      for (const f of bundle.memoryFacts ?? []) {
+        const exists = await db.memoryFacts.get(f.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.memoryFacts.put(f);
+        result.memoryFactsAdded++;
       }
     },
   );

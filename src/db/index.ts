@@ -3,6 +3,7 @@ import type {
   AppSettings,
   Conversation,
   Endpoint,
+  MemoryFact,
   Message,
   Persona,
 } from '../types';
@@ -17,6 +18,7 @@ class LisseDB extends Dexie {
   conversations!: EntityTable<Conversation, 'id'>;
   messages!: EntityTable<Message, 'id'>;
   personas!: EntityTable<Persona, 'id'>;
+  memoryFacts!: EntityTable<MemoryFact, 'id'>;
   kv!: EntityTable<KVRow, 'key'>;
 
   constructor() {
@@ -44,6 +46,15 @@ class LisseDB extends Dexie {
           await personas.put({ ...p, createdAt: now, updatedAt: now });
         }
       });
+
+    this.version(3).stores({
+      endpoints: 'id, name, format, createdAt',
+      conversations: 'id, updatedAt, createdAt, source, personaId',
+      messages: 'id, conversationId, parentId, createdAt, [conversationId+createdAt]',
+      personas: 'id, name, builtin, createdAt',
+      memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+      kv: 'key',
+    });
 
     this.on('populate', async (tx) => {
       const personas = tx.table('personas');
@@ -142,6 +153,13 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultModel: null,
   defaultPersonaId: null,
   theme: 'light',
+  memoryEnabled: false,
+  embeddingEndpointId: null,
+  embeddingModel: null,
+  extractorEndpointId: null,
+  extractorModel: null,
+  retrievalTopK: 6,
+  retrievalThreshold: 0.5,
 };
 
 export async function getSettings(): Promise<AppSettings> {

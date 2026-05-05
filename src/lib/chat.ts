@@ -3,6 +3,11 @@ import type { Conversation, Endpoint, Message, Persona } from '../types';
 import { newId } from './id';
 import { getActiveBranch } from './branch';
 import { streamChat, type ChatTurn } from '../api';
+import {
+  retrieveFacts,
+  formatFactsBlock,
+  extractAndStoreFacts,
+} from './memory';
 
 export interface SendOptions {
   conversation: Conversation;
@@ -79,7 +84,33 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
   });
 
   const final = await db.messages.get(assistantMessage.id);
+  scheduleFactExtraction({
+    persona,
+    conversationId: conversation.id,
+    userMessage,
+    assistantMessage: final ?? assistantMessage,
+  });
   return { userMessage, assistantMessage: final ?? assistantMessage };
+}
+
+/** Fire-and-forget extraction; never throws into the chat path. */
+function scheduleFactExtraction(args: {
+  persona?: Persona;
+  conversationId: string;
+  userMessage: Message;
+  assistantMessage: Message;
+}) {
+  if (!args.persona) return;
+  if (args.assistantMessage.status !== 'done') return;
+  if (!args.assistantMessage.content.trim()) return;
+  void extractAndStoreFacts({
+    persona: args.persona,
+    conversationId: args.conversationId,
+    userMessage: args.userMessage,
+    assistantMessage: args.assistantMessage,
+  }).catch(() => {
+    // already swallowed inside extractAndStoreFacts; double-safety here.
+  });
 }
 
 /**
@@ -149,6 +180,13 @@ export async function editUserMessage(opts: {
     signal,
   });
 
+  const finalAssistant = await db.messages.get(newAssistant.id);
+  scheduleFactExtraction({
+    persona,
+    conversationId: conversation.id,
+    userMessage: newUser,
+    assistantMessage: finalAssistant ?? newAssistant,
+  });
   return { newUser, newAssistant };
 }
 
@@ -205,6 +243,16 @@ export async function regenerateAssistant(opts: {
     signal,
   });
 
+  const userParent = prefix.find((m) => m.id === message.parentId);
+  const finalAssistant = await db.messages.get(newAssistant.id);
+  if (userParent) {
+    scheduleFactExtraction({
+      persona,
+      conversationId: conversation.id,
+      userMessage: userParent,
+      assistantMessage: finalAssistant ?? newAssistant,
+    });
+  }
   return newAssistant;
 }
 
@@ -220,9 +268,24 @@ async function streamAssistant(args: {
 }) {
   const { assistantMessageId, endpoint, model, persona, branch, onDelta, signal } = args;
 
+  // Memory retrieval: scoped to current persona, keyed off latest user message.
+  let memoryBlock = '';
+  const lastUser = [...branch].reverse().find((m) => m.role === 'user');
+  if (persona && lastUser?.content) {
+    try {
+      const facts = await retrieveFacts(persona.id, lastUser.content);
+      memoryBlock = formatFactsBlock(facts);
+    } catch {
+      memoryBlock = '';
+    }
+  }
+
   const turns: ChatTurn[] = [];
-  if (persona && persona.systemPrompt.trim()) {
-    turns.push({ role: 'system', content: persona.systemPrompt });
+  const systemParts: string[] = [];
+  if (persona && persona.systemPrompt.trim()) systemParts.push(persona.systemPrompt);
+  if (memoryBlock) systemParts.push(memoryBlock);
+  if (systemParts.length > 0) {
+    turns.push({ role: 'system', content: systemParts.join('\n\n---\n\n') });
   }
   for (const m of branch) {
     if ((m.role === 'system' || m.role === 'user' || m.role === 'assistant') && m.content) {

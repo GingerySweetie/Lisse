@@ -15,18 +15,19 @@
 - [x] 流式输出 + Markdown + 代码高亮
 - [x] PWA：手机"添加到主屏幕"即可
 - [x] 全部存 IndexedDB，离线打开依然能看历史
-- [x] **Persona 系统**：多人格切换（内置：默认 / 理理酱 / Rhema），system prompt 注入
-- [x] **消息分支**：编辑用户消息 / 重生成助手消息 → 创建新分支；侧边箭头切换
-- [x] **ChatGPT / Claude conversations.json 导入**：保留 ChatGPT 的分支树结构
-- [x] **全量备份 / 恢复**：导出/导入 JSON 文件（含 endpoints / 人格 / 对话 / 消息 / 设置）
+- [x] Persona 系统：多人格切换（内置：默认 / 理理酱 / Rhema），system prompt 注入
+- [x] 消息分支：编辑用户消息 / 重生成助手消息 → 创建新分支；侧边箭头切换
+- [x] ChatGPT / Claude conversations.json 导入（保留 ChatGPT 分支树结构）
+- [x] 全量备份 / 恢复（含 endpoints / 人格 / 对话 / 消息 / 记忆 / 设置）
+- [x] **跨对话记忆（D 级）**：每轮对话结束后台抽取事实 → 存入 persona 记忆池 → 下轮按相似度检索 top-K 注入 system prompt。支持手工添加、置顶、归档、按人格隔离。
 
 ## 还没做的（路线图）
 
-- [ ] 跨对话记忆（D 级：persona 事实摘要 + RAG）
-- [ ] 嵌入模型抽象层（接 SiliconFlow bge-m3 等）
-- [ ] Prompt caching 命中率监控
+- [ ] 浏览器本地嵌入模型兜底（transformers.js）
+- [ ] Prompt caching 命中率监控面板
 - [ ] 语音输入（Web Speech API）
 - [ ] 暗色主题
+- [ ] 多模态：图片/文件附件
 
 ## 本地开发
 
@@ -38,6 +39,19 @@ pnpm dev          # http://localhost:5173
 pnpm build        # 出 dist/
 pnpm preview      # 本地起一个 dist 的预览
 ```
+
+## 部署到 Cloudflare Pages（推荐 5 分钟）
+
+仓库已经包含 `wrangler.toml` 和 `public/_headers` / `public/_redirects`，CF Pages 直接连仓库就行：
+
+1. https://dash.cloudflare.com/ → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
+2. 选 `gingerysweetie/lisse` → 分支 `claude/add-missing-feature-kkizk`
+3. **Build command**: `pnpm install && pnpm build`
+4. **Build output directory**: `dist`
+5. 环境变量：`PNPM_VERSION = 10`
+6. Save and Deploy
+
+之后每次 push 自动重新部署。手机打开拿到的 URL 就能"添加到主屏幕"。
 
 ## 部署到 VPS（nginx）
 

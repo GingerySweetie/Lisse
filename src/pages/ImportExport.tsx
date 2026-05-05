@@ -345,7 +345,7 @@ function summarizeImport(r: ImportResult): string {
 }
 
 function summarizeBackup(r: ImportBackupResult): string {
-  return `endpoints +${r.endpointsAdded}, personas +${r.personasAdded}, conversations +${r.conversationsAdded}, messages +${r.messagesAdded}${
+  return `endpoints +${r.endpointsAdded}, personas +${r.personasAdded}, conversations +${r.conversationsAdded}, messages +${r.messagesAdded}, memory +${r.memoryFactsAdded}${
     r.settingsApplied ? '，设置已应用' : ''
   }`;
 }

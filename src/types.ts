@@ -67,6 +67,19 @@ export interface AppSettings {
   defaultPersonaId: string | null;
   /** Theme preference, future: 'light' | 'dark' | 'auto'. */
   theme: 'light';
+
+  // ─── Memory ───
+  memoryEnabled: boolean;
+  /** Endpoint id used for embedding API calls. */
+  embeddingEndpointId: string | null;
+  embeddingModel: string | null;
+  /** Endpoint id used for fact extraction (a small/cheap chat model). */
+  extractorEndpointId: string | null;
+  extractorModel: string | null;
+  /** Top-K facts to retrieve and inject per turn. */
+  retrievalTopK: number;
+  /** Minimum cosine similarity to include a retrieved fact. */
+  retrievalThreshold: number;
 }
 
 export interface Persona {
@@ -82,6 +95,38 @@ export interface Persona {
   notes?: string;
   /** Built-in personas can't be deleted, only edited. */
   builtin?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Categories used by the extractor; rendered as colored chips in the UI. */
+export type FactCategory =
+  | 'user_fact'
+  | 'preference'
+  | 'relationship'
+  | 'event'
+  | 'context'
+  | 'other';
+
+export interface MemoryFact {
+  id: string;
+  /** Memory pool: facts are scoped per persona so 理理酱 and Rhema don't bleed. */
+  personaId: string;
+  /** Origin conversation. */
+  conversationId: string;
+  /** Origin assistant message that triggered this extraction. */
+  messageId: string;
+  /** The fact itself, written in the same person/voice as the persona. */
+  text: string;
+  category: FactCategory;
+  /** L2-normalized embedding vector. Stored as plain number[] for portability. */
+  embedding: number[];
+  /** Identifier of the embedding model used (for compat checks during retrieval). */
+  embeddingModel: string;
+  /** Pinned facts are always retrieved regardless of similarity. */
+  pinned?: boolean;
+  /** Archived facts are hidden from retrieval but kept. */
+  archived?: boolean;
   createdAt: number;
   updatedAt: number;
 }

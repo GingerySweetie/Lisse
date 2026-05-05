@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft } from 'lucide-react';
+import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft, Brain } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { db } from '../db';
+import { db, getSettings, saveSettings } from '../db';
 import type { Endpoint, EndpointFormat } from '../types';
 import { newId } from '../lib/id';
 import { streamChat } from '../api';
+import { embed } from '../api/embedding';
 
 export default function SettingsPage() {
   const endpoints = useLiveQuery(
@@ -70,9 +71,228 @@ export default function SettingsPage() {
               }}
             />
           )}
+
+          <MemorySettings />
         </div>
       </div>
     </div>
+  );
+}
+
+function MemorySettings() {
+  const settings = useLiveQuery(() => getSettings(), [], null);
+  const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
+  const [testing, setTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const [testMsg, setTestMsg] = useState('');
+
+  const openaiEndpoints = endpoints?.filter((e) => e.format === 'openai') ?? [];
+
+  if (!settings) return null;
+  const s = settings;
+
+  async function update(patch: Parameters<typeof saveSettings>[0]) {
+    await saveSettings(patch);
+  }
+
+  const embeddingEp = openaiEndpoints.find(
+    (e) => e.id === s.embeddingEndpointId,
+  );
+  const extractorEp = endpoints?.find((e) => e.id === s.extractorEndpointId);
+
+  async function testEmbedding() {
+    if (!s.embeddingEndpointId || !s.embeddingModel) return;
+    const ep = await db.endpoints.get(s.embeddingEndpointId);
+    if (!ep) return;
+    setTesting(true);
+    setTestStatus('idle');
+    try {
+      const r = await embed({
+        endpoint: ep,
+        model: s.embeddingModel,
+        inputs: ['hello'],
+      });
+      setTestStatus('ok');
+      setTestMsg(
+        `维度 ${r.vectors[0]?.length ?? '?'}, model=${r.model}${
+          r.tokens ? `, tokens=${r.tokens}` : ''
+        }`,
+      );
+    } catch (err) {
+      setTestStatus('fail');
+      setTestMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <section className="mt-6 rounded-2xl border border-lavender-200 bg-white/80 p-5 shadow-sm">
+      <h3 className="flex items-center gap-2 text-base font-semibold text-ink-900">
+        <Brain size={18} className="text-lavender-600" />
+        记忆系统
+      </h3>
+      <p className="mt-1 text-sm text-ink-500">
+        开启后，每轮对话结束会自动从对话里抽取事实，存进对应人格的记忆池。
+        下一轮对话发起时，按当前问题做向量检索，把 top-K 相关事实注入 system prompt。
+      </p>
+
+      <label className="mt-4 flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={s.memoryEnabled}
+          onChange={(e) => update({ memoryEnabled: e.target.checked })}
+          className="h-4 w-4 accent-mint-300"
+        />
+        <span className="text-sm text-ink-900">启用记忆系统</span>
+      </label>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            嵌入 endpoint（OpenAI 兼容）
+          </span>
+          <select
+            value={s.embeddingEndpointId ?? ''}
+            onChange={(e) =>
+              update({
+                embeddingEndpointId: e.target.value || null,
+                embeddingModel: null,
+              })
+            }
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+          >
+            <option value="">未选择</option>
+            {openaiEndpoints.map((ep) => (
+              <option key={ep.id} value={ep.id}>
+                {ep.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">嵌入模型</span>
+          <select
+            value={s.embeddingModel ?? ''}
+            onChange={(e) => update({ embeddingModel: e.target.value || null })}
+            disabled={!embeddingEp}
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300 disabled:opacity-50"
+          >
+            <option value="">未选择</option>
+            {embeddingEp?.embeddingModels.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            事实抽取 endpoint（任意聊天 endpoint）
+          </span>
+          <select
+            value={s.extractorEndpointId ?? ''}
+            onChange={(e) =>
+              update({
+                extractorEndpointId: e.target.value || null,
+                extractorModel: null,
+              })
+            }
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+          >
+            <option value="">未选择</option>
+            {endpoints?.map((ep) => (
+              <option key={ep.id} value={ep.id}>
+                {ep.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            抽取模型（建议用便宜的小模型）
+          </span>
+          <select
+            value={s.extractorModel ?? ''}
+            onChange={(e) => update({ extractorModel: e.target.value || null })}
+            disabled={!extractorEp}
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300 disabled:opacity-50"
+          >
+            <option value="">未选择</option>
+            {extractorEp?.chatModels.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            检索 top-K（每次注入多少条）
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={s.retrievalTopK}
+            onChange={(e) =>
+              update({ retrievalTopK: Math.max(1, Number(e.target.value) || 6) })
+            }
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            相似度阈值（0..1，越高越严）
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={s.retrievalThreshold}
+            onChange={(e) =>
+              update({
+                retrievalThreshold: Math.max(0, Math.min(1, Number(e.target.value) || 0.5)),
+              })
+            }
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={testEmbedding}
+          disabled={
+            testing ||
+            !s.embeddingEndpointId ||
+            !s.embeddingModel
+          }
+          className="rounded-lg border border-mint-300 bg-mint-50 px-3 py-1.5 text-xs font-medium text-mint-500 transition hover:bg-mint-100 disabled:opacity-60"
+        >
+          {testing ? '测试中…' : '测试嵌入'}
+        </button>
+        {testStatus === 'ok' && (
+          <span className="flex items-center gap-1 text-xs text-mint-500">
+            <CheckCircle2 size={14} />
+            <span className="truncate">{testMsg}</span>
+          </span>
+        )}
+        {testStatus === 'fail' && (
+          <span className="flex items-center gap-1 text-xs text-rose-500">
+            <XCircle size={14} />
+            <span className="truncate">{testMsg}</span>
+          </span>
+        )}
+      </div>
+    </section>
   );
 }
 
