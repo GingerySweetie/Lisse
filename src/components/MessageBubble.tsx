@@ -121,7 +121,14 @@ export default function MessageBubble({
               </div>
             </div>
           ) : isUser ? (
-            <div className="whitespace-pre-wrap">{text}</div>
+            <div className="prose-msg">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+              >
+                {text}
+              </ReactMarkdown>
+            </div>
           ) : (
             <div className="prose-msg">
               {text ? (
