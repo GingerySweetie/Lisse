@@ -17,6 +17,13 @@ import {
   type ImportBackupResult,
 } from '../lib/backup';
 import { importChatGPT, importClaude, type ImportResult } from '../lib/import';
+import {
+  exportAllConversationsZip,
+  exportPersonaMemoryMarkdown,
+  downloadBlob,
+  downloadText,
+  type ConversationFormat,
+} from '../lib/export';
 
 type Status =
   | { kind: 'idle' }
@@ -35,6 +42,14 @@ export default function ImportExportPage() {
   const [chatgptStatus, setChatgptStatus] = useState<Status>({ kind: 'idle' });
   const [claudeStatus, setClaudeStatus] = useState<Status>({ kind: 'idle' });
   const [backupStatus, setBackupStatus] = useState<Status>({ kind: 'idle' });
+  const [bulkStatus, setBulkStatus] = useState<Status>({ kind: 'idle' });
+  const [memoryExportStatus, setMemoryExportStatus] = useState<Status>({
+    kind: 'idle',
+  });
+
+  const [bulkFormat, setBulkFormat] = useState<ConversationFormat>('markdown');
+  const [bulkScope, setBulkScope] = useState<'branch' | 'tree'>('branch');
+  const [memoryPersonaId, setMemoryPersonaId] = useState<string>('');
 
   const selectedEndpoint = endpoints?.find((e) => e.id === importEndpointId);
 
@@ -91,6 +106,39 @@ export default function ImportExportPage() {
       setBackupStatus({ kind: 'ok', label: '已下载备份文件' });
     } catch (err) {
       setBackupStatus({
+        kind: 'fail',
+        label: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleBulkExport() {
+    setBulkStatus({ kind: 'busy', label: '打包中…' });
+    try {
+      const r = await exportAllConversationsZip({
+        format: bulkFormat,
+        scope: bulkScope,
+        includeUsage: true,
+      });
+      downloadBlob(r.blob, r.filename);
+      setBulkStatus({ kind: 'ok', label: `已导出 ${r.count} 条对话` });
+    } catch (err) {
+      setBulkStatus({
+        kind: 'fail',
+        label: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleMemoryExport() {
+    if (!memoryPersonaId) return;
+    setMemoryExportStatus({ kind: 'busy', label: '导出中…' });
+    try {
+      const r = await exportPersonaMemoryMarkdown(memoryPersonaId);
+      downloadText(r.content, r.filename, r.mime);
+      setMemoryExportStatus({ kind: 'ok', label: '已下载' });
+    } catch (err) {
+      setMemoryExportStatus({
         kind: 'fail',
         label: err instanceof Error ? err.message : String(err),
       });
@@ -215,6 +263,101 @@ export default function ImportExportPage() {
                 status={claudeStatus}
                 onPick={handleClaude}
               />
+            </div>
+          </section>
+
+          {/* Bulk export conversations */}
+          <section className="rounded-2xl border border-lavender-200 bg-white/80 p-5 shadow-sm">
+            <h3 className="text-base font-semibold text-ink-900">
+              批量导出对话
+            </h3>
+            <p className="mt-1 text-sm text-ink-500">
+              所有对话打包成一个 ZIP，每条对话一个文件。<br />
+              单条对话也可以直接在聊天页右上角的下载按钮导出。
+            </p>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs font-medium text-ink-500">格式</span>
+                <select
+                  value={bulkFormat}
+                  onChange={(e) =>
+                    setBulkFormat(e.target.value as ConversationFormat)
+                  }
+                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                >
+                  <option value="markdown">Markdown (.md)</option>
+                  <option value="text">纯文本 (.txt)</option>
+                  <option value="json">JSON（可重导入）</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs font-medium text-ink-500">范围</span>
+                <select
+                  value={bulkScope}
+                  onChange={(e) =>
+                    setBulkScope(e.target.value as 'branch' | 'tree')
+                  }
+                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                >
+                  <option value="branch">当前显示的分支</option>
+                  <option value="tree">完整树（含所有分支）</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleBulkExport}
+                disabled={bulkStatus.kind === 'busy'}
+                className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300 disabled:opacity-60"
+              >
+                <Download size={16} />
+                导出 ZIP
+              </button>
+              <StatusLine status={bulkStatus} />
+            </div>
+          </section>
+
+          {/* Memory export */}
+          <section className="rounded-2xl border border-lavender-200 bg-white/80 p-5 shadow-sm">
+            <h3 className="text-base font-semibold text-ink-900">
+              导出记忆为 Markdown
+            </h3>
+            <p className="mt-1 text-sm text-ink-500">
+              把某个人格积累的记忆事实导成可读 Markdown，方便回顾或复制到别处。
+            </p>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-xs font-medium text-ink-500">人格</span>
+                <select
+                  value={memoryPersonaId}
+                  onChange={(e) => setMemoryPersonaId(e.target.value)}
+                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                >
+                  <option value="">选一个人格</option>
+                  {personas?.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.avatar} {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleMemoryExport}
+                disabled={!memoryPersonaId || memoryExportStatus.kind === 'busy'}
+                className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300 disabled:opacity-60"
+              >
+                <Download size={16} />
+                导出 Markdown
+              </button>
+              <StatusLine status={memoryExportStatus} />
             </div>
           </section>
 

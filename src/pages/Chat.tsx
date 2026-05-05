@@ -15,6 +15,7 @@ import MessageBubble from '../components/MessageBubble';
 import ChatInput from '../components/ChatInput';
 import EndpointPicker from '../components/EndpointPicker';
 import PersonaPicker from '../components/PersonaPicker';
+import ExportMenu from '../components/ExportMenu';
 import type { Conversation, Message } from '../types';
 
 export default function ChatPage() {
@@ -236,6 +237,11 @@ export default function ChatPage() {
             endpointId={endpointId}
             model={model}
             onChange={handlePicker}
+          />
+          <ExportMenu
+            conversation={conversation ?? undefined}
+            persona={selectedPersona()}
+            disabled={!conversation || branch.length === 0}
           />
         </div>
       </header>

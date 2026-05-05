@@ -19,6 +19,9 @@
 - [x] 消息分支：编辑用户消息 / 重生成助手消息 → 创建新分支；侧边箭头切换
 - [x] ChatGPT / Claude conversations.json 导入（保留 ChatGPT 分支树结构）
 - [x] 全量备份 / 恢复（含 endpoints / 人格 / 对话 / 消息 / 记忆 / 设置）
+- [x] 单条对话导出（聊天页右上角下载按钮 → Markdown / TXT / JSON）
+- [x] 批量对话导出（`/data` 页 → ZIP，可选当前分支或完整树）
+- [x] 人格记忆导出为 Markdown（按分类分组）
 - [x] **跨对话记忆（D 级）**：每轮对话结束后台抽取事实 → 存入 persona 记忆池 → 下轮按相似度检索 top-K 注入 system prompt。支持手工添加、置顶、归档、按人格隔离。
 
 ## 还没做的（路线图）
