@@ -1,5 +1,11 @@
 import { db } from '../db';
-import type { Conversation, Endpoint, Message, Persona } from '../types';
+import type {
+  Attachment,
+  Conversation,
+  Endpoint,
+  Message,
+  Persona,
+} from '../types';
 import { newId } from './id';
 import { getActiveBranch } from './branch';
 import { streamChat, type ChatTurn } from '../api';
@@ -15,8 +21,12 @@ export interface SendOptions {
   model: string;
   userText: string;
   persona?: Persona;
-  /** Called on every token chunk; useful for UI streaming. */
+  /** User-attached images/files for this turn. */
+  attachments?: Attachment[];
+  /** Called on every visible-text chunk. */
   onDelta?: (delta: string, assistantMessageId: string) => void;
+  /** Called on every thinking-text chunk (Anthropic extended thinking). */
+  onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
 }
 
@@ -26,7 +36,17 @@ export interface SendResult {
 }
 
 export async function sendMessage(opts: SendOptions): Promise<SendResult> {
-  const { conversation, endpoint, model, userText, persona, onDelta, signal } = opts;
+  const {
+    conversation,
+    endpoint,
+    model,
+    userText,
+    persona,
+    attachments,
+    onDelta,
+    onThinking,
+    signal,
+  } = opts;
   const now = Date.now();
 
   const branch = await getActiveBranch(conversation);
@@ -38,6 +58,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     parentId,
     role: 'user',
     content: userText,
+    attachments: attachments && attachments.length > 0 ? attachments : undefined,
     status: 'done',
     endpointId: endpoint.id,
     model,
@@ -80,6 +101,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     persona,
     branch: [...branch, userMessage],
     onDelta,
+    onThinking,
     signal,
   });
 
@@ -125,9 +147,20 @@ export async function editUserMessage(opts: {
   model: string;
   persona?: Persona;
   onDelta?: (delta: string, assistantMessageId: string) => void;
+  onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
 }): Promise<{ newUser: Message; newAssistant: Message }> {
-  const { conversation, message, newText, endpoint, model, persona, onDelta, signal } = opts;
+  const {
+    conversation,
+    message,
+    newText,
+    endpoint,
+    model,
+    persona,
+    onDelta,
+    onThinking,
+    signal,
+  } = opts;
   if (message.role !== 'user') {
     throw new Error('editUserMessage: must be called on a user message');
   }
@@ -177,6 +210,7 @@ export async function editUserMessage(opts: {
     persona,
     branch: [...prefix, newUser],
     onDelta,
+    onThinking,
     signal,
   });
 
@@ -201,9 +235,19 @@ export async function regenerateAssistant(opts: {
   model: string;
   persona?: Persona;
   onDelta?: (delta: string, assistantMessageId: string) => void;
+  onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
 }): Promise<Message> {
-  const { conversation, message, endpoint, model, persona, onDelta, signal } = opts;
+  const {
+    conversation,
+    message,
+    endpoint,
+    model,
+    persona,
+    onDelta,
+    onThinking,
+    signal,
+  } = opts;
   if (message.role !== 'assistant') {
     throw new Error('regenerateAssistant: must be called on an assistant message');
   }
@@ -240,6 +284,7 @@ export async function regenerateAssistant(opts: {
     persona,
     branch: prefix,
     onDelta,
+    onThinking,
     signal,
   });
 
@@ -264,9 +309,19 @@ async function streamAssistant(args: {
   /** Full message chain leading up to (and including) the user turn whose response we're generating. */
   branch: Message[];
   onDelta?: (delta: string, assistantMessageId: string) => void;
+  onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
 }) {
-  const { assistantMessageId, endpoint, model, persona, branch, onDelta, signal } = args;
+  const {
+    assistantMessageId,
+    endpoint,
+    model,
+    persona,
+    branch,
+    onDelta,
+    onThinking,
+    signal,
+  } = args;
 
   // Memory retrieval: scoped to current persona, keyed off latest user message.
   let memoryBlock = '';
@@ -288,12 +343,17 @@ async function streamAssistant(args: {
     turns.push({ role: 'system', content: systemParts.join('\n\n---\n\n') });
   }
   for (const m of branch) {
-    if ((m.role === 'system' || m.role === 'user' || m.role === 'assistant') && m.content) {
-      turns.push({ role: m.role, content: m.content });
-    }
+    if (m.role !== 'system' && m.role !== 'user' && m.role !== 'assistant') continue;
+    if (!m.content && (!m.attachments || m.attachments.length === 0)) continue;
+    turns.push({
+      role: m.role,
+      content: m.content,
+      attachments: m.attachments,
+    });
   }
 
   let acc = '';
+  let thinkingAcc = '';
   let errored = false;
   let errorMessage: string | undefined;
   let usage: Message['usage'];
@@ -304,10 +364,17 @@ async function streamAssistant(args: {
       model,
       messages: turns,
       signal,
+      thinking:
+        endpoint.format === 'anthropic' && endpoint.thinkingEnabled
+          ? { enabled: true, budgetTokens: endpoint.thinkingBudget }
+          : undefined,
     })) {
       if (evt.type === 'delta' && evt.delta) {
         acc += evt.delta;
         onDelta?.(evt.delta, assistantMessageId);
+      } else if (evt.type === 'thinking_delta' && evt.thinkingDelta) {
+        thinkingAcc += evt.thinkingDelta;
+        onThinking?.(evt.thinkingDelta, assistantMessageId);
       } else if (evt.type === 'error') {
         errored = true;
         errorMessage = evt.errorMessage;
@@ -324,6 +391,7 @@ async function streamAssistant(args: {
   const finalStatus: Message['status'] = errored ? 'error' : 'done';
   await db.messages.update(assistantMessageId, {
     content: acc,
+    thinking: thinkingAcc || undefined,
     status: finalStatus,
     errorMessage,
     usage,

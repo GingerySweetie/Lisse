@@ -1,7 +1,42 @@
+import type { Attachment } from '../types';
 import type { ChatRequest, ChatStreamEvent } from './types';
 import { parseSSE } from './sse';
 
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01';
+
+type AnthropicContentPart =
+  | { type: 'text'; text: string }
+  | {
+      type: 'image';
+      source: { type: 'base64'; media_type: string; data: string };
+    }
+  | {
+      type: 'document';
+      source: { type: 'base64'; media_type: string; data: string };
+    };
+
+function buildAnthropicContent(
+  text: string,
+  attachments: Attachment[] | undefined,
+): AnthropicContentPart[] {
+  const parts: AnthropicContentPart[] = [];
+  for (const a of attachments ?? []) {
+    if (a.kind === 'image') {
+      parts.push({
+        type: 'image',
+        source: { type: 'base64', media_type: a.mimeType, data: a.data },
+      });
+    } else if (a.kind === 'file' && a.mimeType === 'application/pdf') {
+      parts.push({
+        type: 'document',
+        source: { type: 'base64', media_type: a.mimeType, data: a.data },
+      });
+    }
+  }
+  if (text) parts.push({ type: 'text', text });
+  if (parts.length === 0) parts.push({ type: 'text', text: '' });
+  return parts;
+}
 
 export async function* streamAnthropic(
   req: ChatRequest,
@@ -27,16 +62,28 @@ export async function* streamAnthropic(
     .filter((m) => m.role !== 'system')
     .map((m) => ({
       role: m.role,
-      content: [{ type: 'text', text: m.content }],
+      content: buildAnthropicContent(m.content, m.attachments),
     }));
+
+  // Extended thinking: when enabled, thinking deltas come in their own block
+  // type and the model has a separate budget. Temperature must be 1 (or unset)
+  // to use thinking, so we omit it.
+  const thinkingEnabled = req.thinking?.enabled === true;
+  const thinkingBudget = Math.max(1024, req.thinking?.budgetTokens ?? 6000);
+  const maxTokens = Math.max(
+    req.maxTokens ?? 4096,
+    thinkingEnabled ? thinkingBudget + 1024 : 0,
+  );
 
   const body = {
     model: req.model,
-    max_tokens: req.maxTokens ?? 4096,
+    max_tokens: maxTokens,
     stream: true,
     ...(system && { system }),
     messages,
-    ...(req.temperature !== undefined && { temperature: req.temperature }),
+    ...(thinkingEnabled
+      ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget } }
+      : req.temperature !== undefined && { temperature: req.temperature }),
   };
 
   let response: Response;
@@ -76,9 +123,15 @@ export async function* streamAnthropic(
       }
       switch (evt.type) {
         case 'content_block_delta': {
-          const text = evt.delta?.text;
-          if (typeof text === 'string' && text.length > 0) {
-            yield { type: 'delta', delta: text };
+          // text_delta vs thinking_delta — both arrive as content_block_delta.
+          const dt = evt.delta?.type;
+          if (dt === 'thinking_delta' && typeof evt.delta?.thinking === 'string') {
+            yield { type: 'thinking_delta', thinkingDelta: evt.delta.thinking };
+          } else {
+            const text = evt.delta?.text;
+            if (typeof text === 'string' && text.length > 0) {
+              yield { type: 'delta', delta: text };
+            }
           }
           break;
         }
@@ -122,7 +175,7 @@ export async function* streamAnthropic(
 
 interface AnthropicStreamEvent {
   type: string;
-  delta?: { text?: string; type?: string };
+  delta?: { text?: string; type?: string; thinking?: string };
   message?: {
     usage?: {
       input_tokens?: number;

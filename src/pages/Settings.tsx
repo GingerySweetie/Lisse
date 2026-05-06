@@ -512,6 +512,12 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
   const [embeddingModelsText, setEmbeddingModelsText] = useState(
     endpoint?.embeddingModels.join('\n') ?? '',
   );
+  const [thinkingEnabled, setThinkingEnabled] = useState(
+    endpoint?.thinkingEnabled ?? false,
+  );
+  const [thinkingBudget, setThinkingBudget] = useState(
+    endpoint?.thinkingBudget ?? 6000,
+  );
 
   function applyPreset(presetName: string) {
     const p = PRESETS[presetName];
@@ -539,6 +545,8 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
       authStyle,
       chatModels: parseList(chatModelsText),
       embeddingModels: parseList(embeddingModelsText),
+      thinkingEnabled: format === 'anthropic' ? thinkingEnabled : undefined,
+      thinkingBudget: format === 'anthropic' ? thinkingBudget : undefined,
       createdAt: endpoint?.createdAt ?? now,
       updatedAt: now,
     };
@@ -652,6 +660,46 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
               className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-mint-300"
             />
           </Field>
+
+          {format === 'anthropic' && (
+            <div className="rounded-lg border border-dashed border-lavender-200 bg-lavender-50/50 p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={thinkingEnabled}
+                  onChange={(e) => setThinkingEnabled(e.target.checked)}
+                  className="h-4 w-4 accent-lavender-500"
+                />
+                <span className="text-ink-900">
+                  启用 Extended Thinking
+                </span>
+              </label>
+              <p className="mt-1 text-xs text-ink-500">
+                Claude Sonnet 4.5+ / Opus 4.5+ 才支持。打开后模型回复前会先输出一段"内心独白"。
+              </p>
+              {thinkingEnabled && (
+                <label className="mt-3 flex items-center gap-2 text-sm">
+                  <span className="text-xs font-medium text-ink-500">
+                    Thinking budget
+                  </span>
+                  <input
+                    type="number"
+                    min={1024}
+                    max={32000}
+                    step={1024}
+                    value={thinkingBudget}
+                    onChange={(e) =>
+                      setThinkingBudget(
+                        Math.max(1024, Number(e.target.value) || 6000),
+                      )
+                    }
+                    className="w-28 rounded-lg border border-lavender-200 bg-white px-2 py-1 text-xs focus:border-lavender-300"
+                  />
+                  <span className="text-xs text-ink-500">tokens</span>
+                </label>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mt-5 flex justify-end gap-2">

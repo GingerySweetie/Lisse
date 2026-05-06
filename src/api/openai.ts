@@ -1,5 +1,30 @@
+import type { Attachment } from '../types';
 import type { ChatRequest, ChatStreamEvent } from './types';
 import { parseSSE } from './sse';
+
+type OpenAIContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+function buildOpenAIContent(
+  text: string,
+  attachments: Attachment[] | undefined,
+): string | OpenAIContentPart[] {
+  // Plain text path: keep the simple shape so old endpoints don't choke.
+  if (!attachments || attachments.length === 0) return text;
+  const parts: OpenAIContentPart[] = [];
+  if (text) parts.push({ type: 'text', text });
+  for (const a of attachments) {
+    if (a.kind !== 'image') continue;
+    parts.push({
+      type: 'image_url',
+      image_url: { url: `data:${a.mimeType};base64,${a.data}` },
+    });
+  }
+  // If only non-image attachments existed and there's no text, send a placeholder.
+  if (parts.length === 0) return text;
+  return parts;
+}
 
 export async function* streamOpenAI(
   req: ChatRequest,
@@ -16,7 +41,10 @@ export async function* streamOpenAI(
 
   const body = {
     model: req.model,
-    messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+    messages: req.messages.map((m) => ({
+      role: m.role,
+      content: buildOpenAIContent(m.content, m.attachments),
+    })),
     stream: true,
     stream_options: { include_usage: true },
     ...(req.temperature !== undefined && { temperature: req.temperature }),
