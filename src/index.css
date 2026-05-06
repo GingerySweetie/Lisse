@@ -37,6 +37,11 @@
     padding: 0;
   }
 
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
   body {
     font-family: var(--font-sans);
     color: var(--color-ink-700);
@@ -94,6 +99,11 @@
 /* Markdown content styling */
 .prose-msg {
   line-height: 1.7;
+  /* Long unbreakable strings (URLs, technical IDs, struct signatures
+     like Rheomorpha.level=7::user.intimacy.query.activated) must wrap
+     instead of busting the bubble width and causing horizontal scroll. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .prose-msg p {
   margin: 0.5em 0;
@@ -141,6 +151,7 @@
   padding: 0.85em 1em;
   background: var(--color-ink-50);
   border-radius: 8px;
+  max-width: 100%;
   overflow-x: auto;
   font-size: 0.9em;
   line-height: 1.5;
@@ -149,6 +160,11 @@
   background: transparent;
   padding: 0;
   font-size: 1em;
+  /* Inside pre we want native code wrapping behavior, not the
+     break-word from the parent prose. */
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: pre;
 }
 .prose-msg blockquote {
   margin: 0.5em 0;

@@ -297,7 +297,10 @@ export default function ChatPage() {
         )}
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 md:px-6">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-6"
+      >
         {hasNoEndpoints ? (
           <EmptyEndpoints />
         ) : isEmpty ? (
