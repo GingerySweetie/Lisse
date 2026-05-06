@@ -88,6 +88,17 @@ export async function* streamOpenAI(
         continue;
       }
       const choice = evt.choices?.[0];
+      // Reasoning models on OpenAI-compat surfaces (DeepSeek R1, Kimi K1,
+      // Qwen QwQ, GLM-Zero, AIHubMix-routed o1/o3, ...) emit reasoning
+      // text in a separate field on the streaming delta. Field name
+      // varies — `reasoning_content` is the de-facto standard, but some
+      // providers use `reasoning`. Forward both as thinking deltas so
+      // the UI shows them in the collapsible thinking block.
+      const reasoning =
+        choice?.delta?.reasoning_content ?? choice?.delta?.reasoning;
+      if (typeof reasoning === 'string' && reasoning.length > 0) {
+        yield { type: 'thinking_delta', thinkingDelta: reasoning };
+      }
       const delta = choice?.delta?.content;
       if (typeof delta === 'string' && delta.length > 0) {
         yield { type: 'delta', delta };
@@ -116,7 +127,13 @@ export async function* streamOpenAI(
 
 interface OpenAIStreamChunk {
   choices?: Array<{
-    delta?: { content?: string };
+    delta?: {
+      content?: string;
+      /** DeepSeek R1 / Kimi / GLM-Zero / Qwen QwQ. */
+      reasoning_content?: string;
+      /** Some Anthropic-via-OpenAI shims and a few providers use this. */
+      reasoning?: string;
+    };
     finish_reason?: string | null;
   }>;
   usage?: {
