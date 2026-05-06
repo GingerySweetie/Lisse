@@ -18,7 +18,7 @@ export default function Layout() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-72 transform border-r border-lavender-200 bg-white/85 backdrop-blur transition-transform duration-200 md:relative md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-72 transform border-r border-lavender-100 bg-white/70 backdrop-blur-md transition-transform duration-200 md:relative md:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -30,7 +30,7 @@ export default function Layout() {
         <button
           type="button"
           onClick={() => setSidebarOpen(true)}
-          className="absolute left-3 top-3 z-20 rounded-lg bg-white/80 p-2 text-ink-700 shadow-sm backdrop-blur transition hover:bg-white md:hidden"
+          className="absolute left-3 top-3 z-20 rounded-full bg-white/70 p-2 text-ink-700 shadow-[0_1px_2px_rgba(124,105,160,0.1)] ring-1 ring-lavender-100 backdrop-blur transition hover:bg-white md:hidden"
           aria-label="打开侧边栏"
         >
           <Menu size={20} />

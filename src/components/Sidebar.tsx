@@ -31,7 +31,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-lavender-200 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-lavender-100 px-4 py-3">
         <h1 className="font-semibold text-ink-900">Lisse</h1>
         <button
           type="button"
@@ -86,7 +86,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </ul>
       </div>
 
-      <div className="flex flex-col gap-0.5 border-t border-lavender-200 px-2 py-2">
+      <div className="flex flex-col gap-0.5 border-t border-lavender-100 px-2 py-2">
         <NavLink
           to="/personas"
           onClick={() => onNavigate?.()}
