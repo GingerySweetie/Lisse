@@ -169,19 +169,23 @@ export default function MessageBubble({
         </div>
 
         {/* Action row: sibling nav + edit/regenerate */}
+        {/*
+          Shown at low opacity by default so they're discoverable on touch
+          devices (no hover). Desktop hover bumps opacity to full.
+        */}
         {!editing && !isStreaming && (
           <div
-            className={`flex items-center gap-1 px-1 text-xs text-ink-500 opacity-0 transition group-hover:opacity-100 ${
+            className={`flex items-center gap-1 px-1 text-xs text-ink-500 opacity-60 transition group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-90 ${
               isUser ? 'justify-end' : 'justify-start'
             }`}
           >
             {sib && sib.total > 1 && (
-              <div className="flex items-center gap-0.5 rounded bg-white/60 px-1 py-0.5">
+              <div className="flex items-center gap-0.5 rounded-full bg-white/80 px-1 py-0.5 shadow-sm ring-1 ring-lavender-100">
                 <button
                   type="button"
                   onClick={() => gotoSibling(-1)}
                   disabled={disabled}
-                  className="rounded p-0.5 transition hover:bg-lavender-100 disabled:opacity-40"
+                  className="rounded-full p-1 transition hover:bg-lavender-100 disabled:opacity-40"
                   aria-label="上一条分支"
                 >
                   <ChevronLeft size={14} />
@@ -193,7 +197,7 @@ export default function MessageBubble({
                   type="button"
                   onClick={() => gotoSibling(1)}
                   disabled={disabled}
-                  className="rounded p-0.5 transition hover:bg-lavender-100 disabled:opacity-40"
+                  className="rounded-full p-1 transition hover:bg-lavender-100 disabled:opacity-40"
                   aria-label="下一条分支"
                 >
                   <ChevronRight size={14} />
@@ -205,7 +209,7 @@ export default function MessageBubble({
                 type="button"
                 onClick={startEdit}
                 disabled={disabled}
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 transition hover:bg-lavender-100 disabled:opacity-40"
+                className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 shadow-sm ring-1 ring-lavender-100 transition hover:bg-white disabled:opacity-40"
               >
                 <Pencil size={12} /> 编辑
               </button>
@@ -215,7 +219,7 @@ export default function MessageBubble({
                 type="button"
                 onClick={onRegenerate}
                 disabled={disabled}
-                className="flex items-center gap-1 rounded px-1.5 py-0.5 transition hover:bg-lavender-100 disabled:opacity-40"
+                className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 shadow-sm ring-1 ring-lavender-100 transition hover:bg-white disabled:opacity-40"
               >
                 <RefreshCw size={12} /> 重生成
               </button>
