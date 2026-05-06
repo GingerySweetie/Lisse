@@ -1,5 +1,8 @@
+import { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
+import { hasSecretState } from '../lib/persona-state';
+import PersonaSecret from './PersonaSecret';
 
 interface Props {
   personaId: string | null;
@@ -10,16 +13,40 @@ export default function PersonaPicker({ personaId, onChange }: Props) {
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
   const selected = personas?.find((p) => p.id === personaId);
 
+  const avatarRef = useRef<HTMLButtonElement>(null);
+  const [secretOpen, setSecretOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const secretEnabled = selected ? hasSecretState(selected.id) : false;
+
+  function openSecret() {
+    if (!secretEnabled) return;
+    setAnchorRect(avatarRef.current?.getBoundingClientRect() ?? null);
+    setSecretOpen(true);
+  }
+
   return (
     <div className="flex items-center gap-1.5 text-sm">
       {selected && (
-        <span
-          className="flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold"
-          style={{ background: selected.color, color: 'white' }}
-          aria-hidden="true"
+        <button
+          ref={avatarRef}
+          type="button"
+          onClick={openSecret}
+          tabIndex={secretEnabled ? 0 : -1}
+          aria-label={
+            secretEnabled
+              ? `查看 ${selected.name} 的此刻`
+              : selected.name
+          }
+          className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-white transition ${
+            secretEnabled
+              ? 'cursor-pointer hover:scale-110 hover:shadow-[0_0_0_2px_rgba(255,255,255,0.6)]'
+              : 'cursor-default'
+          }`}
+          style={{ background: selected.color }}
         >
           {selected.avatar}
-        </span>
+        </button>
       )}
       <select
         value={personaId ?? ''}
@@ -33,6 +60,14 @@ export default function PersonaPicker({ personaId, onChange }: Props) {
           </option>
         ))}
       </select>
+
+      {secretOpen && selected && (
+        <PersonaSecret
+          persona={selected}
+          anchorRect={anchorRect}
+          onClose={() => setSecretOpen(false)}
+        />
+      )}
     </div>
   );
 }
