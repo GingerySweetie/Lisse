@@ -9,6 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: ['favicon.svg'],
       manifest: {
         name: 'Lisse',
@@ -30,6 +31,11 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         navigateFallbackDenylist: [/^\/api/],
+        // Take over from old SW the moment a new one is installed, instead of
+        // waiting for every tab to close. Combined with autoUpdate this means
+        // a new deploy is picked up on the next page load.
+        skipWaiting: true,
+        clientsClaim: true,
       },
     }),
   ],
