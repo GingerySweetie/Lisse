@@ -266,7 +266,7 @@ function MemorySettings() {
         </label>
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-4">
         <button
           type="button"
           onClick={testEmbedding}
@@ -280,16 +280,16 @@ function MemorySettings() {
           {testing ? '测试中…' : '测试嵌入'}
         </button>
         {testStatus === 'ok' && (
-          <span className="flex items-center gap-1 text-xs text-mint-500">
-            <CheckCircle2 size={14} />
-            <span className="truncate">{testMsg}</span>
-          </span>
+          <div className="mt-2 flex items-start gap-1 break-words text-xs text-mint-500">
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 flex-1 break-words">{testMsg}</span>
+          </div>
         )}
         {testStatus === 'fail' && (
-          <span className="flex items-center gap-1 text-xs text-rose-500">
-            <XCircle size={14} />
-            <span className="truncate">{testMsg}</span>
-          </span>
+          <div className="mt-2 flex items-start gap-1 break-words text-xs text-rose-500">
+            <XCircle size={14} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 flex-1 break-words">{testMsg}</span>
+          </div>
         )}
       </div>
     </section>
@@ -427,7 +427,7 @@ function EndpointCard({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-3">
+      <div className="mt-3">
         <button
           type="button"
           onClick={handleTest}
@@ -437,16 +437,16 @@ function EndpointCard({
           {testStatus === 'testing' ? '测试中…' : '测试连接'}
         </button>
         {testStatus === 'ok' && (
-          <span className="flex items-center gap-1 text-xs text-mint-500">
-            <CheckCircle2 size={14} />
-            <span className="truncate">{testMsg}</span>
-          </span>
+          <div className="mt-2 flex items-start gap-1 break-words text-xs text-mint-500">
+            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 flex-1 break-words">{testMsg}</span>
+          </div>
         )}
         {testStatus === 'fail' && (
-          <span className="flex items-center gap-1 text-xs text-rose-500">
-            <XCircle size={14} />
-            <span className="truncate">{testMsg}</span>
-          </span>
+          <div className="mt-2 flex items-start gap-1 break-words text-xs text-rose-500">
+            <XCircle size={14} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 flex-1 break-words">{testMsg}</span>
+          </div>
         )}
       </div>
     </div>
