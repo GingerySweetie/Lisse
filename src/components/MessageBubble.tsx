@@ -5,14 +5,15 @@ import rehypeHighlight from 'rehype-highlight';
 import {
   AlertCircle,
   Brain,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Copy,
   Pencil,
   RefreshCw,
   X,
-  Check,
 } from 'lucide-react';
 import type { Attachment, Message } from '../types';
 import { getSiblingInfo, type SiblingInfo } from '../lib/branch';
@@ -85,6 +86,31 @@ export default function MessageBubble({
     const next = (sib.index + direction + sib.total) % sib.total;
     const target = sib.siblings[next];
     if (target) onSwitchSibling?.(target.id);
+  }
+
+  const [copied, setCopied] = useState(false);
+  async function handleCopy() {
+    const payload = message.content || '';
+    if (!payload) return;
+    try {
+      await navigator.clipboard.writeText(payload);
+    } catch {
+      // Fallback for older / insecure contexts.
+      const ta = document.createElement('textarea');
+      ta.value = payload;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } catch {
+        // give up silently
+      }
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   return (
@@ -236,6 +262,23 @@ export default function MessageBubble({
                   <ChevronRight size={14} />
                 </button>
               </div>
+            )}
+            {message.content && (
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 shadow-sm ring-1 ring-lavender-100 transition hover:bg-white"
+              >
+                {copied ? (
+                  <>
+                    <Check size={12} className="text-mint-500" /> 已复制
+                  </>
+                ) : (
+                  <>
+                    <Copy size={12} /> 复制
+                  </>
+                )}
+              </button>
             )}
             {isUser && onEdit && (
               <button
