@@ -74,9 +74,13 @@ export default function MessageBubble({
     <div
       className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
     >
-      <div className="flex max-w-[85%] flex-col gap-1">
+      <div
+        className={`flex min-w-0 flex-col gap-1 ${
+          isUser ? 'max-w-[85%]' : 'w-full max-w-full'
+        }`}
+      >
         <div
-          className={`rounded-2xl px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
+          className={`min-w-0 rounded-2xl px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
             isUser
               ? 'bg-mint-200 text-ink-900'
               : isError
