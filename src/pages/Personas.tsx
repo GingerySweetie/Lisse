@@ -35,7 +35,7 @@ export default function PersonasPage() {
           <ChevronLeft size={16} />
           返回
         </Link>
-        <h2 className="text-base font-semibold text-ink-900">设置 · Personas</h2>
+        <h2 className="serif-title text-lg">设置 · Personas</h2>
       </header>
 
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
