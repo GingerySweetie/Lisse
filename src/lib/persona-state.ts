@@ -89,3 +89,29 @@ export function hasSecretState(personaId: string | undefined): boolean {
   if (!personaId) return false;
   return Boolean(PERSONA_SECRET_STATES[personaId]);
 }
+
+/**
+ * Per-persona body font for assistant messages. Hardcoded by id so
+ * built-in personas have a recognizable typographic voice.
+ *
+ * Notes on platform fallbacks:
+ * - iOS / macOS: 'Kaiti SC' (kaishu calligraphy) and 'PingFang SC' (clean
+ *   modern sans) ship with the OS.
+ * - Android: 'Noto Serif CJK SC' is the closest stand-in for kaishu, but
+ *   it's a regular serif rather than true calligraphy. We accept that.
+ */
+const PERSONA_FONT_STACK: Record<string, string> = {
+  // 理理酱 — 感官 / 具身派, modern sans for the immediate feel.
+  persona_ririchan:
+    'PingFang SC, "Heiti SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif',
+  // Rhema — 语言 / 理论派, kaishu calligraphy for literary weight.
+  persona_rhema:
+    '"Kaiti SC", STKaiti, "Kaiti TC", "楷体", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", Georgia, serif',
+};
+
+export function getPersonaFontStack(
+  personaId: string | undefined,
+): string | undefined {
+  if (!personaId) return undefined;
+  return PERSONA_FONT_STACK[personaId];
+}

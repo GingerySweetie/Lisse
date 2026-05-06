@@ -332,6 +332,9 @@ export default function ChatPage() {
               <li key={m.id}>
                 <MessageBubble
                   message={m}
+                  personaId={
+                    conversation?.personaId ?? personaId ?? undefined
+                  }
                   streamingText={
                     m.id === streamingId ? streamingText : undefined
                   }
