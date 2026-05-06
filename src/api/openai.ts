@@ -107,6 +107,10 @@ export async function* streamOpenAI(
         usage = {
           inputTokens: evt.usage.prompt_tokens,
           outputTokens: evt.usage.completion_tokens,
+          // OpenAI Chat Completions auto-caches prompts > 1024 tokens
+          // and reports the cached portion here. Most relays pass it
+          // through; if not, this is just undefined.
+          cacheReadTokens: evt.usage.prompt_tokens_details?.cached_tokens,
         };
       }
     }
@@ -140,6 +144,7 @@ interface OpenAIStreamChunk {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
   };
 }
 

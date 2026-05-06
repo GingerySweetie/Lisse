@@ -1,4 +1,4 @@
-import { db } from '../db';
+import { db, getSettings } from '../db';
 import type {
   Attachment,
   Conversation,
@@ -342,7 +342,16 @@ async function streamAssistant(args: {
   if (systemParts.length > 0) {
     turns.push({ role: 'system', content: systemParts.join('\n\n---\n\n') });
   }
-  for (const m of branch) {
+  // Apply short-memory window: keep only the last 2*N messages so the API
+  // doesn't replay the entire conversation each turn. Null = unlimited.
+  const settings = await getSettings();
+  let trimmed: Message[] = branch;
+  if (settings.maxHistoryTurns && settings.maxHistoryTurns > 0) {
+    const keep = settings.maxHistoryTurns * 2;
+    if (branch.length > keep) trimmed = branch.slice(-keep);
+  }
+
+  for (const m of trimmed) {
     if (m.role !== 'system' && m.role !== 'user' && m.role !== 'assistant') continue;
     if (!m.content && (!m.attachments || m.attachments.length === 0)) continue;
     turns.push({

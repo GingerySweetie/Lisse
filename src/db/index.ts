@@ -160,6 +160,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   extractorModel: null,
   retrievalTopK: 6,
   retrievalThreshold: 0.5,
+  maxHistoryTurns: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {
