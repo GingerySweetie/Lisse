@@ -36,6 +36,24 @@ export default defineConfig({
         // a new deploy is picked up on the next page load.
         skipWaiting: true,
         clientsClaim: true,
+        // Cache the bundled web font (霞鹜文楷 from jsDelivr) on first
+        // request so it's available offline thereafter.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.hostname === 'cdn.jsdelivr.net' &&
+              /\.(?:woff2?|ttf|otf)$/i.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'web-fonts',
+              expiration: {
+                maxEntries: 16,
+                maxAgeSeconds: 365 * 24 * 60 * 60,
+              },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],

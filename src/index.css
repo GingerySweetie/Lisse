@@ -1,5 +1,23 @@
 @import 'tailwindcss';
 
+/*
+ * Bundled web font for Rhema's calligraphy voice.
+ *
+ * 霞鹜文楷 (LXGW WenKai) — open-source kaishu by lxgw, SIL OFL.
+ * Pulled from jsDelivr; the worker SW caches it after first load so
+ * the second visit is offline-friendly. font-display: swap means
+ * the page renders immediately with the system fallback while the
+ * woff2 streams in.
+ */
+@font-face {
+  font-family: 'LXGW WenKai';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/lxgwwenkai-regular.woff2')
+    format('woff2');
+}
+
 @theme {
   /* Wisteria — afternoon haze, the dominant atmosphere. */
   --color-lavender-50: #f7f2fb;
