@@ -83,11 +83,21 @@
         var(--color-lavender-100) 100%
       );
     background-attachment: fixed;
-    font-weight: 400;
-    letter-spacing: 0.005em;
+    /* Light weight across the board for the "纤细" delicate feel.
+       PingFang/Noto Sans CJK both ship Light (300); fall back to 400. */
+    font-weight: 300;
+    letter-spacing: 0.01em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior: none;
+  }
+
+  /* Bold/strong: don't go all the way to bold (700), it looks heavy
+     at thin body weights. semi-bold (550) reads as emphasis without
+     thickness. */
+  strong,
+  b {
+    font-weight: 550;
   }
 
   button {
@@ -156,43 +166,41 @@
 .prose-msg h5,
 .prose-msg h6 {
   margin: 1.1em 0 0.45em;
-  font-weight: 600;
+  /* Headings only need to be a bit heavier than the 300-weight body.
+     500 still reads as 'thin display' against light prose. */
+  font-weight: 500;
   color: var(--color-ink-900);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
 }
 .prose-msg h1 {
   font-size: 1.7em;
-  font-weight: 600;
   color: var(--color-lavender-600);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   border-bottom: 1px solid var(--color-lavender-100);
   padding-bottom: 0.2em;
 }
 .prose-msg h2 {
   font-size: 1.4em;
-  font-weight: 600;
   color: var(--color-lavender-500);
 }
 .prose-msg h3 {
   font-size: 1.2em;
-  font-weight: 600;
   color: var(--color-ink-900);
 }
 .prose-msg h4 {
   font-size: 1.05em;
-  font-weight: 600;
   color: var(--color-ink-700);
 }
 .prose-msg h5 {
-  font-size: 0.95em;
-  font-weight: 600;
+  font-size: 0.9em;
   color: var(--color-ink-500);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  font-weight: 500;
 }
 .prose-msg h6 {
   font-size: 0.85em;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--color-ink-500);
   font-style: italic;
 }

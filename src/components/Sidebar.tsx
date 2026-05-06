@@ -32,13 +32,13 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-lavender-100 px-4 py-3">
-        <h1 className="font-semibold text-ink-900">Lisse</h1>
+        <h1 className="font-medium tracking-wide text-ink-900">Lisse</h1>
         <button
           type="button"
           onClick={handleNew}
-          className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-3 py-1.5 text-sm font-medium text-ink-700 transition hover:bg-mint-300"
+          className="flex items-center gap-1.5 rounded-full bg-lavender-200/60 px-3 py-1.5 text-sm font-normal text-lavender-600 ring-1 ring-lavender-300/40 backdrop-blur-sm transition hover:bg-lavender-300/70 hover:text-ink-900"
         >
-          <MessageSquarePlus size={16} />
+          <MessageSquarePlus size={15} />
           新对话
         </button>
       </div>
@@ -66,8 +66,8 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                   }`}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{conv.title}</div>
-                    <div className="text-xs text-ink-500">
+                    <div className="truncate font-normal">{conv.title}</div>
+                    <div className="text-xs font-light text-ink-500">
                       {relativeTime(conv.updatedAt)}
                     </div>
                   </div>
