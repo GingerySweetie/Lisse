@@ -264,6 +264,30 @@ function MemorySettings() {
             className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
           />
         </label>
+
+        <label className="flex flex-col gap-1 text-sm md:col-span-2">
+          <span className="text-xs font-medium text-ink-500">
+            短记忆模式（每轮最多带几对最近消息，0 / 留空 = 不限）
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={200}
+            value={s.maxHistoryTurns ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              update({
+                maxHistoryTurns:
+                  v === '' || Number(v) === 0 ? null : Math.max(1, Number(v)),
+              });
+            }}
+            placeholder="不限"
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+          />
+          <span className="text-[11px] font-light text-ink-500">
+            长对话不再每轮重发整段历史。配合 Anthropic 的 prompt caching 用，账单会很温柔。
+          </span>
+        </label>
       </div>
 
       <div className="mt-4">

@@ -101,6 +101,8 @@ export interface AppSettings {
   retrievalTopK: number;
   /** Minimum cosine similarity to include a retrieved fact. */
   retrievalThreshold: number;
+  /** Maximum recent message pairs to send each turn (null = unlimited). */
+  maxHistoryTurns: number | null;
 }
 
 export interface Persona {

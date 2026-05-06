@@ -53,17 +53,40 @@ export async function* streamAnthropic(
     headers['x-api-key'] = req.endpoint.apiKey;
   }
 
-  // Anthropic separates system from messages.
-  const system = req.messages
+  // Anthropic separates system from messages. Use the array form so we can
+  // attach cache_control breakpoints (90% discount on prefix re-use).
+  const systemText = req.messages
     .filter((m) => m.role === 'system')
     .map((m) => m.content)
     .join('\n\n');
-  const messages = req.messages
-    .filter((m) => m.role !== 'system')
-    .map((m) => ({
-      role: m.role,
-      content: buildAnthropicContent(m.content, m.attachments),
-    }));
+  const system = systemText
+    ? [
+        {
+          type: 'text',
+          text: systemText,
+          // Cache the entire (often very long) persona+memory system prompt
+          // so re-sends of the same conversation pay 10% per turn after the
+          // first instead of full price.
+          cache_control: { type: 'ephemeral' },
+        },
+      ]
+    : undefined;
+
+  const nonSystem = req.messages.filter((m) => m.role !== 'system');
+  // Mark the second-to-last message with a cache breakpoint, so on the next
+  // turn the prefix [system + everything-up-through-last-turn] is a cache
+  // hit. We avoid marking the *very last* message because that would be the
+  // brand-new user query — never cached, no benefit.
+  const cacheIndex = nonSystem.length >= 2 ? nonSystem.length - 2 : -1;
+  const messages = nonSystem.map((m, i) => {
+    const content = buildAnthropicContent(m.content, m.attachments);
+    if (i === cacheIndex && content.length > 0) {
+      // Attach cache_control to the last block of this message.
+      const last = content[content.length - 1] as Record<string, unknown>;
+      last.cache_control = { type: 'ephemeral' };
+    }
+    return { role: m.role, content };
+  });
 
   // Extended thinking: when enabled, thinking deltas come in their own block
   // type and the model has a separate budget. Temperature must be 1 (or unset)

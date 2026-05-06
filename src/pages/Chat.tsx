@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
@@ -17,6 +17,7 @@ import ChatInput from '../components/ChatInput';
 import EndpointPicker from '../components/EndpointPicker';
 import PersonaPicker from '../components/PersonaPicker';
 import ExportMenu from '../components/ExportMenu';
+import { estimateConversationCostUSD, formatUSD } from '../lib/pricing';
 import type { Attachment, Conversation, Message } from '../types';
 
 export default function ChatPage() {
@@ -258,6 +259,12 @@ export default function ChatPage() {
   const persona = selectedPersona();
   const endpointName = endpoints?.find((e) => e.id === endpointId)?.name;
 
+  // Running cost estimate (USD) over all assistant messages in this conversation.
+  const conversationCost = useMemo(() => {
+    if (!allMessages || allMessages.length === 0) return 0;
+    return estimateConversationCostUSD(allMessages);
+  }, [allMessages]);
+
   return (
     <div className="flex h-full w-full flex-col">
       <header className="border-b border-lavender-100/70 bg-white/40 backdrop-blur-md">
@@ -283,6 +290,17 @@ export default function ChatPage() {
               {model && <span>{model}</span>}
               {endpointName && (
                 <span className="opacity-60"> ({endpointName})</span>
+              )}
+              {conversationCost > 0 && (
+                <>
+                  <span className="mx-1.5 opacity-40">·</span>
+                  <span
+                    className="font-mono opacity-80"
+                    title="本对话累计估算成本（按官方牌价）"
+                  >
+                    {formatUSD(conversationCost)}
+                  </span>
+                </>
               )}
             </div>
           </div>
