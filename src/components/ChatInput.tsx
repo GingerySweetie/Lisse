@@ -44,7 +44,7 @@ export default function ChatInput({
   }
 
   return (
-    <div className="border-t border-lavender-200 bg-white/70 px-3 py-3 backdrop-blur md:px-6">
+    <div className="border-t border-lavender-100 bg-white/55 px-3 py-3 backdrop-blur-md md:px-6">
       <div className="mx-auto flex max-w-3xl items-end gap-2">
         <textarea
           ref={ref}
@@ -54,13 +54,13 @@ export default function ChatInput({
           placeholder={disabled ? '请先去设置里配一个 endpoint 喵' : placeholder}
           disabled={disabled}
           rows={1}
-          className="min-h-[44px] flex-1 resize-none rounded-2xl border border-lavender-200 bg-white px-4 py-2.5 text-[15px] text-ink-900 placeholder:text-ink-500/70 focus:border-mint-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-[44px] flex-1 resize-none rounded-2xl border border-lavender-100 bg-white/80 px-4 py-2.5 text-[15px] text-ink-900 placeholder:text-ink-500/60 transition focus:border-lavender-300 focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
         />
         {busy ? (
           <button
             type="button"
             onClick={onAbort}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-200 text-rose-700 transition hover:bg-rose-300"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-rose-100 text-rose-500 ring-1 ring-rose-200 transition hover:bg-rose-200"
             aria-label="停止"
           >
             <Square size={16} fill="currentColor" />
@@ -70,7 +70,7 @@ export default function ChatInput({
             type="button"
             onClick={submit}
             disabled={disabled || !value.trim()}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-mint-200 text-ink-900 transition hover:bg-mint-300 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-11 w-11 items-center justify-center rounded-full bg-lavender-200/70 text-lavender-600 ring-1 ring-lavender-300/50 backdrop-blur-sm transition hover:bg-lavender-300/80 hover:text-ink-900 disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="发送"
           >
             <Send size={18} />

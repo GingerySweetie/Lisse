@@ -80,12 +80,12 @@ export default function MessageBubble({
         }`}
       >
         <div
-          className={`min-w-0 rounded-2xl px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
+          className={`min-w-0 rounded-2xl px-4 py-3 text-[15px] leading-relaxed ${
             isUser
-              ? 'bg-mint-200 text-ink-900'
+              ? 'bg-sky-200/80 text-ink-900 shadow-[0_1px_2px_rgba(124,105,160,0.06)] ring-1 ring-sky-300/40 backdrop-blur-sm'
               : isError
                 ? 'border border-rose-200 bg-rose-50 text-rose-700'
-                : 'bg-white/85 text-ink-900'
+                : 'bg-white/65 text-ink-900 shadow-[0_1px_2px_rgba(124,105,160,0.05)] ring-1 ring-lavender-100 backdrop-blur-sm'
           }`}
         >
           {editing ? (

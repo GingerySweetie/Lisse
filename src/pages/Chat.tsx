@@ -241,7 +241,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="border-b border-lavender-200 bg-white/60 backdrop-blur">
+      <header className="border-b border-lavender-100 bg-white/55 backdrop-blur-md">
         {/* Row 1: title + collapse toggle + export */}
         <div className="flex items-center gap-2 px-3 py-2.5 pl-14 md:px-6 md:pl-6">
           <div className="min-w-0 flex-1">

@@ -1,20 +1,34 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-lavender-50: #f5f0fb;
-  --color-lavender-100: #e8dff0;
-  --color-lavender-200: #d4c5e2;
-  --color-lavender-300: #c9bbdb;
-  --color-lavender-400: #b8a3cc;
-  --color-lavender-500: #9b86b8;
-  --color-lavender-600: #7c69a0;
+  /* Wisteria — afternoon haze, the dominant atmosphere. */
+  --color-lavender-50: #f7f2fb;
+  --color-lavender-100: #ece2f3;
+  --color-lavender-200: #dccaeb;
+  --color-lavender-300: #c8aedd;
+  --color-lavender-400: #ad8fc9;
+  --color-lavender-500: #8e74ad;
+  --color-lavender-600: #6f5990;
 
-  --color-mint-50: #ecf8f3;
-  --color-mint-100: #d1f2e8;
-  --color-mint-200: #b8e6d5;
-  --color-mint-300: #9ccfbc;
-  --color-mint-400: #7fb8a3;
-  --color-mint-500: #5e9d87;
+  /* Sky — pale water-blue used for user messages and accents. */
+  --color-sky-50: #f1f6fb;
+  --color-sky-100: #dde9f4;
+  --color-sky-200: #c7dceb;
+  --color-sky-300: #a9c7dc;
+  --color-sky-400: #84aac6;
+  --color-sky-500: #5e8ba9;
+
+  /* Mint — kept for subtle success states; no longer the primary accent. */
+  --color-mint-50: #eef8f2;
+  --color-mint-100: #d1ede0;
+  --color-mint-200: #b6dfca;
+  --color-mint-300: #93c4ad;
+  --color-mint-400: #6ea88e;
+  --color-mint-500: #4f8a72;
+
+  /* Sun — a barely-there warm tint for the afternoon-light feel. */
+  --color-sun-50: #fcf7eb;
+  --color-sun-100: #f7ecd0;
 
   --color-ink-50: #f5f3f8;
   --color-ink-100: #e7e3ed;
@@ -25,6 +39,9 @@
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-serif:
+    'Source Han Serif SC', 'Noto Serif CJK SC', 'Songti SC',
+    Georgia, ui-serif, serif;
   --font-mono: ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
 }
 
@@ -45,11 +62,29 @@
   body {
     font-family: var(--font-sans);
     color: var(--color-ink-700);
-    background: linear-gradient(
-      135deg,
-      var(--color-lavender-50) 0%,
-      var(--color-lavender-100) 100%
-    );
+    /* Afternoon wisteria gallery: soft purple haze settling onto a
+       sun-warmed sky. Two layers — a diffuse radial glow for the
+       "shaft of light" feel + a directional gradient for the corridor. */
+    background-color: var(--color-lavender-50);
+    background-image:
+      radial-gradient(
+        ellipse at 80% 0%,
+        rgba(247, 236, 208, 0.55) 0%,
+        rgba(247, 236, 208, 0) 55%
+      ),
+      radial-gradient(
+        ellipse at 0% 100%,
+        rgba(199, 220, 235, 0.4) 0%,
+        rgba(199, 220, 235, 0) 60%
+      ),
+      linear-gradient(
+        135deg,
+        var(--color-lavender-50) 0%,
+        var(--color-lavender-100) 100%
+      );
+    background-attachment: fixed;
+    font-weight: 400;
+    letter-spacing: 0.005em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior: none;
@@ -117,19 +152,55 @@
 .prose-msg h1,
 .prose-msg h2,
 .prose-msg h3,
-.prose-msg h4 {
-  margin: 1em 0 0.5em;
+.prose-msg h4,
+.prose-msg h5,
+.prose-msg h6 {
+  margin: 1.1em 0 0.45em;
+  font-weight: 600;
+  color: var(--color-ink-900);
+  letter-spacing: -0.01em;
+}
+.prose-msg h1 {
+  font-size: 1.7em;
+  font-weight: 600;
+  color: var(--color-lavender-600);
+  letter-spacing: -0.02em;
+  border-bottom: 1px solid var(--color-lavender-100);
+  padding-bottom: 0.2em;
+}
+.prose-msg h2 {
+  font-size: 1.4em;
+  font-weight: 600;
+  color: var(--color-lavender-500);
+}
+.prose-msg h3 {
+  font-size: 1.2em;
   font-weight: 600;
   color: var(--color-ink-900);
 }
-.prose-msg h1 {
-  font-size: 1.4em;
+.prose-msg h4 {
+  font-size: 1.05em;
+  font-weight: 600;
+  color: var(--color-ink-700);
 }
-.prose-msg h2 {
-  font-size: 1.25em;
+.prose-msg h5 {
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--color-ink-500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-.prose-msg h3 {
-  font-size: 1.1em;
+.prose-msg h6 {
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--color-ink-500);
+  font-style: italic;
+}
+/* First heading shouldn't have giant top margin. */
+.prose-msg > h1:first-child,
+.prose-msg > h2:first-child,
+.prose-msg > h3:first-child {
+  margin-top: 0;
 }
 .prose-msg ul,
 .prose-msg ol {
@@ -167,10 +238,11 @@
   white-space: pre;
 }
 .prose-msg blockquote {
-  margin: 0.5em 0;
-  padding: 0.25em 0 0.25em 1em;
-  border-left: 3px solid var(--color-lavender-300);
+  margin: 0.6em 0;
+  padding: 0.1em 0 0.1em 0.9em;
+  border-left: 2px solid var(--color-lavender-200);
   color: var(--color-ink-500);
+  font-style: italic;
 }
 .prose-msg a {
   color: var(--color-lavender-600);
