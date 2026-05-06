@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { hasSecretState } from '../lib/persona-state';
@@ -13,30 +13,18 @@ export default function PersonaPicker({ personaId, onChange }: Props) {
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
   const selected = personas?.find((p) => p.id === personaId);
 
-  const avatarRef = useRef<HTMLButtonElement>(null);
   const [secretOpen, setSecretOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-
   const secretEnabled = selected ? hasSecretState(selected.id) : false;
-
-  function openSecret() {
-    if (!secretEnabled) return;
-    setAnchorRect(avatarRef.current?.getBoundingClientRect() ?? null);
-    setSecretOpen(true);
-  }
 
   return (
     <div className="flex items-center gap-1.5 text-sm">
       {selected && (
         <button
-          ref={avatarRef}
           type="button"
-          onClick={openSecret}
+          onClick={() => secretEnabled && setSecretOpen(true)}
           tabIndex={secretEnabled ? 0 : -1}
           aria-label={
-            secretEnabled
-              ? `查看 ${selected.name} 的此刻`
-              : selected.name
+            secretEnabled ? `查看 ${selected.name} 的此刻` : selected.name
           }
           className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold text-white transition ${
             secretEnabled
@@ -64,7 +52,6 @@ export default function PersonaPicker({ personaId, onChange }: Props) {
       {secretOpen && selected && (
         <PersonaSecret
           persona={selected}
-          anchorRect={anchorRect}
           onClose={() => setSecretOpen(false)}
         />
       )}
