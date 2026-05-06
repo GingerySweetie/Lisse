@@ -12,11 +12,28 @@ export interface Endpoint {
   authStyle: 'bearer' | 'x-api-key';
   /** anthropic-version header (only for format=anthropic). */
   anthropicVersion?: string;
+  /** Enable Anthropic extended thinking on this endpoint (model must support). */
+  thinkingEnabled?: boolean;
+  /** Token budget for thinking (Anthropic). 1024 minimum, 16000 typical. */
+  thinkingBudget?: number;
   createdAt: number;
   updatedAt: number;
 }
 
 export type Role = 'system' | 'user' | 'assistant';
+
+export interface Attachment {
+  id: string;
+  kind: 'image' | 'file';
+  /** MIME type, e.g. "image/png", "application/pdf". */
+  mimeType: string;
+  /** Base64-encoded payload, no data URL prefix. */
+  data: string;
+  /** Display filename for non-image attachments. */
+  filename?: string;
+  /** Byte size for display. */
+  size?: number;
+}
 
 export interface Message {
   id: string;
@@ -25,6 +42,10 @@ export interface Message {
   parentId: string | null;
   role: Role;
   content: string;
+  /** Attached images / files for this message (user uploads or assistant returns). */
+  attachments?: Attachment[];
+  /** Model's internal reasoning text (Anthropic extended thinking, etc.). */
+  thinking?: string;
   /** which child id is "active" when navigating this branch point. */
   activeChildId?: string | null;
   /** runtime status used during streaming. */

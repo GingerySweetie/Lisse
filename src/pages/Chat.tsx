@@ -17,7 +17,7 @@ import ChatInput from '../components/ChatInput';
 import EndpointPicker from '../components/EndpointPicker';
 import PersonaPicker from '../components/PersonaPicker';
 import ExportMenu from '../components/ExportMenu';
-import type { Conversation, Message } from '../types';
+import type { Attachment, Conversation, Message } from '../types';
 
 export default function ChatPage() {
   const { conversationId } = useParams();
@@ -77,6 +77,7 @@ export default function ChatPage() {
 
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
+  const [streamingThinking, setStreamingThinking] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
   const [branch, setBranch] = useState<Message[]>([]);
@@ -108,7 +109,7 @@ export default function ChatPage() {
     return endpoints?.find((e) => e.id === endpointId);
   }
 
-  async function handleSend(text: string) {
+  async function handleSend(text: string, attachments: Attachment[]) {
     if (!endpointId || !model) return;
     const ep = selectedEndpoint();
     if (!ep) return;
@@ -127,17 +128,23 @@ export default function ChatPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     setStreamingText('');
+    setStreamingThinking('');
 
     await sendMessage({
       conversation: conv,
       endpoint: ep,
       model,
       userText: text,
+      attachments,
       persona: selectedPersona(),
       signal: controller.signal,
       onDelta: (delta, assistantId) => {
         setStreamingId(assistantId);
         setStreamingText((prev) => prev + delta);
+      },
+      onThinking: (delta, assistantId) => {
+        setStreamingId(assistantId);
+        setStreamingThinking((prev) => prev + delta);
       },
     });
 
@@ -149,6 +156,7 @@ export default function ChatPage() {
 
     setStreamingId(null);
     setStreamingText('');
+    setStreamingThinking('');
     abortRef.current = null;
   }
 
@@ -169,6 +177,7 @@ export default function ChatPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     setStreamingText('');
+    setStreamingThinking('');
     await editUserMessage({
       conversation,
       message,
@@ -181,9 +190,14 @@ export default function ChatPage() {
         setStreamingId(assistantId);
         setStreamingText((prev) => prev + delta);
       },
+      onThinking: (delta, assistantId) => {
+        setStreamingId(assistantId);
+        setStreamingThinking((prev) => prev + delta);
+      },
     });
     setStreamingId(null);
     setStreamingText('');
+    setStreamingThinking('');
     abortRef.current = null;
   }
 
@@ -195,6 +209,7 @@ export default function ChatPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     setStreamingText('');
+    setStreamingThinking('');
     await regenerateAssistant({
       conversation,
       message,
@@ -206,9 +221,14 @@ export default function ChatPage() {
         setStreamingId(assistantId);
         setStreamingText((prev) => prev + delta);
       },
+      onThinking: (delta, assistantId) => {
+        setStreamingId(assistantId);
+        setStreamingThinking((prev) => prev + delta);
+      },
     });
     setStreamingId(null);
     setStreamingText('');
+    setStreamingThinking('');
     abortRef.current = null;
   }
 
@@ -314,6 +334,9 @@ export default function ChatPage() {
                   message={m}
                   streamingText={
                     m.id === streamingId ? streamingText : undefined
+                  }
+                  streamingThinking={
+                    m.id === streamingId ? streamingThinking : undefined
                   }
                   onEdit={(t) => handleEdit(m, t)}
                   onRegenerate={() => handleRegenerate(m)}

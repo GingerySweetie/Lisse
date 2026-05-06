@@ -4,20 +4,26 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import {
   AlertCircle,
+  Brain,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Pencil,
   RefreshCw,
   X,
   Check,
 } from 'lucide-react';
-import type { Message } from '../types';
+import type { Attachment, Message } from '../types';
 import { getSiblingInfo, type SiblingInfo } from '../lib/branch';
+import { attachmentDataUrl, formatBytes } from '../lib/attachments';
 
 interface Props {
   message: Message;
   /** Live-streaming text override (used during in-flight assistant response). */
   streamingText?: string;
+  /** Live-streaming thinking text override. */
+  streamingThinking?: string;
   /** Disable interactive controls (during another stream). */
   disabled?: boolean;
   onEdit?: (newText: string) => void;
@@ -28,6 +34,7 @@ interface Props {
 export default function MessageBubble({
   message,
   streamingText,
+  streamingThinking,
   disabled,
   onEdit,
   onRegenerate,
@@ -37,6 +44,8 @@ export default function MessageBubble({
   const isError = message.status === 'error';
   const isStreaming = message.status === 'streaming';
   const text = streamingText ?? message.content;
+  const thinking = streamingThinking ?? message.thinking ?? '';
+  const hasThinking = thinking.trim().length > 0;
 
   const [sib, setSib] = useState<SiblingInfo | null>(null);
   useEffect(() => {
@@ -75,10 +84,18 @@ export default function MessageBubble({
       className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div
-        className={`flex min-w-0 flex-col gap-1 ${
+        className={`flex min-w-0 flex-col gap-1.5 ${
           isUser ? 'max-w-[85%]' : 'w-full max-w-full'
         }`}
       >
+        {!isUser && hasThinking && (
+          <ThinkingBlock text={thinking} streaming={isStreaming && !text} />
+        )}
+
+        {message.attachments && message.attachments.length > 0 && (
+          <Attachments attachments={message.attachments} alignRight={isUser} />
+        )}
+
         <div
           className={`min-w-0 rounded-2xl px-4 py-3 text-[15px] leading-relaxed ${
             isUser
@@ -231,6 +248,99 @@ export default function MessageBubble({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Collapsible thinking block. Auto-expands while streaming so the user
+ * can watch the reasoning unfold; collapses after the visible text starts.
+ */
+function ThinkingBlock({
+  text,
+  streaming,
+}: {
+  text: string;
+  streaming: boolean;
+}) {
+  const [open, setOpen] = useState(streaming);
+  // When the assistant text starts streaming, fold thinking back to a peek.
+  useEffect(() => {
+    setOpen(streaming);
+  }, [streaming]);
+
+  return (
+    <div className="rounded-2xl border border-dashed border-lavender-200/80 bg-white/40 px-3 py-2 backdrop-blur-sm">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 text-xs text-lavender-600 transition hover:text-lavender-500"
+      >
+        <Brain size={13} />
+        <span
+          className="italic"
+          style={{ fontFamily: 'var(--font-serif)' }}
+        >
+          {streaming ? '在想……' : '想了想'}
+        </span>
+        <span className="ml-auto opacity-60">
+          {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </span>
+      </button>
+      {open && (
+        <div
+          className="mt-2 whitespace-pre-wrap text-[13px] italic leading-relaxed text-ink-500"
+          style={{ fontFamily: 'var(--font-serif)' }}
+        >
+          {text}
+          {streaming && (
+            <span className="ml-1 inline-block h-3 w-[2px] animate-pulse bg-lavender-400 align-middle" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Attachments({
+  attachments,
+  alignRight,
+}: {
+  attachments: Attachment[];
+  alignRight: boolean;
+}) {
+  const images = attachments.filter((a) => a.kind === 'image');
+  const files = attachments.filter((a) => a.kind !== 'image');
+  return (
+    <div
+      className={`flex flex-wrap gap-2 ${alignRight ? 'justify-end' : 'justify-start'}`}
+    >
+      {images.map((a) => (
+        <a
+          key={a.id}
+          href={attachmentDataUrl(a)}
+          target="_blank"
+          rel="noopener"
+          className="block overflow-hidden rounded-xl ring-1 ring-lavender-200 transition hover:ring-lavender-300"
+        >
+          <img
+            src={attachmentDataUrl(a)}
+            alt={a.filename ?? 'image'}
+            className="max-h-72 max-w-full object-contain"
+          />
+        </a>
+      ))}
+      {files.map((a) => (
+        <a
+          key={a.id}
+          href={attachmentDataUrl(a)}
+          download={a.filename}
+          className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-xs text-ink-700 ring-1 ring-lavender-200 transition hover:bg-white"
+        >
+          <span className="font-mono">{a.filename ?? '文件'}</span>
+          <span className="text-ink-500">{formatBytes(a.size)}</span>
+        </a>
+      ))}
     </div>
   );
 }
