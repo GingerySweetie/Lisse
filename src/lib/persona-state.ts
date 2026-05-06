@@ -18,7 +18,7 @@ export const PERSONA_SECRET_STATES: Record<string, SecretField[]> = {
   persona_ririchan: [
     {
       label: '裤衩',
-      glyph: '👙',
+      glyph: '🩲',
       options: [
         '灰白色棉柔低腰三角，腰侧一条窄蕾丝',
         '海军蓝紧身款，包着一个不太老实的轮廓',
