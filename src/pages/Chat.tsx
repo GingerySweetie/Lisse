@@ -236,46 +236,26 @@ export default function ChatPage() {
   }, [headerExpanded]);
 
   const persona = selectedPersona();
-  const endpointName =
-    endpoints?.find((e) => e.id === endpointId)?.name ?? '未选 endpoint';
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="border-b border-lavender-100 bg-white/55 backdrop-blur-md">
+      <header className="border-b border-lavender-100/70 bg-white/45 backdrop-blur-md">
         {/* Row 1: title + collapse toggle + export */}
-        <div className="flex items-center gap-2 px-3 py-2.5 pl-14 md:px-6 md:pl-6">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-base font-semibold text-ink-900">
-              {conversation?.title ?? '新对话'}
-            </h2>
-            {!headerExpanded && (
-              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-500">
-                {persona && (
-                  <span
-                    className="flex items-center gap-1 rounded-full px-2 py-0.5 text-white"
-                    style={{ background: persona.color }}
-                  >
-                    <span>{persona.avatar}</span>
-                    <span>{persona.name}</span>
-                  </span>
-                )}
-                <span className="truncate">
-                  {model ? `${endpointName} · ${model}` : endpointName}
-                </span>
-              </div>
-            )}
-          </div>
+        <div className="flex items-center gap-1.5 px-3 py-1.5 pl-14 md:px-6 md:pl-6">
+          <h2 className="min-w-0 flex-1 truncate text-[15px] font-normal tracking-tight text-ink-900">
+            {conversation?.title ?? '新对话'}
+          </h2>
           <button
             type="button"
             onClick={() => setHeaderExpanded((v) => !v)}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-lavender-200 bg-white text-ink-700 transition hover:bg-lavender-50"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-500 transition hover:bg-lavender-50 hover:text-ink-700"
             aria-label={headerExpanded ? '收起' : '展开'}
             title={headerExpanded ? '收起' : '展开'}
           >
             {headerExpanded ? (
-              <ChevronUp size={16} />
+              <ChevronUp size={15} />
             ) : (
-              <ChevronDown size={16} />
+              <ChevronDown size={15} />
             )}
           </button>
           <ExportMenu
