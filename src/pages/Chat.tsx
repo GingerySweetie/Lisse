@@ -236,15 +236,36 @@ export default function ChatPage() {
   }, [headerExpanded]);
 
   const persona = selectedPersona();
+  const endpointName = endpoints?.find((e) => e.id === endpointId)?.name;
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="border-b border-lavender-100/70 bg-white/45 backdrop-blur-md">
-        {/* Row 1: title + collapse toggle + export */}
-        <div className="flex items-center gap-1.5 px-3 py-1.5 pl-14 md:px-6 md:pl-6">
-          <h2 className="min-w-0 flex-1 truncate text-[15px] font-normal tracking-tight text-ink-900">
-            {conversation?.title ?? '新对话'}
-          </h2>
+      <header className="border-b border-lavender-100/70 bg-white/40 backdrop-blur-md">
+        {/* Row 1: title + meta subtitle + collapse + export */}
+        <div className="flex items-center gap-2 px-3 py-2 pl-14 md:px-6 md:pl-6">
+          <div className="min-w-0 flex-1">
+            <h2
+              className="truncate text-lg font-normal tracking-wide text-ink-900"
+              style={{ fontFamily: 'var(--font-serif)' }}
+            >
+              {conversation?.title ?? '新聊天'}
+            </h2>
+            <div className="truncate text-[11px] font-light tracking-wide text-ink-500">
+              {persona && (
+                <>
+                  <span style={{ color: persona.color }}>{persona.name}</span>
+                  <span className="opacity-60">（{persona.avatar}）</span>
+                </>
+              )}
+              {persona && (model || endpointName) && (
+                <span className="mx-1.5 opacity-40">/</span>
+              )}
+              {model && <span>{model}</span>}
+              {endpointName && (
+                <span className="opacity-60"> ({endpointName})</span>
+              )}
+            </div>
+          </div>
           <button
             type="button"
             onClick={() => setHeaderExpanded((v) => !v)}
@@ -335,9 +356,20 @@ function EmptyEndpoints() {
 
 function EmptyChat() {
   return (
-    <div className="mx-auto mt-20 max-w-md text-center text-ink-500">
-      <div className="text-4xl">💬</div>
-      <p className="mt-3 text-sm">说点什么开始这场对话吧。</p>
+    <div className="mx-auto mt-24 max-w-md text-center">
+      <div
+        className="select-none text-7xl font-light text-lavender-300/50"
+        style={{ fontFamily: 'var(--font-serif)' }}
+        aria-hidden="true"
+      >
+        語
+      </div>
+      <p
+        className="mt-5 text-sm font-light italic text-ink-500"
+        style={{ fontFamily: 'var(--font-serif)' }}
+      >
+        说点什么，让这场对话开始……
+      </p>
     </div>
   );
 }

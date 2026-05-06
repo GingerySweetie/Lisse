@@ -32,7 +32,12 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-lavender-100 px-4 py-3">
-        <h1 className="font-medium tracking-wide text-ink-900">Lisse</h1>
+        <h1
+          className="text-xl font-normal italic tracking-wider text-ink-900"
+          style={{ fontFamily: 'var(--font-serif)' }}
+        >
+          Lisse
+        </h1>
         <button
           type="button"
           onClick={handleNew}
