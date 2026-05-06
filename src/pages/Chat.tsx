@@ -308,7 +308,15 @@ export default function ChatPage() {
         {/* Row 2: pickers (collapsible) */}
         {headerExpanded && (
           <div className="flex flex-wrap items-center gap-2 border-t border-lavender-100/70 px-3 py-2 md:px-6">
-            <PersonaPicker personaId={personaId} onChange={setPersonaId} />
+            <PersonaPicker
+              personaId={personaId}
+              onChange={setPersonaId}
+              contextText={branch
+                .slice(-4)
+                .map((m) => m.content)
+                .filter(Boolean)
+                .join('\n')}
+            />
             <EndpointPicker
               endpointId={endpointId}
               model={model}
