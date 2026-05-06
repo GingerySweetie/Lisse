@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { RefreshCw, X } from 'lucide-react';
 import type { Persona } from '../types';
 import { moodLabel, pickSecretState, type Mood } from '../lib/persona-state';
@@ -37,7 +38,7 @@ export default function PersonaSecret({ persona, contextText, onClose }: Props) 
     neutral: 'bg-mint-100 text-mint-500',
   };
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop. Separate layer so modal positioning is explicit. */}
       <div
@@ -122,6 +123,7 @@ export default function PersonaSecret({ persona, contextText, onClose }: Props) 
           </button>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
