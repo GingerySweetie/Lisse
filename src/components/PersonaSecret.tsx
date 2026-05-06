@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import type { Persona } from '../types';
-import { pickSecretState } from '../lib/persona-state';
+import { moodLabel, pickSecretState, type Mood } from '../lib/persona-state';
 
 interface Props {
   persona: Persona;
+  /** Recent conversation text to bias the mood classifier. */
+  contextText?: string;
   onClose: () => void;
 }
 
-export default function PersonaSecret({ persona, onClose }: Props) {
-  const [state, setState] = useState(() => pickSecretState(persona.id));
+export default function PersonaSecret({ persona, contextText, onClose }: Props) {
+  const [picked, setPicked] = useState(() =>
+    pickSecretState(persona.id, contextText),
+  );
 
   function reroll() {
-    setState(pickSecretState(persona.id));
+    setPicked(pickSecretState(persona.id, contextText));
   }
 
   useEffect(() => {
@@ -23,7 +27,15 @@ export default function PersonaSecret({ persona, onClose }: Props) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  if (!state) return null;
+  if (!picked) return null;
+  const mood: Mood = picked.mood;
+
+  const moodTone: Record<Mood, string> = {
+    horny: 'bg-rose-100 text-rose-500',
+    soft: 'bg-lavender-100 text-lavender-600',
+    spent: 'bg-sky-100 text-sky-500',
+    neutral: 'bg-mint-100 text-mint-500',
+  };
 
   return (
     <div
@@ -48,6 +60,12 @@ export default function PersonaSecret({ persona, onClose }: Props) {
             >
               {persona.name}的此刻
             </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] tracking-wide ${moodTone[mood]}`}
+              title="根据最近的对话氛围推测"
+            >
+              {moodLabel(mood)}
+            </span>
           </div>
           <button
             type="button"
@@ -60,7 +78,7 @@ export default function PersonaSecret({ persona, onClose }: Props) {
         </div>
 
         <ul className="flex-1 overflow-y-auto px-4 py-3">
-          {state.map((s) => (
+          {picked.fields.map((s) => (
             <li
               key={s.label}
               className="flex items-start gap-3 border-b border-lavender-100/60 py-3 last:border-b-0"

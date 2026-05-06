@@ -7,9 +7,15 @@ import PersonaSecret from './PersonaSecret';
 interface Props {
   personaId: string | null;
   onChange: (personaId: string | null) => void;
+  /** Recent conversation text used to mood-bias the persona-state popover. */
+  contextText?: string;
 }
 
-export default function PersonaPicker({ personaId, onChange }: Props) {
+export default function PersonaPicker({
+  personaId,
+  onChange,
+  contextText,
+}: Props) {
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
   const selected = personas?.find((p) => p.id === personaId);
 
@@ -52,6 +58,7 @@ export default function PersonaPicker({ personaId, onChange }: Props) {
       {secretOpen && selected && (
         <PersonaSecret
           persona={selected}
+          contextText={contextText}
           onClose={() => setSecretOpen(false)}
         />
       )}
