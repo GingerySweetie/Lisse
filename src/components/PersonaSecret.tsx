@@ -38,12 +38,15 @@ export default function PersonaSecret({ persona, contextText, onClose }: Props) 
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/30 backdrop-blur-sm md:items-center"
-      onClick={onClose}
-    >
+    <>
+      {/* Backdrop. Separate layer so modal positioning is explicit. */}
       <div
-        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-2xl border border-lavender-200 bg-white/95 shadow-2xl backdrop-blur-md md:rounded-2xl"
+        className="fixed inset-0 z-40 bg-ink-900/30 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      {/* Modal: bottom-anchored sheet on mobile, centered card on tablet+. */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-50 mx-auto flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-2xl border border-lavender-200 bg-white/95 shadow-2xl backdrop-blur-md md:bottom-auto md:left-1/2 md:right-auto md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-lavender-100 px-4 py-3">
@@ -119,6 +122,6 @@ export default function PersonaSecret({ persona, contextText, onClose }: Props) 
           </button>
         </div>
       </div>
-    </div>
+    </>
   );
 }
