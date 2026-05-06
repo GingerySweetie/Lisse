@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
+import UpdateBanner from './components/UpdateBanner';
 import ChatPage from './pages/Chat';
 import SettingsPage from './pages/Settings';
 import PersonasPage from './pages/Personas';
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/chat" replace />} />
         </Route>
       </Routes>
+      <UpdateBanner />
     </BrowserRouter>
   );
 }
