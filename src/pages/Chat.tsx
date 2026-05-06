@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { db, getSettings, saveSettings } from '../db';
 import {
   sendMessage,
@@ -223,27 +224,77 @@ export default function ChatPage() {
   const isEmpty = branch.length === 0;
   const busy = streamingId !== null;
 
+  // Header expansion: collapsed by default on touch (saves vertical space).
+  const [headerExpanded, setHeaderExpanded] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = sessionStorage.getItem('lisse:headerExpanded');
+    if (saved !== null) return saved === '1';
+    return !window.matchMedia('(pointer: coarse)').matches;
+  });
+  useEffect(() => {
+    sessionStorage.setItem('lisse:headerExpanded', headerExpanded ? '1' : '0');
+  }, [headerExpanded]);
+
+  const persona = selectedPersona();
+  const endpointName =
+    endpoints?.find((e) => e.id === endpointId)?.name ?? '未选 endpoint';
+
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="flex flex-col gap-2 border-b border-lavender-200 bg-white/60 px-3 py-3 pl-14 backdrop-blur md:flex-row md:items-center md:justify-between md:px-6 md:pl-6">
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-base font-semibold text-ink-900">
-            {conversation?.title ?? '新对话'}
-          </h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <PersonaPicker personaId={personaId} onChange={setPersonaId} />
-          <EndpointPicker
-            endpointId={endpointId}
-            model={model}
-            onChange={handlePicker}
-          />
+      <header className="border-b border-lavender-200 bg-white/60 backdrop-blur">
+        {/* Row 1: title + collapse toggle + export */}
+        <div className="flex items-center gap-2 px-3 py-2.5 pl-14 md:px-6 md:pl-6">
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-base font-semibold text-ink-900">
+              {conversation?.title ?? '新对话'}
+            </h2>
+            {!headerExpanded && (
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-500">
+                {persona && (
+                  <span
+                    className="flex items-center gap-1 rounded-full px-2 py-0.5 text-white"
+                    style={{ background: persona.color }}
+                  >
+                    <span>{persona.avatar}</span>
+                    <span>{persona.name}</span>
+                  </span>
+                )}
+                <span className="truncate">
+                  {model ? `${endpointName} · ${model}` : endpointName}
+                </span>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setHeaderExpanded((v) => !v)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-lavender-200 bg-white text-ink-700 transition hover:bg-lavender-50"
+            aria-label={headerExpanded ? '收起' : '展开'}
+            title={headerExpanded ? '收起' : '展开'}
+          >
+            {headerExpanded ? (
+              <ChevronUp size={16} />
+            ) : (
+              <ChevronDown size={16} />
+            )}
+          </button>
           <ExportMenu
             conversation={conversation ?? undefined}
-            persona={selectedPersona()}
+            persona={persona}
             disabled={!conversation || branch.length === 0}
           />
         </div>
+        {/* Row 2: pickers (collapsible) */}
+        {headerExpanded && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-lavender-100/70 px-3 py-2 md:px-6">
+            <PersonaPicker personaId={personaId} onChange={setPersonaId} />
+            <EndpointPicker
+              endpointId={endpointId}
+              model={model}
+              onChange={handlePicker}
+            />
+          </div>
+        )}
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 md:px-6">
