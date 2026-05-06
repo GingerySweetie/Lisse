@@ -17,6 +17,7 @@ import {
 import type { Attachment, Message } from '../types';
 import { getSiblingInfo, type SiblingInfo } from '../lib/branch';
 import { attachmentDataUrl, formatBytes } from '../lib/attachments';
+import { getPersonaFontStack } from '../lib/persona-state';
 
 interface Props {
   message: Message;
@@ -26,6 +27,8 @@ interface Props {
   streamingThinking?: string;
   /** Disable interactive controls (during another stream). */
   disabled?: boolean;
+  /** Persona id for the conversation; assistant text gets that persona's font. */
+  personaId?: string;
   onEdit?: (newText: string) => void;
   onRegenerate?: () => void;
   onSwitchSibling?: (newActiveMessageId: string) => void;
@@ -36,6 +39,7 @@ export default function MessageBubble({
   streamingText,
   streamingThinking,
   disabled,
+  personaId,
   onEdit,
   onRegenerate,
   onSwitchSibling,
@@ -46,6 +50,10 @@ export default function MessageBubble({
   const text = streamingText ?? message.content;
   const thinking = streamingThinking ?? message.thinking ?? '';
   const hasThinking = thinking.trim().length > 0;
+
+  // Per-persona font for the assistant's voice. Falls back to body sans.
+  const personaFont = !isUser ? getPersonaFontStack(personaId) : undefined;
+  const personaFontStyle = personaFont ? { fontFamily: personaFont } : undefined;
 
   const [sib, setSib] = useState<SiblingInfo | null>(null);
   useEffect(() => {
@@ -89,7 +97,11 @@ export default function MessageBubble({
         }`}
       >
         {!isUser && hasThinking && (
-          <ThinkingBlock text={thinking} streaming={isStreaming && !text} />
+          <ThinkingBlock
+            text={thinking}
+            streaming={isStreaming && !text}
+            fontFamily={personaFont}
+          />
         )}
 
         {message.attachments && message.attachments.length > 0 && (
@@ -151,7 +163,7 @@ export default function MessageBubble({
               </ReactMarkdown>
             </div>
           ) : (
-            <div className="prose-msg">
+            <div className="prose-msg" style={personaFontStyle}>
               {text ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -259,15 +271,21 @@ export default function MessageBubble({
 function ThinkingBlock({
   text,
   streaming,
+  fontFamily,
 }: {
   text: string;
   streaming: boolean;
+  fontFamily?: string;
 }) {
   const [open, setOpen] = useState(streaming);
   // When the assistant text starts streaming, fold thinking back to a peek.
   useEffect(() => {
     setOpen(streaming);
   }, [streaming]);
+
+  // Thinking is the persona's inner voice; use their font when known.
+  // Fall back to the serif used elsewhere for an italic literary tone.
+  const innerFont = fontFamily ?? 'var(--font-serif)';
 
   return (
     <div className="rounded-2xl border border-dashed border-lavender-200/80 bg-white/40 px-3 py-2 backdrop-blur-sm">
@@ -277,10 +295,7 @@ function ThinkingBlock({
         className="flex w-full items-center gap-1.5 text-xs text-lavender-600 transition hover:text-lavender-500"
       >
         <Brain size={13} />
-        <span
-          className="italic"
-          style={{ fontFamily: 'var(--font-serif)' }}
-        >
+        <span className="italic" style={{ fontFamily: innerFont }}>
           {streaming ? '在想……' : '想了想'}
         </span>
         <span className="ml-auto opacity-60">
@@ -290,7 +305,7 @@ function ThinkingBlock({
       {open && (
         <div
           className="mt-2 whitespace-pre-wrap text-[13px] italic leading-relaxed text-ink-500"
-          style={{ fontFamily: 'var(--font-serif)' }}
+          style={{ fontFamily: innerFont }}
         >
           {text}
           {streaming && (
