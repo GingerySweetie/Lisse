@@ -1,13 +1,49 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#D4C5E2"/>
-      <stop offset="100%" stop-color="#B8E6D5"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FAF3FB"/>
+      <stop offset="100%" stop-color="#EBE0F2"/>
     </linearGradient>
+    <radialGradient id="hl" cx="0.35" cy="0.3" r="0.6">
+      <stop offset="0%" stop-color="white" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="url(#g)"/>
-  <path d="M14 24 Q 14 16, 22 16 L 42 16 Q 50 16, 50 24 L 50 36 Q 50 44, 42 44 L 28 44 L 20 50 L 22 44 Q 14 44, 14 36 Z" fill="white" opacity="0.92"/>
-  <circle cx="26" cy="30" r="2.4" fill="#7c69a0"/>
-  <circle cx="38" cy="30" r="2.4" fill="#7c69a0"/>
-  <path d="M26 36 Q 32 39, 38 36" stroke="#5e9d87" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  <!-- Soft lavender canvas -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+
+  <!-- Two leaves at the top, splayed like a wisteria peduncle -->
+  <ellipse cx="29" cy="9" rx="3" ry="1.6" fill="#9CCFBC" transform="rotate(-32 29 9)"/>
+  <ellipse cx="35" cy="9" rx="3" ry="1.6" fill="#7FB8A3" transform="rotate(32 35 9)"/>
+
+  <!-- Stem curving down into the cluster -->
+  <path d="M32 11 Q 31 16 32 20" stroke="#7FB8A3" stroke-width="1" stroke-linecap="round" fill="none"/>
+
+  <!-- Wisteria cluster: top airy & light, bottom deep & narrow.
+       Each "petal" is a small overlapping circle; the whole thing
+       reads as a hanging teardrop of violet. -->
+  <!-- row 1 (widest, lightest) -->
+  <circle cx="26" cy="22" r="4.6" fill="#DDC9EA"/>
+  <circle cx="38" cy="22" r="4.6" fill="#D4BEE3"/>
+  <circle cx="32" cy="20" r="4.2" fill="#E5D4EE"/>
+  <!-- row 2 -->
+  <circle cx="24" cy="29" r="4.2" fill="#C7AADC"/>
+  <circle cx="40" cy="29" r="4.2" fill="#BB9FD2"/>
+  <circle cx="32" cy="28" r="4.6" fill="#C0A4D6"/>
+  <!-- row 3 -->
+  <circle cx="27" cy="37" r="3.8" fill="#A988C5"/>
+  <circle cx="37" cy="37" r="3.8" fill="#A07FBC"/>
+  <circle cx="32" cy="38" r="4" fill="#9F7EBA"/>
+  <!-- row 4 -->
+  <circle cx="29" cy="45" r="3.2" fill="#8B6BA7"/>
+  <circle cx="35" cy="45" r="3.2" fill="#85659E"/>
+  <!-- row 5 (narrowing) -->
+  <circle cx="31" cy="52" r="2.6" fill="#705690"/>
+  <circle cx="35" cy="53" r="2.2" fill="#65497F"/>
+  <!-- tip -->
+  <circle cx="33" cy="58" r="1.7" fill="#523B6C"/>
+
+  <!-- Soft top-left highlight to give the cluster volume -->
+  <ellipse cx="29" cy="22" rx="6" ry="4" fill="url(#hl)"/>
 </svg>
