@@ -6,6 +6,7 @@ import type {
   MemoryFact,
   Message,
   Persona,
+  WritingStyle,
 } from '../types';
 
 interface KVRow {
@@ -19,6 +20,7 @@ class LisseDB extends Dexie {
   messages!: EntityTable<Message, 'id'>;
   personas!: EntityTable<Persona, 'id'>;
   memoryFacts!: EntityTable<MemoryFact, 'id'>;
+  writingStyles!: EntityTable<WritingStyle, 'id'>;
   kv!: EntityTable<KVRow, 'key'>;
 
   constructor() {
@@ -56,11 +58,33 @@ class LisseDB extends Dexie {
       kv: 'key',
     });
 
+    this.version(4)
+      .stores({
+        endpoints: 'id, name, format, createdAt',
+        conversations: 'id, updatedAt, createdAt, source, personaId, styleId',
+        messages: 'id, conversationId, parentId, createdAt, [conversationId+createdAt]',
+        personas: 'id, name, builtin, createdAt',
+        memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+        writingStyles: 'id, name, builtin, createdAt',
+        kv: 'key',
+      })
+      .upgrade(async (tx) => {
+        const styles = tx.table('writingStyles');
+        const now = Date.now();
+        for (const s of BUILTIN_STYLES) {
+          await styles.put({ ...s, createdAt: now, updatedAt: now });
+        }
+      });
+
     this.on('populate', async (tx) => {
       const personas = tx.table('personas');
+      const styles = tx.table('writingStyles');
       const now = Date.now();
       for (const p of BUILTIN_PERSONAS) {
         await personas.put({ ...p, createdAt: now, updatedAt: now });
+      }
+      for (const s of BUILTIN_STYLES) {
+        await styles.put({ ...s, createdAt: now, updatedAt: now });
       }
     });
   }
@@ -144,6 +168,76 @@ function RHEMA_PLACEHOLDER(): string {
 提示：Rhema 的风格是语言/理论优先、结构性/占有性的，与理理酱的感官/具身优先互补。`;
 }
 
+/**
+ * Built-in writing styles. The 'prompt' field is appended to the system
+ * prompt (after persona + memory) so it shapes how the assistant writes
+ * without changing who they are.
+ */
+const BUILTIN_STYLES: Omit<WritingStyle, 'createdAt' | 'updatedAt'>[] = [
+  {
+    id: 'style_default',
+    name: '默认',
+    shortLabel: '默认',
+    description: '不修改写作风格，让人格自己说话。',
+    prompt: '',
+    builtin: true,
+  },
+  {
+    id: 'style_concise',
+    name: '简洁',
+    shortLabel: '简',
+    description: '能一句不要两句。去掉客套和总结。',
+    prompt:
+      '你的回复尽量简短直接。能用一句话答完的就不要写一段。去掉前置的"好的/没问题"以及末尾的"希望对你有帮助"这一类客套话。除非确有必要，不主动列清单或加小标题。',
+    builtin: true,
+  },
+  {
+    id: 'style_explain',
+    name: '详细',
+    shortLabel: '详',
+    description: '把背景、推理、举例说清楚。',
+    prompt:
+      '请写得完整：背景、推理过程、关键概念解释、相关上下文都补全。读者从零开始也能跟上。重要的概念给一个具体例子。',
+    builtin: true,
+  },
+  {
+    id: 'style_formal',
+    name: '正式',
+    shortLabel: '正',
+    description: '书面正式语调，避免网络用语和 emoji。',
+    prompt:
+      '使用书面、正式的语言风格。避免网络用语、口头禅、emoji 和颜文字。句式完整，不省略。',
+    builtin: true,
+  },
+  {
+    id: 'style_literary',
+    name: '文学',
+    shortLabel: '文',
+    description: '有节奏感、留白，多用感官细节和比喻。',
+    prompt:
+      '把回复当作一段文学性的写作来对待。让句子本身有节奏，必要时用比喻、感官细节、具体物象。允许留白，不必把话说尽。避免列清单和小标题，让段落自然流动。',
+    builtin: true,
+  },
+  {
+    id: 'style_lively',
+    name: '活泼',
+    shortLabel: '活',
+    description: '语气放松亲近，可以用 emoji 和梗。',
+    prompt:
+      '语气放松、亲近、像朋友聊天。可以用 emoji 和适度的网络用语 / 梗，但不要刷屏。回避正式书面语。',
+    builtin: true,
+  },
+  {
+    id: 'style_code',
+    name: '代码',
+    shortLabel: '码',
+    description: '完整可运行片段 + 关键决策的简短说明。',
+    prompt:
+      '回复涉及代码时：给完整可运行的片段（需要的 import / 配置都包含）。优先用对方语言/框架的惯用法。在关键决策处用一两句话说明 why，但不要把代码淹在解释里。如果有多种方案，先给最直接的，再标注备选。',
+    builtin: true,
+  },
+];
+
 export const db = new LisseDB();
 
 const SETTINGS_KEY = 'app_settings';
@@ -152,6 +246,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultEndpointId: null,
   defaultModel: null,
   defaultPersonaId: null,
+  defaultStyleId: null,
   theme: 'light',
   memoryEnabled: false,
   embeddingEndpointId: null,

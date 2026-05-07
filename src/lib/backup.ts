@@ -6,13 +6,14 @@ import type {
   MemoryFact,
   Message,
   Persona,
+  WritingStyle,
 } from '../types';
 
 export interface BackupBundle {
   /** Format identifier for sanity-checking. */
   __lisse: 'backup';
   /** Schema version of the bundle (not Dexie's). */
-  version: 2;
+  version: 3;
   exportedAt: number;
   settings: AppSettings;
   endpoints: Endpoint[];
@@ -20,21 +21,30 @@ export interface BackupBundle {
   conversations: Conversation[];
   messages: Message[];
   memoryFacts?: MemoryFact[];
+  writingStyles?: WritingStyle[];
 }
 
 export async function exportBackup(): Promise<BackupBundle> {
-  const [settings, endpoints, personas, conversations, messages, memoryFacts] =
-    await Promise.all([
-      getSettings(),
-      db.endpoints.toArray(),
-      db.personas.toArray(),
-      db.conversations.toArray(),
-      db.messages.toArray(),
-      db.memoryFacts.toArray(),
-    ]);
+  const [
+    settings,
+    endpoints,
+    personas,
+    conversations,
+    messages,
+    memoryFacts,
+    writingStyles,
+  ] = await Promise.all([
+    getSettings(),
+    db.endpoints.toArray(),
+    db.personas.toArray(),
+    db.conversations.toArray(),
+    db.messages.toArray(),
+    db.memoryFacts.toArray(),
+    db.writingStyles.toArray(),
+  ]);
   return {
     __lisse: 'backup',
-    version: 2,
+    version: 3,
     exportedAt: Date.now(),
     settings,
     endpoints,
@@ -42,6 +52,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     conversations,
     messages,
     memoryFacts,
+    writingStyles,
   };
 }
 
@@ -56,6 +67,7 @@ export interface ImportBackupResult {
   conversationsAdded: number;
   messagesAdded: number;
   memoryFactsAdded: number;
+  writingStylesAdded: number;
   settingsApplied: boolean;
 }
 
@@ -83,13 +95,22 @@ export async function importBackup(
   if (opts.mode === 'replace') {
     await db.transaction(
       'rw',
-      [db.endpoints, db.personas, db.conversations, db.messages, db.memoryFacts, db.kv],
+      [
+        db.endpoints,
+        db.personas,
+        db.conversations,
+        db.messages,
+        db.memoryFacts,
+        db.writingStyles,
+        db.kv,
+      ],
       async () => {
         await db.endpoints.clear();
         await db.personas.clear();
         await db.conversations.clear();
         await db.messages.clear();
         await db.memoryFacts.clear();
+        await db.writingStyles.clear();
         await db.kv.clear();
       },
     );
@@ -101,12 +122,20 @@ export async function importBackup(
     conversationsAdded: 0,
     messagesAdded: 0,
     memoryFactsAdded: 0,
+    writingStylesAdded: 0,
     settingsApplied: false,
   };
 
   await db.transaction(
     'rw',
-    [db.endpoints, db.personas, db.conversations, db.messages, db.memoryFacts],
+    [
+      db.endpoints,
+      db.personas,
+      db.conversations,
+      db.messages,
+      db.memoryFacts,
+      db.writingStyles,
+    ],
     async () => {
       for (const e of bundle.endpoints ?? []) {
         const exists = await db.endpoints.get(e.id);
@@ -137,6 +166,12 @@ export async function importBackup(
         if (exists && opts.mode === 'merge') continue;
         await db.memoryFacts.put(f);
         result.memoryFactsAdded++;
+      }
+      for (const s of bundle.writingStyles ?? []) {
+        const exists = await db.writingStyles.get(s.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.writingStyles.put(s);
+        result.writingStylesAdded++;
       }
     },
   );

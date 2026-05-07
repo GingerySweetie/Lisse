@@ -16,6 +16,7 @@ import MessageBubble from '../components/MessageBubble';
 import ChatInput from '../components/ChatInput';
 import EndpointPicker from '../components/EndpointPicker';
 import PersonaPicker from '../components/PersonaPicker';
+import StylePicker from '../components/StylePicker';
 import ExportMenu from '../components/ExportMenu';
 import { estimateConversationCostUSD, formatUSD } from '../lib/pricing';
 import type { Attachment, Conversation, Message } from '../types';
@@ -41,10 +42,12 @@ export default function ChatPage() {
   const settings = useLiveQuery(() => getSettings(), [], null);
   const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
+  const styles = useLiveQuery(() => db.writingStyles.toArray(), [], []);
 
   const [endpointId, setEndpointId] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [personaId, setPersonaId] = useState<string | null>(null);
+  const [styleId, setStyleId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!endpoints || !settings) return;
@@ -74,6 +77,12 @@ export default function ChatPage() {
     if (!settings) return;
     const fromConv = conversation?.personaId ?? null;
     setPersonaId(fromConv ?? settings.defaultPersonaId);
+  }, [settings, conversation]);
+
+  useEffect(() => {
+    if (!settings) return;
+    const fromConv = conversation?.styleId ?? null;
+    setStyleId(fromConv ?? settings.defaultStyleId);
   }, [settings, conversation]);
 
   const [streamingId, setStreamingId] = useState<string | null>(null);
@@ -106,6 +115,11 @@ export default function ChatPage() {
     return personas?.find((p) => p.id === personaId);
   }
 
+  function selectedStyle() {
+    if (!styleId) return undefined;
+    return styles?.find((s) => s.id === styleId);
+  }
+
   function selectedEndpoint() {
     return endpoints?.find((e) => e.id === endpointId);
   }
@@ -121,6 +135,7 @@ export default function ChatPage() {
         endpointId: ep.id,
         model,
         personaId: personaId ?? undefined,
+        styleId: styleId ?? undefined,
       });
       navigate(`/chat/${conv.id}`, { replace: true });
     }
@@ -138,6 +153,7 @@ export default function ChatPage() {
       userText: text,
       attachments,
       persona: selectedPersona(),
+      style: selectedStyle(),
       signal: controller.signal,
       onDelta: (delta, assistantId) => {
         setStreamingId(assistantId);
@@ -153,6 +169,7 @@ export default function ChatPage() {
       defaultEndpointId: ep.id,
       defaultModel: model,
       defaultPersonaId: personaId,
+      defaultStyleId: styleId,
     });
 
     setStreamingId(null);
@@ -186,6 +203,7 @@ export default function ChatPage() {
       endpoint: ep,
       model,
       persona: selectedPersona(),
+      style: selectedStyle(),
       signal: controller.signal,
       onDelta: (delta, assistantId) => {
         setStreamingId(assistantId);
@@ -217,6 +235,7 @@ export default function ChatPage() {
       endpoint: ep,
       model,
       persona: selectedPersona(),
+      style: selectedStyle(),
       signal: controller.signal,
       onDelta: (delta, assistantId) => {
         setStreamingId(assistantId);
@@ -257,6 +276,7 @@ export default function ChatPage() {
   }, [headerExpanded]);
 
   const persona = selectedPersona();
+  const style = selectedStyle();
   const endpointName = endpoints?.find((e) => e.id === endpointId)?.name;
 
   // Running cost estimate (USD) over all assistant messages in this conversation.
@@ -290,6 +310,12 @@ export default function ChatPage() {
               {model && <span>{model}</span>}
               {endpointName && (
                 <span className="opacity-60"> ({endpointName})</span>
+              )}
+              {style && style.id !== 'style_default' && (
+                <>
+                  <span className="mx-1.5 opacity-40">·</span>
+                  <span className="opacity-80">{style.name}</span>
+                </>
               )}
               {conversationCost > 0 && (
                 <>
@@ -335,6 +361,7 @@ export default function ChatPage() {
                 .filter(Boolean)
                 .join('\n')}
             />
+            <StylePicker styleId={styleId} onChange={setStyleId} />
             <EndpointPicker
               endpointId={endpointId}
               model={model}

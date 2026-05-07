@@ -11,6 +11,7 @@ import {
   Settings,
   Trash2,
   Users,
+  Wand2,
 } from 'lucide-react';
 import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
@@ -183,6 +184,20 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         >
           <Users size={16} />
           人格
+        </NavLink>
+        <NavLink
+          to="/styles"
+          onClick={() => onNavigate?.()}
+          className={({ isActive }) =>
+            `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+              isActive
+                ? 'bg-lavender-100 text-ink-900'
+                : 'text-ink-700 hover:bg-lavender-50'
+            }`
+          }
+        >
+          <Wand2 size={16} />
+          写作风格
         </NavLink>
         <NavLink
           to="/memory"
