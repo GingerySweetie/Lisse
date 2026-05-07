@@ -73,6 +73,8 @@ export interface Conversation {
   defaultModel?: string;
   /** persona/system prompt key (v0.5+). */
   personaId?: string;
+  /** Writing style applied to every assistant turn in this conversation. */
+  styleId?: string;
   /** if imported from ChatGPT, original conversation id. */
   sourceId?: string;
   source?: 'native' | 'chatgpt' | 'claude';
@@ -86,6 +88,8 @@ export interface AppSettings {
   defaultModel: string | null;
   /** Selected persona used when creating new conversations. */
   defaultPersonaId: string | null;
+  /** Selected writing style used when creating new conversations. */
+  defaultStyleId: string | null;
   /** Theme preference, future: 'light' | 'dark' | 'auto'. */
   theme: 'light';
 
@@ -117,6 +121,25 @@ export interface Persona {
   /** Free-form notes for the user; not sent to the model. */
   notes?: string;
   /** Built-in personas can't be deleted, only edited. */
+  builtin?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Writing style. Independent of persona — styles shape register/format
+ * (concise / explanatory / formal / literary), persona shapes identity.
+ * Both prompts get composed into the final system prompt.
+ */
+export interface WritingStyle {
+  id: string;
+  name: string;
+  /** Short label shown in the picker, e.g. "极简". */
+  shortLabel?: string;
+  /** Optional 1-line description for the editor. */
+  description?: string;
+  /** Prompt block appended to system after persona + memory. */
+  prompt: string;
   builtin?: boolean;
   createdAt: number;
   updatedAt: number;

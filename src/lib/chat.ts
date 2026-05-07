@@ -5,6 +5,7 @@ import type {
   Endpoint,
   Message,
   Persona,
+  WritingStyle,
 } from '../types';
 import { newId } from './id';
 import { getActiveBranch } from './branch';
@@ -21,6 +22,7 @@ export interface SendOptions {
   model: string;
   userText: string;
   persona?: Persona;
+  style?: WritingStyle;
   /** User-attached images/files for this turn. */
   attachments?: Attachment[];
   /** Called on every visible-text chunk. */
@@ -42,6 +44,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     model,
     userText,
     persona,
+    style,
     attachments,
     onDelta,
     onThinking,
@@ -91,6 +94,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
       defaultEndpointId: endpoint.id,
       defaultModel: model,
       ...(persona && { personaId: persona.id }),
+      ...(style && { styleId: style.id }),
     });
   });
 
@@ -99,6 +103,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     endpoint,
     model,
     persona,
+    style,
     branch: [...branch, userMessage],
     onDelta,
     onThinking,
@@ -146,6 +151,7 @@ export async function editUserMessage(opts: {
   endpoint: Endpoint;
   model: string;
   persona?: Persona;
+  style?: WritingStyle;
   onDelta?: (delta: string, assistantMessageId: string) => void;
   onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
@@ -157,6 +163,7 @@ export async function editUserMessage(opts: {
     endpoint,
     model,
     persona,
+    style,
     onDelta,
     onThinking,
     signal,
@@ -208,6 +215,7 @@ export async function editUserMessage(opts: {
     endpoint,
     model,
     persona,
+    style,
     branch: [...prefix, newUser],
     onDelta,
     onThinking,
@@ -234,6 +242,7 @@ export async function regenerateAssistant(opts: {
   endpoint: Endpoint;
   model: string;
   persona?: Persona;
+  style?: WritingStyle;
   onDelta?: (delta: string, assistantMessageId: string) => void;
   onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
@@ -244,6 +253,7 @@ export async function regenerateAssistant(opts: {
     endpoint,
     model,
     persona,
+    style,
     onDelta,
     onThinking,
     signal,
@@ -282,6 +292,7 @@ export async function regenerateAssistant(opts: {
     endpoint,
     model,
     persona,
+    style,
     branch: prefix,
     onDelta,
     onThinking,
@@ -306,6 +317,7 @@ async function streamAssistant(args: {
   endpoint: Endpoint;
   model: string;
   persona?: Persona;
+  style?: WritingStyle;
   /** Full message chain leading up to (and including) the user turn whose response we're generating. */
   branch: Message[];
   onDelta?: (delta: string, assistantMessageId: string) => void;
@@ -317,6 +329,7 @@ async function streamAssistant(args: {
     endpoint,
     model,
     persona,
+    style,
     branch,
     onDelta,
     onThinking,
@@ -339,6 +352,12 @@ async function streamAssistant(args: {
   const systemParts: string[] = [];
   if (persona && persona.systemPrompt.trim()) systemParts.push(persona.systemPrompt);
   if (memoryBlock) systemParts.push(memoryBlock);
+  // Style prompt comes after persona+memory: it shapes register/format
+  // without redefining identity. Empty style prompts (e.g. 默认) are
+  // skipped so they don't pollute the system message.
+  if (style && style.prompt.trim()) {
+    systemParts.push(`# 写作风格\n${style.prompt.trim()}`);
+  }
   if (systemParts.length > 0) {
     turns.push({ role: 'system', content: systemParts.join('\n\n---\n\n') });
   }
@@ -475,6 +494,7 @@ export async function createConversation(opts?: {
   endpointId?: string;
   model?: string;
   personaId?: string;
+  styleId?: string;
 }): Promise<Conversation> {
   const now = Date.now();
   const conv: Conversation = {
@@ -484,6 +504,7 @@ export async function createConversation(opts?: {
     defaultEndpointId: opts?.endpointId,
     defaultModel: opts?.model,
     personaId: opts?.personaId,
+    styleId: opts?.styleId,
     source: 'native',
     createdAt: now,
     updatedAt: now,
