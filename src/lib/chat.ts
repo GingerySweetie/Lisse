@@ -15,6 +15,7 @@ import {
   formatFactsBlock,
   extractAndStoreFacts,
 } from './memory';
+import { buildGroupTurns, groupAwarenessSnippet } from './group';
 
 export interface SendOptions {
   conversation: Conversation;
@@ -23,6 +24,8 @@ export interface SendOptions {
   userText: string;
   persona?: Persona;
   style?: WritingStyle;
+  /** Group mode: the OTHER personas in the conversation (excluding `persona`). */
+  groupOthers?: Persona[];
   /** User-attached images/files for this turn. */
   attachments?: Attachment[];
   /** Called on every visible-text chunk. */
@@ -45,6 +48,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     userText,
     persona,
     style,
+    groupOthers,
     attachments,
     onDelta,
     onThinking,
@@ -76,6 +80,9 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     status: 'streaming',
     endpointId: endpoint.id,
     model,
+    // Tag the message with the persona that's about to author it, so
+    // group conversations can attribute each turn correctly.
+    personaId: persona?.id,
     createdAt: now + 1,
   };
 
@@ -104,6 +111,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     model,
     persona,
     style,
+    groupOthers,
     branch: [...branch, userMessage],
     onDelta,
     onThinking,
@@ -152,6 +160,7 @@ export async function editUserMessage(opts: {
   model: string;
   persona?: Persona;
   style?: WritingStyle;
+  groupOthers?: Persona[];
   onDelta?: (delta: string, assistantMessageId: string) => void;
   onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
@@ -164,6 +173,7 @@ export async function editUserMessage(opts: {
     model,
     persona,
     style,
+    groupOthers,
     onDelta,
     onThinking,
     signal,
@@ -193,6 +203,7 @@ export async function editUserMessage(opts: {
     status: 'streaming',
     endpointId: endpoint.id,
     model,
+    personaId: persona?.id,
     createdAt: now + 1,
   };
 
@@ -216,6 +227,7 @@ export async function editUserMessage(opts: {
     model,
     persona,
     style,
+    groupOthers,
     branch: [...prefix, newUser],
     onDelta,
     onThinking,
@@ -243,6 +255,7 @@ export async function regenerateAssistant(opts: {
   model: string;
   persona?: Persona;
   style?: WritingStyle;
+  groupOthers?: Persona[];
   onDelta?: (delta: string, assistantMessageId: string) => void;
   onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
@@ -254,6 +267,7 @@ export async function regenerateAssistant(opts: {
     model,
     persona,
     style,
+    groupOthers,
     onDelta,
     onThinking,
     signal,
@@ -272,6 +286,9 @@ export async function regenerateAssistant(opts: {
     status: 'streaming',
     endpointId: endpoint.id,
     model,
+    // In group mode the regenerator may belong to a different persona
+    // than the original; tag with the current responder.
+    personaId: persona?.id ?? message.personaId,
     createdAt: now,
   };
 
@@ -293,6 +310,7 @@ export async function regenerateAssistant(opts: {
     model,
     persona,
     style,
+    groupOthers,
     branch: prefix,
     onDelta,
     onThinking,
@@ -318,6 +336,8 @@ async function streamAssistant(args: {
   model: string;
   persona?: Persona;
   style?: WritingStyle;
+  /** In a group conversation, the OTHER personas (not the responder). */
+  groupOthers?: Persona[];
   /** Full message chain leading up to (and including) the user turn whose response we're generating. */
   branch: Message[];
   onDelta?: (delta: string, assistantMessageId: string) => void;
@@ -330,6 +350,7 @@ async function streamAssistant(args: {
     model,
     persona,
     style,
+    groupOthers,
     branch,
     onDelta,
     onThinking,
@@ -352,6 +373,10 @@ async function streamAssistant(args: {
   const systemParts: string[] = [];
   if (persona && persona.systemPrompt.trim()) systemParts.push(persona.systemPrompt);
   if (memoryBlock) systemParts.push(memoryBlock);
+  // In group mode, tell the responder about the other AIs in the room.
+  if (persona && groupOthers && groupOthers.length > 0) {
+    systemParts.push(groupAwarenessSnippet(persona, groupOthers));
+  }
   // Style prompt comes after persona+memory: it shapes register/format
   // without redefining identity. Empty style prompts (e.g. 默认) are
   // skipped so they don't pollute the system message.
@@ -370,14 +395,26 @@ async function streamAssistant(args: {
     if (branch.length > keep) trimmed = branch.slice(-keep);
   }
 
-  for (const m of trimmed) {
-    if (m.role !== 'system' && m.role !== 'user' && m.role !== 'assistant') continue;
-    if (!m.content && (!m.attachments || m.attachments.length === 0)) continue;
-    turns.push({
-      role: m.role,
-      content: m.content,
-      attachments: m.attachments,
-    });
+  if (persona && groupOthers && groupOthers.length > 0) {
+    // Group mode: relabel other personas' messages so the responder
+    // can attribute who said what.
+    const personaById = new Map<string, Persona>([
+      [persona.id, persona],
+      ...groupOthers.map((p) => [p.id, p] as const),
+    ]);
+    for (const t of buildGroupTurns(trimmed, persona, personaById)) {
+      turns.push(t);
+    }
+  } else {
+    for (const m of trimmed) {
+      if (m.role !== 'system' && m.role !== 'user' && m.role !== 'assistant') continue;
+      if (!m.content && (!m.attachments || m.attachments.length === 0)) continue;
+      turns.push({
+        role: m.role,
+        content: m.content,
+        attachments: m.attachments,
+      });
+    }
   }
 
   let acc = '';
@@ -489,11 +526,84 @@ async function deepestDescendant(start: Message): Promise<Message> {
   }
 }
 
+/**
+ * Group mode: trigger another assistant turn from a specific persona without
+ * a new user message. The persona "speaks up" given the current transcript.
+ * Used by the 'Let [persona] speak' button to drive AI-to-AI chatter.
+ */
+export async function letPersonaSpeak(opts: {
+  conversation: Conversation;
+  endpoint: Endpoint;
+  model: string;
+  persona: Persona;
+  style?: WritingStyle;
+  groupOthers?: Persona[];
+  onDelta?: (delta: string, assistantMessageId: string) => void;
+  onThinking?: (delta: string, assistantMessageId: string) => void;
+  signal?: AbortSignal;
+}): Promise<Message> {
+  const {
+    conversation,
+    endpoint,
+    model,
+    persona,
+    style,
+    groupOthers,
+    onDelta,
+    onThinking,
+    signal,
+  } = opts;
+
+  const branch = await getActiveBranch(conversation);
+  const parentId = branch.at(-1)?.id ?? null;
+  const now = Date.now();
+
+  const newAssistant: Message = {
+    id: newId(),
+    conversationId: conversation.id,
+    parentId,
+    role: 'assistant',
+    content: '',
+    status: 'streaming',
+    endpointId: endpoint.id,
+    model,
+    personaId: persona.id,
+    createdAt: now,
+  };
+
+  await db.transaction('rw', db.messages, db.conversations, async () => {
+    await db.messages.add(newAssistant);
+    if (parentId) {
+      await db.messages.update(parentId, { activeChildId: newAssistant.id });
+    }
+    await db.conversations.update(conversation.id, {
+      currentLeafId: newAssistant.id,
+      updatedAt: now,
+    });
+  });
+
+  await streamAssistant({
+    assistantMessageId: newAssistant.id,
+    endpoint,
+    model,
+    persona,
+    style,
+    groupOthers,
+    branch,
+    onDelta,
+    onThinking,
+    signal,
+  });
+
+  return newAssistant;
+}
+
 export async function createConversation(opts?: {
   title?: string;
   endpointId?: string;
   model?: string;
   personaId?: string;
+  personaIds?: string[];
   styleId?: string;
 }): Promise<Conversation> {
   const now = Date.now();
@@ -504,6 +614,7 @@ export async function createConversation(opts?: {
     defaultEndpointId: opts?.endpointId,
     defaultModel: opts?.model,
     personaId: opts?.personaId,
+    personaIds: opts?.personaIds,
     styleId: opts?.styleId,
     source: 'native',
     createdAt: now,
