@@ -76,6 +76,16 @@ class LisseDB extends Dexie {
         }
       });
 
+    this.version(5).stores({
+      endpoints: 'id, name, format, createdAt',
+      conversations: 'id, updatedAt, createdAt, source, personaId, styleId',
+      messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+      personas: 'id, name, builtin, createdAt',
+      memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+      writingStyles: 'id, name, builtin, createdAt',
+      kv: 'key',
+    });
+
     this.on('populate', async (tx) => {
       const personas = tx.table('personas');
       const styles = tx.table('writingStyles');

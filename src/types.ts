@@ -46,6 +46,9 @@ export interface Message {
   attachments?: Attachment[];
   /** Model's internal reasoning text (Anthropic extended thinking, etc.). */
   thinking?: string;
+  /** In a group conversation, which persona authored this assistant turn.
+   *  Undefined for user messages, system messages, and single-persona convos. */
+  personaId?: string;
   /** which child id is "active" when navigating this branch point. */
   activeChildId?: string | null;
   /** runtime status used during streaming. */
@@ -73,6 +76,9 @@ export interface Conversation {
   defaultModel?: string;
   /** persona/system prompt key (v0.5+). */
   personaId?: string;
+  /** When set, this conversation is a group: every persona in the list
+   *  participates, and each assistant turn is authored by one of them. */
+  personaIds?: string[];
   /** Writing style applied to every assistant turn in this conversation. */
   styleId?: string;
   /** if imported from ChatGPT, original conversation id. */

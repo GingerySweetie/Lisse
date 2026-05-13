@@ -10,7 +10,9 @@ import {
   editUserMessage,
   regenerateAssistant,
   switchSibling,
+  letPersonaSpeak,
 } from '../lib/chat';
+import { isGroup } from '../lib/group';
 import { getActiveBranch } from '../lib/branch';
 import MessageBubble from '../components/MessageBubble';
 import ChatInput from '../components/ChatInput';
@@ -124,6 +126,70 @@ export default function ChatPage() {
     return endpoints?.find((e) => e.id === endpointId);
   }
 
+  /** Other personas in the group (excluding the current responder). */
+  function groupOthers() {
+    const ids = conversation?.personaIds ?? [];
+    if (ids.length < 2 || !personas) return undefined;
+    return personas.filter((p) => ids.includes(p.id) && p.id !== personaId);
+  }
+
+  async function handleChangeGroup(nextIds: string[]) {
+    if (!conversation) return;
+    // Less than 2 personas: drop group mode entirely.
+    const personaIds = nextIds.length >= 2 ? nextIds : undefined;
+    // If the current responder is no longer in the group, switch to the
+    // first member.
+    let nextPersonaId = personaId;
+    if (personaIds && (!nextPersonaId || !personaIds.includes(nextPersonaId))) {
+      nextPersonaId = personaIds[0];
+      setPersonaId(nextPersonaId);
+    } else if (!personaIds && nextIds.length === 1) {
+      // Single-persona convo from a previous group.
+      nextPersonaId = nextIds[0];
+      setPersonaId(nextPersonaId);
+    }
+    await db.conversations.update(conversation.id, {
+      personaIds,
+      personaId: nextPersonaId ?? undefined,
+      updatedAt: Date.now(),
+    });
+  }
+
+  async function handleLetSpeak(speaker: import('../types').Persona) {
+    if (!conversation || !endpointId || !model) return;
+    const ep = selectedEndpoint();
+    if (!ep) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setStreamingText('');
+    setStreamingThinking('');
+    const others = (personas ?? []).filter(
+      (p) => (conversation.personaIds ?? []).includes(p.id) && p.id !== speaker.id,
+    );
+    await letPersonaSpeak({
+      conversation,
+      endpoint: ep,
+      model,
+      persona: speaker,
+      style: selectedStyle(),
+      groupOthers: others.length > 0 ? others : undefined,
+      signal: controller.signal,
+      onDelta: (delta, assistantId) => {
+        setStreamingId(assistantId);
+        setStreamingText((prev) => prev + delta);
+      },
+      onThinking: (delta, assistantId) => {
+        setStreamingId(assistantId);
+        setStreamingThinking((prev) => prev + delta);
+      },
+    });
+    setStreamingId(null);
+    setStreamingText('');
+    setStreamingThinking('');
+    abortRef.current = null;
+  }
+
   async function handleSend(text: string, attachments: Attachment[]) {
     if (!endpointId || !model) return;
     const ep = selectedEndpoint();
@@ -154,6 +220,7 @@ export default function ChatPage() {
       attachments,
       persona: selectedPersona(),
       style: selectedStyle(),
+      groupOthers: groupOthers(),
       signal: controller.signal,
       onDelta: (delta, assistantId) => {
         setStreamingId(assistantId);
@@ -204,6 +271,7 @@ export default function ChatPage() {
       model,
       persona: selectedPersona(),
       style: selectedStyle(),
+      groupOthers: groupOthers(),
       signal: controller.signal,
       onDelta: (delta, assistantId) => {
         setStreamingId(assistantId);
@@ -236,6 +304,7 @@ export default function ChatPage() {
       model,
       persona: selectedPersona(),
       style: selectedStyle(),
+      groupOthers: groupOthers(),
       signal: controller.signal,
       onDelta: (delta, assistantId) => {
         setStreamingId(assistantId);
@@ -355,6 +424,8 @@ export default function ChatPage() {
             <PersonaPicker
               personaId={personaId}
               onChange={setPersonaId}
+              groupPersonaIds={conversation?.personaIds}
+              onChangeGroup={handleChangeGroup}
               contextText={branch
                 .slice(-4)
                 .map((m) => m.content)
@@ -386,8 +457,22 @@ export default function ChatPage() {
                 <MessageBubble
                   message={m}
                   personaId={
-                    conversation?.personaId ?? personaId ?? undefined
+                    m.personaId ?? conversation?.personaId ?? personaId ?? undefined
                   }
+                  authorPersona={
+                    m.personaId
+                      ? personas?.find((p) => p.id === m.personaId)
+                      : undefined
+                  }
+                  isGroup={isGroup(conversation?.personaIds)}
+                  groupMembers={
+                    isGroup(conversation?.personaIds) && personas
+                      ? personas.filter((p) =>
+                          (conversation?.personaIds ?? []).includes(p.id),
+                        )
+                      : undefined
+                  }
+                  onLetSpeak={(p) => handleLetSpeak(p)}
                   streamingText={
                     m.id === streamingId ? streamingText : undefined
                   }

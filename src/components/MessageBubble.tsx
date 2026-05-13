@@ -15,7 +15,7 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react';
-import type { Attachment, Message } from '../types';
+import type { Attachment, Message, Persona } from '../types';
 import { getSiblingInfo, type SiblingInfo } from '../lib/branch';
 import { attachmentDataUrl, formatBytes } from '../lib/attachments';
 import { getPersonaFontStack } from '../lib/persona-state';
@@ -28,8 +28,16 @@ interface Props {
   streamingThinking?: string;
   /** Disable interactive controls (during another stream). */
   disabled?: boolean;
-  /** Persona id for the conversation; assistant text gets that persona's font. */
+  /** Persona id for font lookup; usually the author for group, conversation default otherwise. */
   personaId?: string;
+  /** The persona who authored this assistant message (for the in-group label). */
+  authorPersona?: Persona;
+  /** Is this conversation a group chat? Toggles in-group affordances. */
+  isGroup?: boolean;
+  /** All persona members of the group (used to render 让 X 说 buttons). */
+  groupMembers?: Persona[];
+  /** Called when the user asks another persona to speak after this message. */
+  onLetSpeak?: (persona: Persona) => void;
   onEdit?: (newText: string) => void;
   onRegenerate?: () => void;
   onSwitchSibling?: (newActiveMessageId: string) => void;
@@ -41,6 +49,10 @@ export default function MessageBubble({
   streamingThinking,
   disabled,
   personaId,
+  authorPersona,
+  isGroup,
+  groupMembers,
+  onLetSpeak,
   onEdit,
   onRegenerate,
   onSwitchSibling,
@@ -122,6 +134,25 @@ export default function MessageBubble({
           isUser ? 'max-w-[85%]' : 'w-full max-w-full'
         }`}
       >
+        {!isUser && isGroup && authorPersona && (
+          <div className="flex items-center gap-1.5 px-1 text-xs">
+            <span
+              className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+              style={{ background: authorPersona.color }}
+            >
+              {authorPersona.avatar}
+            </span>
+            <span
+              className="font-normal italic tracking-wide"
+              style={{
+                color: authorPersona.color,
+                fontFamily: 'var(--font-serif)',
+              }}
+            >
+              {authorPersona.name}
+            </span>
+          </div>
+        )}
         {!isUser && hasThinking && (
           <ThinkingBlock
             text={thinking}
@@ -300,6 +331,31 @@ export default function MessageBubble({
                 <RefreshCw size={12} /> 重生成
               </button>
             )}
+            {!isUser &&
+              isGroup &&
+              groupMembers &&
+              onLetSpeak &&
+              groupMembers
+                .filter((p) => p.id !== message.personaId)
+                .map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onLetSpeak(p)}
+                    disabled={disabled}
+                    className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 shadow-sm ring-1 ring-lavender-100 transition hover:bg-white disabled:opacity-40"
+                    style={{ color: p.color }}
+                    title={`让 ${p.name} 说几句`}
+                  >
+                    <span
+                      className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-semibold text-white"
+                      style={{ background: p.color }}
+                    >
+                      {p.avatar}
+                    </span>
+                    让 {p.name}
+                  </button>
+                ))}
           </div>
         )}
       </div>

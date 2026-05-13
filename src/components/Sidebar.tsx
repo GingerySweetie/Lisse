@@ -262,10 +262,12 @@ function groupConversations(
 ): ConversationGroup[] {
   const personaById = new Map(personas.map((p) => [p.id, p]));
 
-  // Bucketize.
+  // Bucketize. Multi-persona conversations go into '__group__'.
   const buckets = new Map<string, Conversation[]>();
   for (const c of conversations) {
-    const key = c.personaId ?? '__none__';
+    let key: string;
+    if (c.personaIds && c.personaIds.length >= 2) key = '__group__';
+    else key = c.personaId ?? '__none__';
     const arr = buckets.get(key) ?? [];
     arr.push(c);
     buckets.set(key, arr);
@@ -289,6 +291,19 @@ function groupConversations(
       conversations: list,
     });
     buckets.delete(id);
+  }
+
+  // Group chats (multi-persona) section, after pinned personas.
+  const groupList = buckets.get('__group__');
+  if (groupList && groupList.length > 0) {
+    groups.push({
+      key: '__group__',
+      label: '群聊',
+      personaId: null,
+      persona: undefined,
+      conversations: groupList.sort((a, b) => b.updatedAt - a.updatedAt),
+    });
+    buckets.delete('__group__');
   }
 
   // Other custom personas next.
