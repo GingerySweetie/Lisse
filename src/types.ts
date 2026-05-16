@@ -16,6 +16,10 @@ export interface Endpoint {
   thinkingEnabled?: boolean;
   /** Token budget for thinking (Anthropic). 1024 minimum, 16000 typical. */
   thinkingBudget?: number;
+  /** Use Anthropic's 1-hour cache TTL instead of the 5-minute default.
+   *  2x cost per write, same 10% read price; pays off when conversations
+   *  pause > 5 min between turns. */
+  cacheLongTTL?: boolean;
   createdAt: number;
   updatedAt: number;
 }

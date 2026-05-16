@@ -55,6 +55,12 @@ export async function* streamAnthropic(
 
   // Anthropic separates system from messages. Use the array form so we can
   // attach cache_control breakpoints (90% discount on prefix re-use).
+  // Default 5-minute TTL; '1h' costs 2x to write but lives an hour — good
+  // for chats with long human pauses (away from keyboard / on a shift).
+  const cacheControl = req.endpoint.cacheLongTTL
+    ? { type: 'ephemeral' as const, ttl: '1h' as const }
+    : { type: 'ephemeral' as const };
+
   const systemText = req.messages
     .filter((m) => m.role === 'system')
     .map((m) => m.content)
@@ -64,10 +70,7 @@ export async function* streamAnthropic(
         {
           type: 'text',
           text: systemText,
-          // Cache the entire (often very long) persona+memory system prompt
-          // so re-sends of the same conversation pay 10% per turn after the
-          // first instead of full price.
-          cache_control: { type: 'ephemeral' },
+          cache_control: cacheControl,
         },
       ]
     : undefined;
@@ -81,9 +84,8 @@ export async function* streamAnthropic(
   const messages = nonSystem.map((m, i) => {
     const content = buildAnthropicContent(m.content, m.attachments);
     if (i === cacheIndex && content.length > 0) {
-      // Attach cache_control to the last block of this message.
       const last = content[content.length - 1] as Record<string, unknown>;
-      last.cache_control = { type: 'ephemeral' };
+      last.cache_control = cacheControl;
     }
     return { role: m.role, content };
   });
