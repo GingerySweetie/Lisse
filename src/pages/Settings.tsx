@@ -542,6 +542,9 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
   const [thinkingBudget, setThinkingBudget] = useState(
     endpoint?.thinkingBudget ?? 6000,
   );
+  const [cacheLongTTL, setCacheLongTTL] = useState(
+    endpoint?.cacheLongTTL ?? false,
+  );
 
   function applyPreset(presetName: string) {
     const p = PRESETS[presetName];
@@ -571,6 +574,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
       embeddingModels: parseList(embeddingModelsText),
       thinkingEnabled: format === 'anthropic' ? thinkingEnabled : undefined,
       thinkingBudget: format === 'anthropic' ? thinkingBudget : undefined,
+      cacheLongTTL: format === 'anthropic' ? cacheLongTTL : undefined,
       createdAt: endpoint?.createdAt ?? now,
       updatedAt: now,
     };
@@ -722,6 +726,27 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
                   <span className="text-xs text-ink-500">tokens</span>
                 </label>
               )}
+            </div>
+          )}
+
+          {format === 'anthropic' && (
+            <div className="rounded-lg border border-dashed border-lavender-200 bg-lavender-50/50 p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={cacheLongTTL}
+                  onChange={(e) => setCacheLongTTL(e.target.checked)}
+                  className="h-4 w-4 accent-lavender-500"
+                />
+                <span className="text-ink-900">
+                  使用 1 小时缓存（适合慢节奏聊天）
+                </span>
+              </label>
+              <p className="mt-1 text-xs text-ink-500">
+                默认 5 分钟。开启后，缓存写入费用从 1.25x 升到 2x 普通 input，
+                但读取仍是 10% —— 离开 10 分钟回来不用重写缓存。
+                聊天频率每天数次、每次间隔较长（上班 / 排班期间）建议开。
+              </p>
             </div>
           )}
         </div>
