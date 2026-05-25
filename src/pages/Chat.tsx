@@ -522,10 +522,15 @@ function EmptyEndpoints() {
 function EmptyChat() {
   return (
     <div className="mx-auto mt-20 flex max-w-md flex-col items-center text-center">
-      <WisteriaMark size={120} />
+      <div className="opacity-85">
+        <WisteriaMark size={80} />
+      </div>
       <p
-        className="mt-6 text-lg font-light italic tracking-[0.2em] text-ink-500"
-        style={{ fontFamily: 'var(--font-serif)' }}
+        className="mt-4 text-[13px] font-light tracking-[0.2em]"
+        style={{
+          fontFamily: 'var(--font-serif)',
+          color: '#9a859e',
+        }}
       >
         語を紡いで
       </p>

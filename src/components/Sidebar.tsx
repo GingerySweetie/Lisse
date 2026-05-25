@@ -1,19 +1,7 @@
 import { useMemo, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import {
-  BookOpen,
-  Brain,
-  ChevronDown,
-  ChevronRight,
-  Database,
-  MessageSquarePlus,
-  Plus,
-  Settings,
-  Trash2,
-  Users,
-  Wand2,
-} from 'lucide-react';
+import { ChevronRight, Trash2 } from 'lucide-react';
 import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
 import { relativeTime } from '../lib/format';
@@ -62,21 +50,37 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-lavender-100 px-4 py-3">
-        <WisteriaMark size={22} tone="inline" />
-        <h1
-          className="flex-1 text-xl font-normal italic tracking-wider text-ink-900"
-          style={{ fontFamily: 'var(--font-serif)' }}
-        >
-          Wisteria
-        </h1>
+      <div className="border-b border-lavender-100/70 px-5 pt-6 pb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <WisteriaMark size={28} tone="inline" />
+            <span
+              className="text-[20px] italic tracking-wider text-[#5a4060]"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontWeight: 500,
+              }}
+            >
+              Wisteria
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate?.()}
+            className="text-lg text-ink-500/80 transition hover:text-ink-700 md:hidden"
+            aria-label="关闭"
+          >
+            ✕
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={() => handleNewInGroup(null)}
-          className="flex items-center gap-1.5 rounded-full bg-lavender-100/70 px-3 py-1.5 text-xs font-light text-lavender-600 ring-1 ring-lavender-200/70 backdrop-blur-sm transition hover:bg-lavender-200/80 hover:text-ink-900"
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[rgba(176,138,204,0.2)] bg-[rgba(176,138,204,0.12)] px-4 py-2.5 text-[13px] font-light text-[#7a5a88] transition hover:bg-[rgba(176,138,204,0.18)]"
           style={{ fontFamily: 'var(--font-serif)' }}
         >
-          <MessageSquarePlus size={13} strokeWidth={1.5} />
+          <span className="text-base font-light">＋</span>
           新对话
         </button>
       </div>
@@ -90,49 +94,51 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         )}
 
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col">
           {groups.map((g) => {
             const isCollapsed = collapsed[g.key] ?? false;
+            const dotColor = g.persona?.color ?? '#a0a0a0';
             return (
-              <section key={g.key}>
-                <header className="group/header flex items-center gap-1 px-2 py-1.5">
+              <section key={g.key} className="group/section">
+                <header className="flex items-center gap-2 px-5 py-2">
                   <button
                     type="button"
                     onClick={() => toggle(g.key)}
-                    className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs uppercase tracking-wider text-ink-500 transition hover:text-ink-700"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left text-[13px] text-[#6a5070] transition hover:text-ink-700"
                   >
-                    {isCollapsed ? (
-                      <ChevronRight size={12} className="shrink-0" />
-                    ) : (
-                      <ChevronDown size={12} className="shrink-0" />
-                    )}
-                    {g.persona && (
-                      <span
-                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                        style={{ background: g.persona.color }}
-                      >
-                        {g.persona.avatar}
-                      </span>
-                    )}
-                    <span className="truncate normal-case tracking-normal">
+                    <ChevronRight
+                      size={10}
+                      strokeWidth={1.4}
+                      className={`shrink-0 transition-transform duration-200 ${
+                        isCollapsed ? '' : 'rotate-90'
+                      }`}
+                    />
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: dotColor, opacity: 0.7 }}
+                    />
+                    <span
+                      className="truncate font-normal"
+                      style={{ fontFamily: 'var(--font-serif)' }}
+                    >
                       {g.label}
                     </span>
-                    <span className="ml-auto shrink-0 rounded-full bg-lavender-50 px-1.5 py-0.5 text-[10px] font-light text-ink-500">
-                      {g.conversations.length}
-                    </span>
                   </button>
+                  <span className="rounded-lg bg-[rgba(176,138,204,0.1)] px-2 py-0.5 text-[11px] font-light text-[#b0a0b8]">
+                    {g.conversations.length}
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleNewInGroup(g.personaId)}
-                    className="rounded-full p-1 text-ink-500 opacity-0 transition hover:bg-lavender-100 hover:text-ink-900 group-hover/header:opacity-100 pointer-coarse:opacity-70"
+                    className="rounded-full p-1 text-ink-500/70 opacity-0 transition hover:bg-lavender-100 hover:text-ink-900 group-hover/section:opacity-100 pointer-coarse:opacity-70"
                     aria-label={`在 ${g.label} 中新建对话`}
                     title={`在 ${g.label} 中新建对话`}
                   >
-                    <Plus size={13} />
+                    <span className="text-sm">＋</span>
                   </button>
                 </header>
                 {!isCollapsed && (
-                  <ul className="flex flex-col gap-0.5 pl-1">
+                  <ul className="flex flex-col">
                     {g.conversations.map((conv) => {
                       const isActive = conv.id === activeId;
                       return (
@@ -140,17 +146,17 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                           <NavLink
                             to={`/chat/${conv.id}`}
                             onClick={() => onNavigate?.()}
-                            className={`group flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition ${
+                            className={`group flex items-center justify-between gap-2 px-5 py-2.5 pl-11 transition ${
                               isActive
-                                ? 'bg-lavender-100 text-ink-900'
-                                : 'text-ink-700 hover:bg-lavender-50'
+                                ? 'bg-[rgba(176,138,204,0.1)]'
+                                : 'hover:bg-[rgba(176,138,204,0.06)]'
                             }`}
                           >
                             <div className="min-w-0 flex-1">
-                              <div className="truncate font-normal">
+                              <div className="truncate text-[14px] font-light leading-tight text-[#4a3550]">
                                 {conv.title}
                               </div>
-                              <div className="text-xs font-light text-ink-500">
+                              <div className="mt-1 text-[11px] font-light text-[#b8a8c0]">
                                 {relativeTime(conv.updatedAt)}
                               </div>
                             </div>
@@ -174,91 +180,32 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-0.5 border-t border-lavender-100 px-2 py-2">
-        <NavLink
-          to="/personas"
-          onClick={() => onNavigate?.()}
-          className={({ isActive }) =>
-            `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-              isActive
-                ? 'bg-lavender-100 text-ink-900'
-                : 'text-ink-700 hover:bg-lavender-50'
-            }`
-          }
-        >
-          <Users size={16} />
-          人格
-        </NavLink>
-        <NavLink
-          to="/books"
-          onClick={() => onNavigate?.()}
-          className={({ isActive }) =>
-            `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-              isActive
-                ? 'bg-lavender-100 text-ink-900'
-                : 'text-ink-700 hover:bg-lavender-50'
-            }`
-          }
-        >
-          <BookOpen size={16} />
-          书架
-        </NavLink>
-        <NavLink
-          to="/styles"
-          onClick={() => onNavigate?.()}
-          className={({ isActive }) =>
-            `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-              isActive
-                ? 'bg-lavender-100 text-ink-900'
-                : 'text-ink-700 hover:bg-lavender-50'
-            }`
-          }
-        >
-          <Wand2 size={16} />
-          写作风格
-        </NavLink>
-        <NavLink
-          to="/memory"
-          onClick={() => onNavigate?.()}
-          className={({ isActive }) =>
-            `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-              isActive
-                ? 'bg-lavender-100 text-ink-900'
-                : 'text-ink-700 hover:bg-lavender-50'
-            }`
-          }
-        >
-          <Brain size={16} />
-          记忆
-        </NavLink>
-        <NavLink
-          to="/data"
-          onClick={() => onNavigate?.()}
-          className={({ isActive }) =>
-            `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-              isActive
-                ? 'bg-lavender-100 text-ink-900'
-                : 'text-ink-700 hover:bg-lavender-50'
-            }`
-          }
-        >
-          <Database size={16} />
-          导入 / 导出
-        </NavLink>
-        <NavLink
-          to="/settings"
-          onClick={() => onNavigate?.()}
-          className={({ isActive }) =>
-            `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
-              isActive
-                ? 'bg-lavender-100 text-ink-900'
-                : 'text-ink-700 hover:bg-lavender-50'
-            }`
-          }
-        >
-          <Settings size={16} />
-          Endpoints
-        </NavLink>
+      <div className="border-t border-lavender-100/70 py-2 pb-5">
+        {[
+          { to: '/personas', glyph: '◇', label: '人格' },
+          { to: '/books', glyph: '☷', label: '书架' },
+          { to: '/styles', glyph: '✦', label: '写作风格' },
+          { to: '/memory', glyph: '◎', label: '记忆' },
+          { to: '/data', glyph: '⇄', label: '导入 / 导出' },
+          { to: '/settings', glyph: '⊙', label: 'Endpoints' },
+        ].map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            onClick={() => onNavigate?.()}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-5 py-2.5 text-[13px] transition ${
+                isActive
+                  ? 'bg-[rgba(176,138,204,0.08)] text-[#5a4060]'
+                  : 'text-[#7a6a82] hover:bg-[rgba(176,138,204,0.04)] hover:text-[#5a4060]'
+              }`
+            }
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
+            <span className="text-sm opacity-60">{item.glyph}</span>
+            {item.label}
+          </NavLink>
+        ))}
       </div>
     </div>
   );
