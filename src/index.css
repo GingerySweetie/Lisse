@@ -85,25 +85,29 @@
   body {
     font-family: var(--font-sans);
     color: var(--color-ink-700);
-    /* Afternoon wisteria gallery: soft purple haze settling onto a
-       sun-warmed sky. Two layers — a diffuse radial glow for the
-       "shaft of light" feel + a directional gradient for the corridor. */
-    background-color: var(--color-lavender-50);
+    /* Afternoon wisteria gallery: pale purple haze drifting toward a
+       sun-warmed corner. Three layers — peach radial glow upper-right,
+       dusty-lavender glow lower-left, base diagonal gradient. The
+       gradient stops are deliberately further apart than the previous
+       version so the warmth actually reads on screen. */
+    background-color: #F4ECF6;
     background-image:
       radial-gradient(
-        ellipse at 80% 0%,
-        rgba(247, 236, 208, 0.55) 0%,
-        rgba(247, 236, 208, 0) 55%
+        ellipse 70% 60% at 100% -10%,
+        rgba(248, 218, 198, 0.72) 0%,
+        rgba(248, 218, 198, 0) 60%
       ),
       radial-gradient(
-        ellipse at 0% 100%,
-        rgba(199, 220, 235, 0.4) 0%,
-        rgba(199, 220, 235, 0) 60%
+        ellipse 80% 70% at -10% 100%,
+        rgba(199, 174, 220, 0.45) 0%,
+        rgba(199, 174, 220, 0) 60%
       ),
       linear-gradient(
-        135deg,
-        var(--color-lavender-50) 0%,
-        var(--color-lavender-100) 100%
+        160deg,
+        #F6EEF8 0%,
+        #EFE2F1 45%,
+        #F2DEDF 80%,
+        #F7E6D3 100%
       );
     background-attachment: fixed;
     /* Light weight across the board for the "纤细" delicate feel.
