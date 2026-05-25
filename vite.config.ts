@@ -15,8 +15,8 @@ export default defineConfig({
         name: 'Wisteria',
         short_name: 'Wisteria',
         description: '一个能续聊老对话的多模型客户端',
-        theme_color: '#D4C5E2',
-        background_color: '#E8DFF0',
+        theme_color: '#DCC9EA',
+        background_color: '#F4ECF6',
         display: 'standalone',
         start_url: '/',
         icons: [

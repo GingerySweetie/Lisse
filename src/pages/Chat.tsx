@@ -524,10 +524,10 @@ function EmptyChat() {
     <div className="mx-auto mt-20 flex max-w-md flex-col items-center text-center">
       <WisteriaMark size={120} />
       <p
-        className="mt-6 text-base font-light italic tracking-wider text-ink-500"
+        className="mt-6 text-lg font-light italic tracking-[0.2em] text-ink-500"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
-        纺一句话
+        語を紡いで
       </p>
     </div>
   );
