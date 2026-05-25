@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
+  BookOpen,
   Brain,
   ChevronDown,
   ChevronRight,
@@ -184,6 +185,20 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         >
           <Users size={16} />
           人格
+        </NavLink>
+        <NavLink
+          to="/books"
+          onClick={() => onNavigate?.()}
+          className={({ isActive }) =>
+            `flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
+              isActive
+                ? 'bg-lavender-100 text-ink-900'
+                : 'text-ink-700 hover:bg-lavender-50'
+            }`
+          }
+        >
+          <BookOpen size={16} />
+          书架
         </NavLink>
         <NavLink
           to="/styles"

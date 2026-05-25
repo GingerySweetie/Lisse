@@ -1,6 +1,7 @@
 import { db, getSettings, saveSettings } from '../db';
 import type {
   AppSettings,
+  Book,
   Conversation,
   Endpoint,
   MemoryFact,
@@ -13,7 +14,7 @@ export interface BackupBundle {
   /** Format identifier for sanity-checking. */
   __lisse: 'backup';
   /** Schema version of the bundle (not Dexie's). */
-  version: 3;
+  version: 4;
   exportedAt: number;
   settings: AppSettings;
   endpoints: Endpoint[];
@@ -22,6 +23,7 @@ export interface BackupBundle {
   messages: Message[];
   memoryFacts?: MemoryFact[];
   writingStyles?: WritingStyle[];
+  books?: Book[];
 }
 
 export async function exportBackup(): Promise<BackupBundle> {
@@ -33,6 +35,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     messages,
     memoryFacts,
     writingStyles,
+    books,
   ] = await Promise.all([
     getSettings(),
     db.endpoints.toArray(),
@@ -41,10 +44,11 @@ export async function exportBackup(): Promise<BackupBundle> {
     db.messages.toArray(),
     db.memoryFacts.toArray(),
     db.writingStyles.toArray(),
+    db.books.toArray(),
   ]);
   return {
     __lisse: 'backup',
-    version: 3,
+    version: 4,
     exportedAt: Date.now(),
     settings,
     endpoints,
@@ -53,6 +57,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     messages,
     memoryFacts,
     writingStyles,
+    books,
   };
 }
 
@@ -68,6 +73,7 @@ export interface ImportBackupResult {
   messagesAdded: number;
   memoryFactsAdded: number;
   writingStylesAdded: number;
+  booksAdded: number;
   settingsApplied: boolean;
 }
 
@@ -102,6 +108,7 @@ export async function importBackup(
         db.messages,
         db.memoryFacts,
         db.writingStyles,
+        db.books,
         db.kv,
       ],
       async () => {
@@ -111,6 +118,7 @@ export async function importBackup(
         await db.messages.clear();
         await db.memoryFacts.clear();
         await db.writingStyles.clear();
+        await db.books.clear();
         await db.kv.clear();
       },
     );
@@ -123,6 +131,7 @@ export async function importBackup(
     messagesAdded: 0,
     memoryFactsAdded: 0,
     writingStylesAdded: 0,
+    booksAdded: 0,
     settingsApplied: false,
   };
 
@@ -135,6 +144,7 @@ export async function importBackup(
       db.messages,
       db.memoryFacts,
       db.writingStyles,
+      db.books,
     ],
     async () => {
       for (const e of bundle.endpoints ?? []) {
@@ -172,6 +182,12 @@ export async function importBackup(
         if (exists && opts.mode === 'merge') continue;
         await db.writingStyles.put(s);
         result.writingStylesAdded++;
+      }
+      for (const b of bundle.books ?? []) {
+        const exists = await db.books.get(b.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.books.put(b);
+        result.booksAdded++;
       }
     },
   );

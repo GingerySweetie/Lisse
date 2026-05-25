@@ -28,6 +28,8 @@ export interface SendOptions {
   groupOthers?: Persona[];
   /** User-attached images/files for this turn. */
   attachments?: Attachment[];
+  /** Reading anchor (for book/共读 conversations). */
+  bookAnchor?: Message['bookAnchor'];
   /** Called on every visible-text chunk. */
   onDelta?: (delta: string, assistantMessageId: string) => void;
   /** Called on every thinking-text chunk (Anthropic extended thinking). */
@@ -50,6 +52,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     style,
     groupOthers,
     attachments,
+    bookAnchor,
     onDelta,
     onThinking,
     signal,
@@ -66,6 +69,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     role: 'user',
     content: userText,
     attachments: attachments && attachments.length > 0 ? attachments : undefined,
+    bookAnchor,
     status: 'done',
     endpointId: endpoint.id,
     model,
@@ -357,6 +361,48 @@ async function streamAssistant(args: {
     signal,
   } = args;
 
+  // Reading-session context: if this conversation is linked to a book and
+  // the latest user message has a bookAnchor, build a "currently reading"
+  // block to prepend to the system prompt. The persona sees what passage
+  // the user is looking at + their selection.
+  let bookBlock = '';
+  if (branch.length > 0) {
+    const lastWithAnchor = [...branch]
+      .reverse()
+      .find((m) => m.role === 'user' && m.bookAnchor);
+    const convId = branch[0]?.conversationId;
+    if (convId) {
+      const conv = await db.conversations.get(convId);
+      if (conv?.bookId) {
+        const book = await db.books.get(conv.bookId);
+        if (book) {
+          const a = lastWithAnchor?.bookAnchor;
+          const percent = a
+            ? Math.round((a.position / Math.max(1, book.totalChars)) * 100)
+            : null;
+          const lines: string[] = [];
+          lines.push('# 共读语境');
+          lines.push(
+            `你正在和她一起读《${book.title}》${book.author ? `（${book.author}）` : ''}。`,
+          );
+          if (percent !== null) lines.push(`她目前读到大约 ${percent}% 处。`);
+          if (a?.selection) {
+            lines.push(`\n她刚才划出了这一段（重点）：\n> ${a.selection.replace(/\n/g, '\n> ')}`);
+          }
+          if (a?.excerpt) {
+            lines.push(`\n附近的原文（前后约几百字，供你定位）：\n${a.excerpt}`);
+          }
+          lines.push(
+            '\n她接下来发来的不是泛泛聊天，是对刚才那段的吐槽 / 评论 / 提问。\
+请围绕这段原文回应，可以同意 / 反驳 / 延伸 / 接梗。\
+你可以引用原文细节，但不要逐句复读。',
+          );
+          bookBlock = lines.join('\n');
+        }
+      }
+    }
+  }
+
   // Memory retrieval: scoped to current persona, keyed off latest user message.
   let memoryBlock = '';
   const lastUser = [...branch].reverse().find((m) => m.role === 'user');
@@ -372,6 +418,7 @@ async function streamAssistant(args: {
   const turns: ChatTurn[] = [];
   const systemParts: string[] = [];
   if (persona && persona.systemPrompt.trim()) systemParts.push(persona.systemPrompt);
+  if (bookBlock) systemParts.push(bookBlock);
   if (memoryBlock) systemParts.push(memoryBlock);
   // In group mode, tell the responder about the other AIs in the room.
   if (persona && groupOthers && groupOthers.length > 0) {

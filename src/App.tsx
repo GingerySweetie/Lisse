@@ -7,6 +7,8 @@ import PersonasPage from './pages/Personas';
 import ImportExportPage from './pages/ImportExport';
 import MemoryPage from './pages/Memory';
 import StylesPage from './pages/Styles';
+import BooksPage from './pages/Books';
+import ReadPage from './pages/Read';
 
 export default function App() {
   return (
@@ -19,6 +21,8 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/personas" element={<PersonasPage />} />
           <Route path="/styles" element={<StylesPage />} />
+          <Route path="/books" element={<BooksPage />} />
+          <Route path="/read/:bookId" element={<ReadPage />} />
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/data" element={<ImportExportPage />} />
           <Route path="*" element={<Navigate to="/chat" replace />} />
