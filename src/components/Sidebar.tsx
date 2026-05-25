@@ -68,7 +68,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           className="flex-1 text-xl font-normal italic tracking-wider text-ink-900"
           style={{ fontFamily: 'var(--font-serif)' }}
         >
-          Lisse
+          Wisteria
         </h1>
         <button
           type="button"
