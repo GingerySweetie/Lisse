@@ -20,6 +20,7 @@ import EndpointPicker from '../components/EndpointPicker';
 import PersonaPicker from '../components/PersonaPicker';
 import StylePicker from '../components/StylePicker';
 import ExportMenu from '../components/ExportMenu';
+import WisteriaMark from '../components/WisteriaMark';
 import { estimateConversationCostUSD, formatUSD } from '../lib/pricing';
 import type { Attachment, Conversation, Message } from '../types';
 
@@ -520,19 +521,13 @@ function EmptyEndpoints() {
 
 function EmptyChat() {
   return (
-    <div className="mx-auto mt-24 max-w-md text-center">
-      <div
-        className="select-none text-7xl font-light text-lavender-300/50"
-        style={{ fontFamily: 'var(--font-serif)' }}
-        aria-hidden="true"
-      >
-        語
-      </div>
+    <div className="mx-auto mt-20 flex max-w-md flex-col items-center text-center">
+      <WisteriaMark size={120} />
       <p
-        className="mt-5 text-sm font-light italic text-ink-500"
+        className="mt-6 text-base font-light italic tracking-wider text-ink-500"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
-        说点什么，让这场对话开始……
+        纺一句话
       </p>
     </div>
   );

@@ -1,10 +1,29 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { Menu } from 'lucide-react';
+import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Track visibility transitions so ambient-status inference has fresh
+  // timestamps to look at. Bootstraps once on mount, then listens for
+  // every show/hide of the tab/PWA.
+  useEffect(() => {
+    bootstrapBehavior();
+    function onVis() {
+      recordVisibilityChange();
+    }
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', onVis);
+    window.addEventListener('pageshow', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', onVis);
+      window.removeEventListener('pageshow', onVis);
+    };
+  }, []);
 
   return (
     <div className="flex h-full w-full overflow-hidden">

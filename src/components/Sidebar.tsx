@@ -18,6 +18,7 @@ import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
 import { relativeTime } from '../lib/format';
 import type { Conversation, Persona } from '../types';
+import WisteriaMark from './WisteriaMark';
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
@@ -61,9 +62,10 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-lavender-100 px-4 py-3">
+      <div className="flex items-center gap-2 border-b border-lavender-100 px-4 py-3">
+        <WisteriaMark size={22} tone="inline" />
         <h1
-          className="text-xl font-normal italic tracking-wider text-ink-900"
+          className="flex-1 text-xl font-normal italic tracking-wider text-ink-900"
           style={{ fontFamily: 'var(--font-serif)' }}
         >
           Lisse
@@ -71,9 +73,10 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <button
           type="button"
           onClick={() => handleNewInGroup(null)}
-          className="flex items-center gap-1.5 rounded-full bg-lavender-200/60 px-3 py-1.5 text-sm font-normal text-lavender-600 ring-1 ring-lavender-300/40 backdrop-blur-sm transition hover:bg-lavender-300/70 hover:text-ink-900"
+          className="flex items-center gap-1.5 rounded-full bg-lavender-100/70 px-3 py-1.5 text-xs font-light text-lavender-600 ring-1 ring-lavender-200/70 backdrop-blur-sm transition hover:bg-lavender-200/80 hover:text-ink-900"
+          style={{ fontFamily: 'var(--font-serif)' }}
         >
-          <MessageSquarePlus size={15} />
+          <MessageSquarePlus size={13} strokeWidth={1.5} />
           新对话
         </button>
       </div>
