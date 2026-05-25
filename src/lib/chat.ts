@@ -16,6 +16,7 @@ import {
   extractAndStoreFacts,
 } from './memory';
 import { buildGroupTurns, groupAwarenessSnippet } from './group';
+import { formatStatusBlock } from './behavior';
 
 export interface SendOptions {
   conversation: Conversation;
@@ -420,6 +421,11 @@ async function streamAssistant(args: {
   if (persona && persona.systemPrompt.trim()) systemParts.push(persona.systemPrompt);
   if (bookBlock) systemParts.push(bookBlock);
   if (memoryBlock) systemParts.push(memoryBlock);
+  // Ambient status: device usage timing + manual quick chips. Always-on for
+  // now (local data only, no extra cost). If the user disables it later we
+  // can guard on settings.behaviorEnabled.
+  const statusBlock = formatStatusBlock();
+  if (statusBlock) systemParts.push(statusBlock);
   // In group mode, tell the responder about the other AIs in the room.
   if (persona && groupOthers && groupOthers.length > 0) {
     systemParts.push(groupAwarenessSnippet(persona, groupOthers));
