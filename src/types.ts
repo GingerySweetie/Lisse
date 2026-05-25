@@ -53,6 +53,17 @@ export interface Message {
   /** In a group conversation, which persona authored this assistant turn.
    *  Undefined for user messages, system messages, and single-persona convos. */
   personaId?: string;
+  /** Reading context anchor: which slice of the book this message is
+   *  commenting on. Used to give the assistant the focal passage. */
+  bookAnchor?: {
+    /** Character offset into the book content where the user was. */
+    position: number;
+    /** The text the user highlighted, or null if they just commented from
+     *  the scroll position. */
+    selection?: string;
+    /** Pre-computed surrounding excerpt for the prompt (±~400 chars). */
+    excerpt: string;
+  };
   /** which child id is "active" when navigating this branch point. */
   activeChildId?: string | null;
   /** runtime status used during streaming. */
@@ -88,6 +99,8 @@ export interface Conversation {
   /** if imported from ChatGPT, original conversation id. */
   sourceId?: string;
   source?: 'native' | 'chatgpt' | 'claude';
+  /** When set, this conversation is the discussion thread for a book. */
+  bookId?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -151,6 +164,27 @@ export interface WritingStyle {
   /** Prompt block appended to system after persona + memory. */
   prompt: string;
   builtin?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * A book stored locally for the in-app reader. Content is the full text;
+ * format affects rendering only. Each book has at most one primary
+ * conversation (the "reading group chat") where commentary lives.
+ */
+export interface Book {
+  id: string;
+  title: string;
+  author?: string;
+  content: string;
+  format: 'txt' | 'md';
+  /** Cached length of content in characters, for progress / scrubber. */
+  totalChars: number;
+  /** Linked conversation where comments live. Set on first comment. */
+  conversationId?: string;
+  /** Last reading position (character offset into content). */
+  lastPosition?: number;
   createdAt: number;
   updatedAt: number;
 }

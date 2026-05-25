@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
   AppSettings,
+  Book,
   Conversation,
   Endpoint,
   MemoryFact,
@@ -21,6 +22,7 @@ class LisseDB extends Dexie {
   personas!: EntityTable<Persona, 'id'>;
   memoryFacts!: EntityTable<MemoryFact, 'id'>;
   writingStyles!: EntityTable<WritingStyle, 'id'>;
+  books!: EntityTable<Book, 'id'>;
   kv!: EntityTable<KVRow, 'key'>;
 
   constructor() {
@@ -83,6 +85,17 @@ class LisseDB extends Dexie {
       personas: 'id, name, builtin, createdAt',
       memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
       writingStyles: 'id, name, builtin, createdAt',
+      kv: 'key',
+    });
+
+    this.version(6).stores({
+      endpoints: 'id, name, format, createdAt',
+      conversations: 'id, updatedAt, createdAt, source, personaId, styleId, bookId',
+      messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+      personas: 'id, name, builtin, createdAt',
+      memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+      writingStyles: 'id, name, builtin, createdAt',
+      books: 'id, title, createdAt, updatedAt, conversationId',
       kv: 'key',
     });
 
