@@ -1,5 +1,10 @@
 @import 'tailwindcss';
 
+/* Cormorant Garamond for the 'Wisteria' wordmark — Latin script needs
+ * a different display face than the kaishu used for Chinese titles.
+ * Loaded from Google Fonts; the SW caches it after first hit (woff2). */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,400;1,500&display=swap');
+
 /*
  * Bundled web font for Rhema's calligraphy voice.
  *
@@ -66,6 +71,10 @@
     'Songti SC', 'STSong', '宋体',
     Georgia, ui-serif, serif;
   --font-mono: ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+  /* Latin display face for the Wisteria wordmark. */
+  --font-display:
+    'Cormorant Garamond', 'EB Garamond', 'Source Han Serif SC',
+    Georgia, serif;
 }
 
 @layer base {
@@ -90,24 +99,26 @@
        dusty-lavender glow lower-left, base diagonal gradient. The
        gradient stops are deliberately further apart than the previous
        version so the warmth actually reads on screen. */
-    background-color: #F4ECF6;
+    background-color: #f5eef8;
     background-image:
+      /* Decorative radial wash — bottom-left lavender + top-right teal. */
       radial-gradient(
-        ellipse 70% 60% at 100% -10%,
-        rgba(248, 218, 198, 0.72) 0%,
-        rgba(248, 218, 198, 0) 60%
+        ellipse at 20% 80%,
+        rgba(180, 140, 204, 0.08) 0%,
+        transparent 50%
       ),
       radial-gradient(
-        ellipse 80% 70% at -10% 100%,
-        rgba(199, 174, 220, 0.45) 0%,
-        rgba(199, 174, 220, 0) 60%
+        ellipse at 80% 20%,
+        rgba(123, 170, 184, 0.06) 0%,
+        transparent 50%
       ),
       linear-gradient(
-        160deg,
-        #F6EEF8 0%,
-        #EFE2F1 45%,
-        #F2DEDF 80%,
-        #F7E6D3 100%
+        165deg,
+        #f5eef8 0%,
+        #f0e8f5 30%,
+        #eee5f2 50%,
+        #f2e9f0 70%,
+        #f5eff5 100%
       );
     background-attachment: fixed;
     /* Light weight across the board for the "纤细" delicate feel.
