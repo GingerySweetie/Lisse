@@ -10,7 +10,8 @@ import StylesPage from './pages/Styles';
 import BooksPage from './pages/Books';
 import ReadPage from './pages/Read';
 import HomePage from './pages/Home';
-import BedroomPage from './pages/Bedroom';
+import BedroomPickerPage from './pages/Bedroom';
+import BedroomChatPage from './pages/BedroomChat';
 import BillingPage from './pages/Billing';
 import BodyPage from './pages/Body';
 
@@ -21,7 +22,8 @@ export default function App() {
         <Route element={<Layout />}>
           <Route index element={<Navigate to="/home" replace />} />
           <Route path="/home" element={<HomePage />} />
-          <Route path="/bedroom" element={<BedroomPage />} />
+          <Route path="/bedroom" element={<BedroomPickerPage />} />
+          <Route path="/bedroom/:personaId" element={<BedroomChatPage />} />
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/body" element={<BodyPage />} />
           <Route path="/chat" element={<ChatPage />} />

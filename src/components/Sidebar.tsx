@@ -230,8 +230,10 @@ function groupConversations(
   const personaById = new Map(personas.map((p) => [p.id, p]));
 
   // Bucketize. Multi-persona conversations go into '__group__'.
+  // Bedroom conversations are hidden — they live on /bedroom/:personaId.
   const buckets = new Map<string, Conversation[]>();
   for (const c of conversations) {
+    if (c.room === 'bedroom') continue;
     let key: string;
     if (c.personaIds && c.personaIds.length >= 2) key = '__group__';
     else key = c.personaId ?? '__none__';
