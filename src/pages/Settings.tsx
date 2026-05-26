@@ -483,11 +483,19 @@ interface EditorProps {
 }
 
 const PRESETS: Record<string, Partial<Endpoint>> = {
-  'AIHubMix (OpenAI 格式)': {
+  // ─── 中转 / 聚合（支持国内支付）────────────────────────
+  'AIHubMix · 主力（一条模型）': {
     baseUrl: 'https://aihubmix.com/v1',
     format: 'openai',
     authStyle: 'bearer',
-    chatModels: ['gpt-4o', 'gpt-4o-mini'],
+    chatModels: ['gpt-4o-2024-11-20'],
+    embeddingModels: [],
+  },
+  'AIHubMix · 抽取小模型': {
+    baseUrl: 'https://aihubmix.com/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['gpt-4o-mini', 'claude-3-5-haiku-latest', 'deepseek-chat'],
     embeddingModels: ['text-embedding-3-small'],
   },
   'AIHubMix (Anthropic 格式)': {
@@ -497,13 +505,87 @@ const PRESETS: Record<string, Partial<Endpoint>> = {
     chatModels: ['claude-sonnet-4-5', 'claude-opus-4-5'],
     embeddingModels: [],
   },
-  'SiliconFlow': {
+  'OpenRouter（聚合，多家模型）': {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: [
+      'anthropic/claude-sonnet-4.5',
+      'openai/gpt-4o-2024-11-20',
+      'google/gemini-2.0-flash-exp',
+      'meta-llama/llama-3.3-70b-instruct',
+    ],
+    embeddingModels: [],
+  },
+  'SiliconFlow（国内，bge-m3 友好）': {
     baseUrl: 'https://api.siliconflow.cn/v1',
     format: 'openai',
     authStyle: 'bearer',
-    chatModels: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-72B-Instruct'],
-    embeddingModels: ['BAAI/bge-m3'],
+    chatModels: [
+      'deepseek-ai/DeepSeek-V3',
+      'Qwen/Qwen2.5-72B-Instruct',
+      'Qwen/QwQ-32B',
+    ],
+    embeddingModels: ['BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5'],
   },
+
+  // ─── 国内官方（多数支持支付宝/微信）──────────────────
+  'DeepSeek 官方': {
+    baseUrl: 'https://api.deepseek.com/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['deepseek-chat', 'deepseek-reasoner'],
+    embeddingModels: [],
+  },
+  '智谱 GLM (BigModel)': {
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['glm-4-plus', 'glm-4-flash', 'glm-zero-preview'],
+    embeddingModels: ['embedding-3'],
+  },
+  'Moonshot Kimi': {
+    baseUrl: 'https://api.moonshot.cn/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: [
+      'kimi-k2-0905-preview',
+      'moonshot-v1-8k',
+      'moonshot-v1-32k',
+      'moonshot-v1-128k',
+    ],
+    embeddingModels: [],
+  },
+  '通义千问 (DashScope)': {
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwq-32b-preview'],
+    embeddingModels: ['text-embedding-v3'],
+  },
+  '零一万物 Yi': {
+    baseUrl: 'https://api.lingyiwanwu.com/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['yi-large', 'yi-medium', 'yi-vision-v2'],
+    embeddingModels: [],
+  },
+  '阶跃 StepFun': {
+    baseUrl: 'https://api.stepfun.com/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['step-2-16k', 'step-1-32k', 'step-1-flash'],
+    embeddingModels: [],
+  },
+  'MiniMax': {
+    baseUrl: 'https://api.minimaxi.com/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['MiniMax-Text-01', 'abab6.5s-chat'],
+    embeddingModels: ['embo-01'],
+  },
+
+  // ─── 海外官方 ──────────────────────────────────────────
   'Anthropic 官方': {
     baseUrl: 'https://api.anthropic.com/v1',
     format: 'anthropic',
@@ -515,8 +597,36 @@ const PRESETS: Record<string, Partial<Endpoint>> = {
     baseUrl: 'https://api.openai.com/v1',
     format: 'openai',
     authStyle: 'bearer',
-    chatModels: ['gpt-4o', 'gpt-4o-mini', 'o1-mini'],
+    chatModels: ['gpt-4o-2024-11-20', 'gpt-4o-mini', 'o1', 'o1-mini', 'o3-mini'],
     embeddingModels: ['text-embedding-3-small', 'text-embedding-3-large'],
+  },
+  'Groq（极速推理）': {
+    baseUrl: 'https://api.groq.com/openai/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: [
+      'llama-3.3-70b-versatile',
+      'mixtral-8x7b-32768',
+      'gemma2-9b-it',
+    ],
+    embeddingModels: [],
+  },
+  'Together AI': {
+    baseUrl: 'https://api.together.xyz/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: [
+      'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+      'deepseek-ai/DeepSeek-V3',
+    ],
+    embeddingModels: [],
+  },
+  'xAI Grok': {
+    baseUrl: 'https://api.x.ai/v1',
+    format: 'openai',
+    authStyle: 'bearer',
+    chatModels: ['grok-2-latest', 'grok-2-1212', 'grok-beta'],
+    embeddingModels: [],
   },
 };
 
@@ -612,6 +722,11 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
                 </button>
               ))}
             </div>
+            <p className="mt-2 text-[11px] font-light leading-relaxed text-ink-500">
+              小提示：一条 endpoint 下所有模型共用同一个 key。
+              如果担心选错模型，建议把"聊天主力"和"抽取小模型"分成两条 endpoint
+              （它们可以共用同一把 key，只是模型列表不同）。
+            </p>
           </div>
         )}
 
