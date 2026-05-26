@@ -3,7 +3,7 @@
 /* Cormorant Garamond for the 'Wisteria' wordmark — Latin script needs
  * a different display face than the kaishu used for Chinese titles.
  * Loaded from Google Fonts; the SW caches it after first hit (woff2). */
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,400;1,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,400;1,500&family=Crimson+Pro:ital,wght@0,300;0,400;1,300;1,400&family=Noto+Serif+SC:wght@300;400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 /*
  * Bundled web font for Rhema's calligraphy voice.

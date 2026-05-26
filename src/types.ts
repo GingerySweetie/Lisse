@@ -189,6 +189,32 @@ export interface Book {
   updatedAt: number;
 }
 
+/**
+ * Expense / billing record. Storage for the 账单 room — separate from
+ * conversations so it can have its own schema and listing semantics.
+ */
+export type BillCategory =
+  | '餐饮'
+  | '交通'
+  | '购物'
+  | '日用'
+  | '娱乐'
+  | '医疗';
+
+export interface Bill {
+  id: string;
+  /** Date string formatted MM/DD for grouping (year derived from createdAt). */
+  date: string;
+  /** What was bought / what the spend was for. */
+  item: string;
+  /** Amount in user's local currency (treat as ¥). */
+  amount: number;
+  category: BillCategory;
+  /** Whether this was auto-detected from somewhere or hand-entered. */
+  source: 'auto' | 'manual';
+  createdAt: number;
+}
+
 /** Categories used by the extractor; rendered as colored chips in the UI. */
 export type FactCategory =
   | 'user_fact'
