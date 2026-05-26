@@ -20,6 +20,7 @@ import EndpointPicker from '../components/EndpointPicker';
 import PersonaPicker from '../components/PersonaPicker';
 import StylePicker from '../components/StylePicker';
 import ExportMenu from '../components/ExportMenu';
+import AccentPicker from '../components/AccentPicker';
 import WisteriaMark from '../components/WisteriaMark';
 import { estimateConversationCostUSD, formatUSD } from '../lib/pricing';
 import type { Attachment, Conversation, Message } from '../types';
@@ -370,7 +371,7 @@ export default function ChatPage() {
             <div className="truncate text-[11px] font-light tracking-wide text-ink-500">
               {persona && (
                 <>
-                  <span style={{ color: persona.color }}>{persona.name}</span>
+                  <span>{persona.name}</span>
                   <span className="opacity-60">（{persona.avatar}）</span>
                 </>
               )}
@@ -413,6 +414,16 @@ export default function ChatPage() {
               <ChevronDown size={15} />
             )}
           </button>
+          <AccentPicker
+            value={conversation?.accentColor ?? null}
+            onChange={async (next) => {
+              if (!conversation) return;
+              await db.conversations.update(conversation.id, {
+                accentColor: next ?? undefined,
+                updatedAt: Date.now(),
+              });
+            }}
+          />
           <ExportMenu
             conversation={conversation ?? undefined}
             persona={persona}
@@ -457,9 +468,7 @@ export default function ChatPage() {
               <li key={m.id}>
                 <MessageBubble
                   message={m}
-                  personaId={
-                    m.personaId ?? conversation?.personaId ?? personaId ?? undefined
-                  }
+                  accentColor={conversation?.accentColor ?? null}
                   authorPersona={
                     m.personaId
                       ? personas?.find((p) => p.id === m.personaId)

@@ -104,6 +104,10 @@ export interface Conversation {
   /** Special room marker — e.g. 'bedroom' for intimate per-persona threads.
    *  These conversations are hidden from the main conversation sidebar. */
   room?: 'bedroom';
+  /** Per-conversation accent color (hex). Independent of persona — the user
+   *  picks it after choosing who to talk to. Used for the user's own bubble
+   *  and small UI accents. Falls back to the default sky tone when unset. */
+  accentColor?: string;
   createdAt: number;
   updatedAt: number;
 }

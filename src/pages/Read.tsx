@@ -18,7 +18,6 @@ import {
 } from '../lib/books';
 import { sendMessage, letPersonaSpeak } from '../lib/chat';
 import { getActiveBranch } from '../lib/branch';
-import { getPersonaFontStack } from '../lib/persona-state';
 import PersonaPicker from '../components/PersonaPicker';
 import StylePicker from '../components/StylePicker';
 import EndpointPicker from '../components/EndpointPicker';
@@ -328,9 +327,7 @@ export default function ReadPage() {
       >
         <article
           className="mx-auto max-w-2xl text-[16px] leading-[1.9]"
-          style={{
-            fontFamily: getPersonaFontStack(personaId ?? undefined) ?? 'var(--font-serif)',
-          }}
+          style={{ fontFamily: 'var(--font-serif)' }}
         >
           {book.format === 'md' ? (
             <div className="prose-msg">
@@ -375,12 +372,7 @@ export default function ReadPage() {
       {streamingId && streamingText && (
         <div className="pointer-events-none fixed inset-x-0 bottom-32 z-20 mx-auto w-[min(92vw,40rem)] px-3">
           <div className="rounded-2xl border border-lavender-100 bg-white/85 px-3 py-2 text-sm text-ink-700 shadow-lg backdrop-blur-md">
-            <div
-              className="line-clamp-4"
-              style={{ fontFamily: getPersonaFontStack(personaId ?? undefined) }}
-            >
-              {streamingText}
-            </div>
+            <div className="line-clamp-4">{streamingText}</div>
           </div>
         </div>
       )}

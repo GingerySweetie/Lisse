@@ -18,7 +18,7 @@ import {
 import type { Attachment, Message, Persona } from '../types';
 import { getSiblingInfo, type SiblingInfo } from '../lib/branch';
 import { attachmentDataUrl, formatBytes } from '../lib/attachments';
-import { getPersonaFontStack } from '../lib/persona-state';
+import { DEFAULT_ACCENT } from './AccentPicker';
 
 interface Props {
   message: Message;
@@ -28,8 +28,6 @@ interface Props {
   streamingThinking?: string;
   /** Disable interactive controls (during another stream). */
   disabled?: boolean;
-  /** Persona id for font lookup; usually the author for group, conversation default otherwise. */
-  personaId?: string;
   /** The persona who authored this assistant message (for the in-group label). */
   authorPersona?: Persona;
   /** Is this conversation a group chat? Toggles in-group affordances. */
@@ -38,6 +36,8 @@ interface Props {
   groupMembers?: Persona[];
   /** Called when the user asks another persona to speak after this message. */
   onLetSpeak?: (persona: Persona) => void;
+  /** Conversation accent color used for the user bubble. Defaults to sky. */
+  accentColor?: string | null;
   onEdit?: (newText: string) => void;
   onRegenerate?: () => void;
   onSwitchSibling?: (newActiveMessageId: string) => void;
@@ -48,11 +48,11 @@ export default function MessageBubble({
   streamingText,
   streamingThinking,
   disabled,
-  personaId,
   authorPersona,
   isGroup,
   groupMembers,
   onLetSpeak,
+  accentColor,
   onEdit,
   onRegenerate,
   onSwitchSibling,
@@ -63,10 +63,7 @@ export default function MessageBubble({
   const text = streamingText ?? message.content;
   const thinking = streamingThinking ?? message.thinking ?? '';
   const hasThinking = thinking.trim().length > 0;
-
-  // Per-persona font for the assistant's voice. Falls back to body sans.
-  const personaFont = !isUser ? getPersonaFontStack(personaId) : undefined;
-  const personaFontStyle = personaFont ? { fontFamily: personaFont } : undefined;
+  const accent = accentColor ?? DEFAULT_ACCENT;
 
   const [sib, setSib] = useState<SiblingInfo | null>(null);
   useEffect(() => {
@@ -142,23 +139,13 @@ export default function MessageBubble({
             >
               {authorPersona.avatar}
             </span>
-            <span
-              className="font-normal italic tracking-wide"
-              style={{
-                color: authorPersona.color,
-                fontFamily: 'var(--font-serif)',
-              }}
-            >
+            <span className="font-normal italic tracking-wide text-ink-500">
               {authorPersona.name}
             </span>
           </div>
         )}
         {!isUser && hasThinking && (
-          <ThinkingBlock
-            text={thinking}
-            streaming={isStreaming && !text}
-            fontFamily={personaFont}
-          />
+          <ThinkingBlock text={thinking} streaming={isStreaming && !text} />
         )}
 
         {message.attachments && message.attachments.length > 0 && (
@@ -166,13 +153,22 @@ export default function MessageBubble({
         )}
 
         <div
-          className={`min-w-0 rounded-2xl px-4 py-3 text-[15px] leading-relaxed ${
+          className={`min-w-0 text-[15px] leading-relaxed ${
             isUser
-              ? 'bg-sky-200/80 text-ink-900 shadow-[0_1px_2px_rgba(124,105,160,0.06)] ring-1 ring-sky-300/40 backdrop-blur-sm'
+              ? 'rounded-2xl px-4 py-3 text-ink-900 shadow-[0_1px_2px_rgba(124,105,160,0.06)] ring-1 backdrop-blur-sm'
               : isError
-                ? 'border border-rose-200 bg-rose-50 text-rose-700'
-                : 'bg-white/65 text-ink-900 shadow-[0_1px_2px_rgba(124,105,160,0.05)] ring-1 ring-lavender-100 backdrop-blur-sm'
+                ? 'rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700'
+                : 'px-1 py-1 text-ink-900'
           }`}
+          style={
+            isUser
+              ? {
+                  background: `${accent}cc`,
+                  // Soften ring with a translucent darker variant of the same accent.
+                  boxShadow: `inset 0 0 0 1px ${accent}66`,
+                }
+              : undefined
+          }
         >
           {editing ? (
             <div className="flex flex-col gap-2">
@@ -220,7 +216,7 @@ export default function MessageBubble({
               </ReactMarkdown>
             </div>
           ) : (
-            <div className="prose-msg" style={personaFontStyle}>
+            <div className="prose-msg">
               {text ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -370,11 +366,9 @@ export default function MessageBubble({
 function ThinkingBlock({
   text,
   streaming,
-  fontFamily,
 }: {
   text: string;
   streaming: boolean;
-  fontFamily?: string;
 }) {
   const [open, setOpen] = useState(streaming);
   // When the assistant text starts streaming, fold thinking back to a peek.
@@ -382,30 +376,21 @@ function ThinkingBlock({
     setOpen(streaming);
   }, [streaming]);
 
-  // Thinking is the persona's inner voice; use their font when known.
-  // Fall back to the serif used elsewhere for an italic literary tone.
-  const innerFont = fontFamily ?? 'var(--font-serif)';
-
   return (
     <div className="rounded-2xl border border-dashed border-lavender-200/80 bg-white/40 px-3 py-2 backdrop-blur-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 text-xs text-lavender-600 transition hover:text-lavender-500"
+        className="flex w-full items-center gap-1.5 text-xs italic text-lavender-600 transition hover:text-lavender-500"
       >
         <Brain size={13} />
-        <span className="italic" style={{ fontFamily: innerFont }}>
-          {streaming ? '在想……' : '想了想'}
-        </span>
+        <span>{streaming ? '在想……' : '想了想'}</span>
         <span className="ml-auto opacity-60">
           {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         </span>
       </button>
       {open && (
-        <div
-          className="mt-2 whitespace-pre-wrap text-[13px] italic leading-relaxed text-ink-500"
-          style={{ fontFamily: innerFont }}
-        >
+        <div className="mt-2 whitespace-pre-wrap text-[13px] italic leading-relaxed text-ink-500">
           {text}
           {streaming && (
             <span className="ml-1 inline-block h-3 w-[2px] animate-pulse bg-lavender-400 align-middle" />
