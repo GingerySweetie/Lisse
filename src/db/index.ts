@@ -113,6 +113,18 @@ class LisseDB extends Dexie {
       kv: 'key',
     });
 
+    this.version(8).stores({
+      endpoints: 'id, name, format, createdAt',
+      conversations: 'id, updatedAt, createdAt, source, personaId, styleId, bookId, room, [room+personaId]',
+      messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+      personas: 'id, name, builtin, createdAt',
+      memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+      writingStyles: 'id, name, builtin, createdAt',
+      books: 'id, title, createdAt, updatedAt, conversationId',
+      bills: 'id, date, category, createdAt',
+      kv: 'key',
+    });
+
     this.on('populate', async (tx) => {
       const personas = tx.table('personas');
       const styles = tx.table('writingStyles');

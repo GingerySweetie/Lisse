@@ -101,6 +101,9 @@ export interface Conversation {
   source?: 'native' | 'chatgpt' | 'claude';
   /** When set, this conversation is the discussion thread for a book. */
   bookId?: string;
+  /** Special room marker — e.g. 'bedroom' for intimate per-persona threads.
+   *  These conversations are hidden from the main conversation sidebar. */
+  room?: 'bedroom';
   createdAt: number;
   updatedAt: number;
 }
