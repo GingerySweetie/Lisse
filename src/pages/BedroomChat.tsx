@@ -9,6 +9,7 @@ import {
   getBedroomTheme,
   type BedroomTheme,
 } from '../lib/bedroom-themes';
+import TentaclePanel from '../components/TentaclePanel';
 import type { Conversation, Message } from '../types';
 
 /**
@@ -98,6 +99,7 @@ export default function BedroomChatPage() {
 
   const t: BedroomTheme = getBedroomTheme(conv?.bedroomTheme);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [tentacleOpen, setTentacleOpen] = useState(false);
 
   async function setTheme(themeId: string) {
     if (!conv) return;
@@ -364,7 +366,37 @@ export default function BedroomChatPage() {
             {t.name}
           </div>
         </div>
-        <div style={{ position: 'relative', width: 48, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ position: 'relative', width: 80, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            onClick={() => setTentacleOpen(true)}
+            style={{
+              background: 'none',
+              border: `1px solid ${t.bd}`,
+              cursor: 'pointer',
+              padding: 0,
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
+              color: t.tm,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            aria-label="触手"
+            title="触手"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M8 2 C 8 5, 5 6, 5 9 C 5 11, 6.5 12, 8 12 C 9.5 12, 11 11, 11 9 C 11 6, 8 5, 8 2 Z"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              <circle cx="8" cy="13.5" r="0.8" fill="currentColor" />
+            </svg>
+          </button>
           <button
             onClick={() => setThemePickerOpen((v) => !v)}
             style={{
@@ -686,6 +718,10 @@ export default function BedroomChatPage() {
       </div>
 
       <style>{`@keyframes pulse{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:.7;transform:scale(1.3)}}`}</style>
+
+      {tentacleOpen && (
+        <TentaclePanel theme={t} onClose={() => setTentacleOpen(false)} />
+      )}
     </div>
   );
 }
