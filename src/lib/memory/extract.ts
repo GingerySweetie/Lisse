@@ -79,7 +79,7 @@ export async function extractAndStoreFacts(args: {
   }
 }
 
-interface RawFact {
+export interface RawFact {
   text: string;
   category: FactCategory;
 }
@@ -132,6 +132,44 @@ Emit JSON now.`;
     ],
     maxTokens: 1024,
     temperature: 0.2,
+  })) {
+    if (evt.type === 'delta' && evt.delta) acc += evt.delta;
+    else if (evt.type === 'error') {
+      throw new Error(evt.errorMessage ?? 'extractor stream error');
+    }
+  }
+
+  return parseFactsFromJSON(acc);
+}
+
+/**
+ * Run the extractor over a pre-formatted block of multiple turns. Used by
+ * the batch backfill flow over imported history.
+ */
+export async function runExtractorBatch(
+  endpoint: Endpoint,
+  model: string,
+  args: { personaName: string; block: string; signal?: AbortSignal },
+): Promise<RawFact[]> {
+  const userPrompt = `Persona: ${args.personaName}
+
+The block below contains multiple consecutive turns between [USER] and [${args.personaName}]. Emit every lasting fact across the whole block.
+
+${args.block}
+
+Emit JSON now.`;
+
+  let acc = '';
+  for await (const evt of streamChat({
+    endpoint,
+    model,
+    messages: [
+      { role: 'system', content: EXTRACTOR_SYSTEM },
+      { role: 'user', content: userPrompt },
+    ],
+    maxTokens: 2048,
+    temperature: 0.2,
+    signal: args.signal,
   })) {
     if (evt.type === 'delta' && evt.delta) acc += evt.delta;
     else if (evt.type === 'error') {

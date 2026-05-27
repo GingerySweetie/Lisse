@@ -164,26 +164,6 @@ export function hasSecretState(personaId: string | undefined): boolean {
   return Boolean(PERSONA_SECRET_STATES[personaId]);
 }
 
-/**
- * Per-persona body font for assistant messages.
- */
-const PERSONA_FONT_STACK: Record<string, string> = {
-  persona_ririchan:
-    'PingFang SC, "Heiti SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif',
-  // 'LXGW WenKai' is bundled via @font-face (see src/index.css), so the
-  // kaishu look is consistent across iOS and Android instead of falling
-  // back to Songti/serif on Androids that lack a system Kaiti.
-  persona_rhema:
-    '"LXGW WenKai", "Kaiti SC", STKaiti, "Kaiti TC", "楷体", "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", Georgia, serif',
-};
-
-export function getPersonaFontStack(
-  personaId: string | undefined,
-): string | undefined {
-  if (!personaId) return undefined;
-  return PERSONA_FONT_STACK[personaId];
-}
-
 const MOOD_LABEL: Record<Mood, string> = {
   horny: '正在欲',
   soft: '柔软的',

@@ -38,7 +38,7 @@ export default function StylesPage() {
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+              className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
             >
               <Plus size={16} />
               新风格
@@ -186,7 +186,7 @@ function StyleEditor({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="比如：极简 / 学术 / 邮件草稿"
-              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
             />
           </label>
 
@@ -198,7 +198,7 @@ function StyleEditor({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="可空"
-              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
             />
           </label>
 
@@ -211,7 +211,7 @@ function StyleEditor({
               onChange={(e) => setPrompt(e.target.value)}
               rows={12}
               placeholder="你的回复尽量简短直接……"
-              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed focus:border-mint-300"
+              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed focus:border-lavender-300"
             />
           </label>
         </div>
@@ -227,7 +227,7 @@ function StyleEditor({
           <button
             type="button"
             onClick={handleSave}
-            className="rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+            className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
           >
             保存
           </button>

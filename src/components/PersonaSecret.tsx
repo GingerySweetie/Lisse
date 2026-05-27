@@ -35,7 +35,7 @@ export default function PersonaSecret({ persona, contextText, onClose }: Props) 
     horny: 'bg-rose-100 text-rose-500',
     soft: 'bg-lavender-100 text-lavender-600',
     spent: 'bg-sky-100 text-sky-500',
-    neutral: 'bg-mint-100 text-mint-500',
+    neutral: 'bg-ink-50 text-ink-500',
   };
 
   return createPortal(

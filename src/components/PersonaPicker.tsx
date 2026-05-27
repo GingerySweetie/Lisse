@@ -60,7 +60,7 @@ export default function PersonaPicker({
       <select
         value={personaId ?? ''}
         onChange={(e) => onChange(e.target.value || null)}
-        className="rounded-lg border border-lavender-200 bg-white px-2 py-1.5 text-ink-700 focus:border-mint-300"
+        className="rounded-lg border border-lavender-200 bg-white px-2 py-1.5 text-ink-700 focus:border-lavender-300"
       >
         {!inGroup && <option value="">无人格</option>}
         {visiblePersonas.map((p) => (

@@ -27,7 +27,7 @@ export default function EndpointPicker({ endpointId, model, onChange }: Props) {
       <select
         value={endpointId ?? ''}
         onChange={(e) => handleEndpoint(e.target.value)}
-        className="rounded-lg border border-lavender-200 bg-white px-2 py-1.5 text-ink-700 focus:border-mint-300"
+        className="rounded-lg border border-lavender-200 bg-white px-2 py-1.5 text-ink-700 focus:border-lavender-300"
       >
         <option value="" disabled>
           选 endpoint
@@ -42,7 +42,7 @@ export default function EndpointPicker({ endpointId, model, onChange }: Props) {
         <select
           value={model ?? ''}
           onChange={(e) => onChange(selected.id, e.target.value)}
-          className="max-w-[55vw] truncate rounded-lg border border-lavender-200 bg-white px-2 py-1.5 text-ink-700 focus:border-mint-300"
+          className="max-w-[55vw] truncate rounded-lg border border-lavender-200 bg-white px-2 py-1.5 text-ink-700 focus:border-lavender-300"
         >
           {selected.chatModels.map((m) => (
             <option key={m} value={m}>

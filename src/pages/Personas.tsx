@@ -48,7 +48,7 @@ export default function PersonasPage() {
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+              className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
             >
               <Plus size={16} />
               新人格
@@ -199,7 +199,7 @@ function PersonaEditor({
                 value={avatar}
                 onChange={(e) => setAvatar(e.target.value)}
                 maxLength={2}
-                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 text-center text-lg focus:border-mint-300"
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 text-center text-lg focus:border-lavender-300"
               />
             </label>
             <label className="flex flex-1 flex-col gap-1">
@@ -208,7 +208,7 @@ function PersonaEditor({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="比如：理理酱"
-                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
               />
             </label>
           </div>
@@ -240,7 +240,7 @@ function PersonaEditor({
               onChange={(e) => setSystemPrompt(e.target.value)}
               rows={14}
               placeholder="她希望你是怎样的人……"
-              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed focus:border-mint-300"
+              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed focus:border-lavender-300"
             />
           </label>
 
@@ -252,7 +252,7 @@ function PersonaEditor({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="你想记一下这个人格的来源、用途之类的"
-              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
             />
           </label>
         </div>
@@ -268,7 +268,7 @@ function PersonaEditor({
           <button
             type="button"
             onClick={handleSave}
-            className="rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+            className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
           >
             保存
           </button>

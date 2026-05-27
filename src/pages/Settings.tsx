@@ -40,7 +40,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+              className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
             >
               <Plus size={16} />
               添加
@@ -127,7 +127,7 @@ function MemorySettings() {
   }
 
   return (
-    <section className="mt-6 rounded-2xl border border-lavender-200 bg-white/80 p-5 shadow-sm">
+    <section className="mt-6 rounded-2xl border border-lavender-200 bg-white/55 p-5 shadow-sm backdrop-blur-sm">
       <h3 className="flex items-center gap-2 text-base font-semibold text-ink-900">
         <Brain size={18} className="text-lavender-600" />
         记忆系统
@@ -142,7 +142,7 @@ function MemorySettings() {
           type="checkbox"
           checked={s.memoryEnabled}
           onChange={(e) => update({ memoryEnabled: e.target.checked })}
-          className="h-4 w-4 accent-mint-300"
+          className="h-4 w-4 accent-lavender-400"
         />
         <span className="text-sm text-ink-900">启用记忆系统</span>
       </label>
@@ -160,7 +160,7 @@ function MemorySettings() {
                 embeddingModel: null,
               })
             }
-            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
           >
             <option value="">未选择</option>
             {openaiEndpoints.map((ep) => (
@@ -177,7 +177,7 @@ function MemorySettings() {
             value={s.embeddingModel ?? ''}
             onChange={(e) => update({ embeddingModel: e.target.value || null })}
             disabled={!embeddingEp}
-            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300 disabled:opacity-50"
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300 disabled:opacity-50"
           >
             <option value="">未选择</option>
             {embeddingEp?.embeddingModels.map((m) => (
@@ -200,7 +200,7 @@ function MemorySettings() {
                 extractorModel: null,
               })
             }
-            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
           >
             <option value="">未选择</option>
             {endpoints?.map((ep) => (
@@ -219,7 +219,7 @@ function MemorySettings() {
             value={s.extractorModel ?? ''}
             onChange={(e) => update({ extractorModel: e.target.value || null })}
             disabled={!extractorEp}
-            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300 disabled:opacity-50"
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300 disabled:opacity-50"
           >
             <option value="">未选择</option>
             {extractorEp?.chatModels.map((m) => (
@@ -242,7 +242,7 @@ function MemorySettings() {
             onChange={(e) =>
               update({ retrievalTopK: Math.max(1, Number(e.target.value) || 6) })
             }
-            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
           />
         </label>
 
@@ -261,7 +261,7 @@ function MemorySettings() {
                 retrievalThreshold: Math.max(0, Math.min(1, Number(e.target.value) || 0.5)),
               })
             }
-            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
           />
         </label>
 
@@ -282,7 +282,7 @@ function MemorySettings() {
               });
             }}
             placeholder="不限"
-            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
           />
           <span className="text-[11px] font-light text-ink-500">
             长对话不再每轮重发整段历史。配合 Anthropic 的 prompt caching 用，账单会很温柔。
@@ -299,12 +299,12 @@ function MemorySettings() {
             !s.embeddingEndpointId ||
             !s.embeddingModel
           }
-          className="rounded-lg border border-mint-300 bg-mint-50 px-3 py-1.5 text-xs font-medium text-mint-500 transition hover:bg-mint-100 disabled:opacity-60"
+          className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-500 transition hover:bg-sky-100 disabled:opacity-60"
         >
           {testing ? '测试中…' : '测试嵌入'}
         </button>
         {testStatus === 'ok' && (
-          <div className="mt-2 flex items-start gap-1 break-words text-xs text-mint-500">
+          <div className="mt-2 flex items-start gap-1 break-words text-xs text-sky-500">
             <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
             <span className="min-w-0 flex-1 break-words">{testMsg}</span>
           </div>
@@ -330,7 +330,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       <button
         type="button"
         onClick={onCreate}
-        className="mt-4 rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+        className="mt-4 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
       >
         添加 endpoint
       </button>
@@ -398,7 +398,7 @@ function EndpointCard({
   }
 
   return (
-    <div className="rounded-2xl border border-lavender-200 bg-white/80 p-4 shadow-sm">
+    <div className="rounded-2xl border border-lavender-200 bg-white/55 p-4 shadow-sm backdrop-blur-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -409,7 +409,7 @@ function EndpointCard({
               className={`rounded px-1.5 py-0.5 text-xs ${
                 endpoint.format === 'anthropic'
                   ? 'bg-lavender-100 text-lavender-600'
-                  : 'bg-mint-100 text-mint-500'
+                  : 'bg-sky-100 text-sky-500'
               }`}
             >
               {endpoint.format}
@@ -456,12 +456,12 @@ function EndpointCard({
           type="button"
           onClick={handleTest}
           disabled={testStatus === 'testing'}
-          className="rounded-lg border border-mint-300 bg-mint-50 px-3 py-1.5 text-xs font-medium text-mint-500 transition hover:bg-mint-100 disabled:opacity-60"
+          className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-500 transition hover:bg-sky-100 disabled:opacity-60"
         >
           {testStatus === 'testing' ? '测试中…' : '测试连接'}
         </button>
         {testStatus === 'ok' && (
-          <div className="mt-2 flex items-start gap-1 break-words text-xs text-mint-500">
+          <div className="mt-2 flex items-start gap-1 break-words text-xs text-sky-500">
             <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
             <span className="min-w-0 flex-1 break-words">{testMsg}</span>
           </div>
@@ -698,7 +698,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl md:rounded-2xl"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white/95 p-5 shadow-xl backdrop-blur-md md:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-ink-900">
@@ -736,7 +736,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="比如：AIHubMix (Claude)"
-              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
             />
           </Field>
 
@@ -745,7 +745,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="https://aihubmix.com/v1"
-              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-mint-300"
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-lavender-300"
             />
           </Field>
 
@@ -755,7 +755,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="sk-..."
-              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-mint-300"
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-lavender-300"
             />
           </Field>
 
@@ -764,7 +764,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
               <select
                 value={format}
                 onChange={(e) => setFormat(e.target.value as EndpointFormat)}
-                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
               >
                 <option value="openai">OpenAI 兼容</option>
                 <option value="anthropic">Anthropic 原生</option>
@@ -776,7 +776,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
                 onChange={(e) =>
                   setAuthStyle(e.target.value as 'bearer' | 'x-api-key')
                 }
-                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
               >
                 <option value="bearer">Authorization: Bearer</option>
                 <option value="x-api-key">x-api-key</option>
@@ -790,7 +790,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
               onChange={(e) => setChatModelsText(e.target.value)}
               placeholder="claude-sonnet-4-5&#10;gpt-4o-mini"
               rows={3}
-              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-mint-300"
+              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-lavender-300"
             />
           </Field>
 
@@ -800,7 +800,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
               onChange={(e) => setEmbeddingModelsText(e.target.value)}
               placeholder="text-embedding-3-small"
               rows={2}
-              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-mint-300"
+              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-lavender-300"
             />
           </Field>
 
@@ -877,7 +877,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
           <button
             type="button"
             onClick={handleSave}
-            className="rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+            className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
           >
             保存
           </button>

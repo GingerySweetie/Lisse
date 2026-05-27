@@ -199,7 +199,7 @@ export default function ImportExportPage() {
                 <select
                   value={importPersonaId}
                   onChange={(e) => setImportPersonaId(e.target.value)}
-                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
                 >
                   <option value="">不绑定（无 system prompt）</option>
                   {personas?.map((p) => (
@@ -219,7 +219,7 @@ export default function ImportExportPage() {
                     setImportEndpointId(e.target.value);
                     setImportModel('');
                   }}
-                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
                 >
                   <option value="">不绑定</option>
                   {endpoints?.map((ep) => (
@@ -237,7 +237,7 @@ export default function ImportExportPage() {
                   <select
                     value={importModel}
                     onChange={(e) => setImportModel(e.target.value)}
-                    className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                    className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
                   >
                     <option value="">不指定</option>
                     {selectedEndpoint.chatModels.map((m) => (
@@ -284,7 +284,7 @@ export default function ImportExportPage() {
                   onChange={(e) =>
                     setBulkFormat(e.target.value as ConversationFormat)
                   }
-                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
                 >
                   <option value="markdown">Markdown (.md)</option>
                   <option value="text">纯文本 (.txt)</option>
@@ -298,7 +298,7 @@ export default function ImportExportPage() {
                   onChange={(e) =>
                     setBulkScope(e.target.value as 'branch' | 'tree')
                   }
-                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
                 >
                   <option value="branch">当前显示的分支</option>
                   <option value="tree">完整树（含所有分支）</option>
@@ -311,7 +311,7 @@ export default function ImportExportPage() {
                 type="button"
                 onClick={handleBulkExport}
                 disabled={bulkStatus.kind === 'busy'}
-                className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300 disabled:opacity-60"
+                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
               >
                 <Download size={16} />
                 导出 ZIP
@@ -335,7 +335,7 @@ export default function ImportExportPage() {
                 <select
                   value={memoryPersonaId}
                   onChange={(e) => setMemoryPersonaId(e.target.value)}
-                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                  className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
                 >
                   <option value="">选一个人格</option>
                   {personas?.map((p) => (
@@ -352,7 +352,7 @@ export default function ImportExportPage() {
                 type="button"
                 onClick={handleMemoryExport}
                 disabled={!memoryPersonaId || memoryExportStatus.kind === 'busy'}
-                className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300 disabled:opacity-60"
+                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
               >
                 <Download size={16} />
                 导出 Markdown
@@ -375,7 +375,7 @@ export default function ImportExportPage() {
               <button
                 type="button"
                 onClick={handleExportBackup}
-                className="flex items-center gap-1.5 rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
               >
                 <Download size={16} />
                 导出全部
@@ -459,7 +459,7 @@ function StatusLine({ status, className }: { status: Status; className?: string 
   if (status.kind === 'ok') {
     return (
       <span
-        className={`flex items-center gap-1 text-xs text-mint-500 ${
+        className={`flex items-center gap-1 text-xs text-sky-500 ${
           className ?? ''
         }`}
       >
