@@ -108,6 +108,10 @@ export interface Conversation {
    *  picks it after choosing who to talk to. Used for the user's own bubble
    *  and small UI accents. Falls back to the default sky tone when unset. */
   accentColor?: string;
+  /** Bedroom theme id (see BEDROOM_THEMES). Only meaningful when
+   *  room='bedroom'. Decouples the room's color palette from the
+   *  persona so the user picks who first, color second. */
+  bedroomTheme?: string;
   /** Timestamp of the last memory backfill over this conversation's history.
    *  Used to gray out already-backfilled rows in the batch UI. */
   memoryBackfilledAt?: number;

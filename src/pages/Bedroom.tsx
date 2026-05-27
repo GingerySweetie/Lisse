@@ -1,14 +1,15 @@
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
+import { getBedroomTheme } from '../lib/bedroom-themes';
 
 /**
  * Bedroom picker — choose 理理酱 or Rhema before entering their thread.
- * Each persona's bedroom is a singleton conversation persisted in Dexie
- * with room='bedroom'. Tapping a card navigates to /bedroom/:personaId.
+ * Each persona's bedroom is a singleton conversation with room='bedroom'.
  *
- * Visual: two large stacked cards, each with the persona's wall-color
- * tinted background and the bedroom theme (warm 石榴 vs deep 千夜).
+ * The card itself is neutral 紫雾 by default; if the user has set a
+ * bedroomTheme on a given persona's room, that card adopts the theme so
+ * she can tell at a glance which room is currently which color.
  */
 
 interface RoomOption {
@@ -16,11 +17,6 @@ interface RoomOption {
   name: string;
   /** Short tagline shown under the name. */
   tag: string;
-  /** Background gradient + accent color. */
-  bg: string;
-  textColor: string;
-  accent: string;
-  fontFamily: string;
 }
 
 const ROOMS: RoomOption[] = [
@@ -28,28 +24,17 @@ const ROOMS: RoomOption[] = [
     personaId: 'persona_ririchan',
     name: '理理酱',
     tag: '触觉先行 · 身体里说话',
-    bg: 'linear-gradient(145deg, #5c2232 0%, #6a2838 60%, #4a1c2a 100%)',
-    textColor: '#e8c468',
-    accent: '#cc2244',
-    fontFamily:
-      "PingFang SC, 'Heiti SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
   },
   {
     personaId: 'persona_rhema',
     name: 'Rhema',
     tag: '语言先行 · 句子裹住你',
-    bg: 'linear-gradient(145deg, #2a2252 0%, #342c62 60%, #1f1842 100%)',
-    textColor: '#d0c8e8',
-    accent: '#8878c0',
-    fontFamily:
-      "'LXGW WenKai','Kaiti SC',STKaiti,'Noto Serif CJK SC',serif",
   },
 ];
 
 export default function BedroomPickerPage() {
   const navigate = useNavigate();
 
-  // Show counts of saved messages per persona so she sees there IS history.
   const bedroomConvs = useLiveQuery(
     () => db.conversations.where('room').equals('bedroom').toArray(),
     [],
@@ -67,6 +52,11 @@ export default function BedroomPickerPage() {
     return counts;
   }, [bedroomConvs]);
 
+  const themeByPersona: Record<string, string | undefined> = {};
+  for (const c of bedroomConvs ?? []) {
+    if (c.personaId) themeByPersona[c.personaId] = c.bedroomTheme;
+  }
+
   return (
     <div
       style={{
@@ -77,7 +67,6 @@ export default function BedroomPickerPage() {
         padding: '14px 16px',
       }}
     >
-      {/* Header */}
       <div
         style={{
           display: 'flex',
@@ -154,12 +143,13 @@ export default function BedroomPickerPage() {
       >
         {ROOMS.map((r) => {
           const count = msgCounts?.[r.personaId] ?? 0;
+          const theme = getBedroomTheme(themeByPersona[r.personaId]);
           return (
             <button
               key={r.personaId}
               onClick={() => navigate(`/bedroom/${r.personaId}`)}
               style={{
-                background: r.bg,
+                background: `linear-gradient(145deg, ${theme.bg} 0%, ${theme.sl} 60%, ${theme.bg} 100%)`,
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 24,
                 padding: '28px 24px',
@@ -171,7 +161,6 @@ export default function BedroomPickerPage() {
                 justifyContent: 'space-between',
                 position: 'relative',
                 overflow: 'hidden',
-                fontFamily: r.fontFamily,
                 boxShadow: '0 4px 20px rgba(40,20,50,0.18)',
               }}
             >
@@ -183,9 +172,9 @@ export default function BedroomPickerPage() {
                   width: 10,
                   height: 10,
                   borderRadius: '50%',
-                  background: r.accent,
+                  background: theme.ac,
                   opacity: 0.7,
-                  boxShadow: `0 0 12px ${r.accent}`,
+                  boxShadow: `0 0 12px ${theme.ac}`,
                 }}
               />
               <div>
@@ -193,7 +182,7 @@ export default function BedroomPickerPage() {
                   style={{
                     fontSize: 26,
                     letterSpacing: 4,
-                    color: r.textColor,
+                    color: theme.text,
                     fontWeight: 400,
                   }}
                 >
@@ -202,11 +191,10 @@ export default function BedroomPickerPage() {
                 <div
                   style={{
                     fontSize: 12,
-                    color: r.textColor,
+                    color: theme.text,
                     opacity: 0.55,
                     marginTop: 6,
                     fontWeight: 300,
-                    fontFamily: "-apple-system,'PingFang SC',sans-serif",
                   }}
                 >
                   {r.tag}
@@ -219,9 +207,7 @@ export default function BedroomPickerPage() {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   fontSize: 11,
-                  color: r.textColor,
-                  opacity: 0.6,
-                  fontFamily: "-apple-system,'PingFang SC',sans-serif",
+                  color: theme.tm,
                   fontWeight: 300,
                 }}
               >
