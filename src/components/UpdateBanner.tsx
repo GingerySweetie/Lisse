@@ -32,12 +32,12 @@ export default function UpdateBanner() {
 
   return (
     <div
-      className={`pointer-events-auto fixed inset-x-0 bottom-3 z-[100] mx-auto flex w-[min(92vw,28rem)] items-center justify-between gap-2 rounded-2xl border border-mint-300 bg-white/95 px-4 py-3 shadow-lg backdrop-blur transition-all duration-200 ${
+      className={`pointer-events-auto fixed inset-x-0 bottom-3 z-[100] mx-auto flex w-[min(92vw,28rem)] items-center justify-between gap-2 rounded-2xl border border-lavender-300 bg-white/95 px-4 py-3 shadow-lg backdrop-blur transition-all duration-200 ${
         visible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
       }`}
     >
       <div className="flex items-center gap-2 text-sm text-ink-900">
-        <RefreshCw size={16} className="text-mint-500" />
+        <RefreshCw size={16} className="text-sky-500" />
         <span>有新版本啦，点一下刷新喵～</span>
       </div>
       <div className="flex shrink-0 gap-1">
@@ -51,7 +51,7 @@ export default function UpdateBanner() {
         <button
           type="button"
           onClick={() => updateServiceWorker(true)}
-          className="rounded-lg bg-mint-200 px-3 py-1 text-xs font-medium text-ink-900 transition hover:bg-mint-300"
+          className="rounded-lg bg-lavender-200 px-3 py-1 text-xs font-medium text-ink-900 transition hover:bg-lavender-300"
         >
           刷新
         </button>

@@ -36,7 +36,7 @@ const CATEGORY_LABEL: Record<FactCategory, string> = {
 
 const CATEGORY_COLOR: Record<FactCategory, string> = {
   user_fact: 'bg-lavender-100 text-lavender-600',
-  preference: 'bg-mint-100 text-mint-500',
+  preference: 'bg-lavender-100 text-sky-500',
   relationship: 'bg-rose-100 text-rose-500',
   event: 'bg-amber-100 text-amber-600',
   context: 'bg-sky-100 text-sky-600',
@@ -108,7 +108,7 @@ export default function MemoryPage() {
               <select
                 value={personaId ?? ''}
                 onChange={(e) => setPersonaId(e.target.value || null)}
-                className="rounded-lg border border-lavender-200 bg-white px-2 py-1.5 focus:border-mint-300"
+                className="rounded-lg border border-lavender-200 bg-white px-2 py-1.5 focus:border-lavender-300"
               >
                 {personas?.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -133,7 +133,7 @@ export default function MemoryPage() {
               <button
                 type="button"
                 onClick={() => setCreating(true)}
-                className="rounded-lg bg-mint-200 px-2 py-1 text-xs font-medium text-ink-900 hover:bg-mint-300"
+                className="rounded-lg bg-lavender-200 px-2 py-1 text-xs font-medium text-ink-900 hover:bg-lavender-300"
               >
                 + 手工添加
               </button>
@@ -270,7 +270,7 @@ function FactCard({ fact }: { fact: MemoryFact }) {
         fact.archived
           ? 'border-ink-100 bg-ink-50/60 opacity-70'
           : fact.pinned
-            ? 'border-mint-300 bg-mint-50'
+            ? 'border-lavender-300 bg-lavender-50'
             : 'border-lavender-200 bg-white/80'
       }`}
     >
@@ -285,7 +285,7 @@ function FactCard({ fact }: { fact: MemoryFact }) {
               {CATEGORY_LABEL[fact.category]}
             </span>
             {fact.pinned && (
-              <span className="rounded bg-mint-200 px-1.5 py-0.5 text-xs text-mint-500">
+              <span className="rounded bg-lavender-200 px-1.5 py-0.5 text-xs text-sky-500">
                 已置顶
               </span>
             )}
@@ -303,7 +303,7 @@ function FactCard({ fact }: { fact: MemoryFact }) {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={Math.max(2, draft.split('\n').length + 1)}
-              className="w-full resize-y rounded-lg border border-lavender-200 bg-white px-2 py-1.5 text-sm text-ink-900 focus:border-mint-300"
+              className="w-full resize-y rounded-lg border border-lavender-200 bg-white px-2 py-1.5 text-sm text-ink-900 focus:border-lavender-300"
               autoFocus
             />
           ) : (
@@ -316,7 +316,7 @@ function FactCard({ fact }: { fact: MemoryFact }) {
               <button
                 type="button"
                 onClick={saveEdit}
-                className="rounded-lg p-1.5 text-mint-500 transition hover:bg-mint-100"
+                className="rounded-lg p-1.5 text-sky-500 transition hover:bg-lavender-100"
                 aria-label="保存"
               >
                 <Save size={14} />
@@ -346,7 +346,7 @@ function FactCard({ fact }: { fact: MemoryFact }) {
               <button
                 type="button"
                 onClick={togglePin}
-                className="rounded-lg p-1.5 text-ink-500 transition hover:bg-mint-50"
+                className="rounded-lg p-1.5 text-ink-500 transition hover:bg-lavender-50"
                 aria-label={fact.pinned ? '取消置顶' : '置顶'}
               >
                 {fact.pinned ? <PinOff size={14} /> : <Pin size={14} />}
@@ -459,7 +459,7 @@ function ManualAddDialog({
               onChange={(e) => setText(e.target.value)}
               rows={5}
               placeholder="比如：她在苏州一家会员店做零售岗，排班 14:00-22:45。"
-              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
             />
           </label>
           <label className="flex flex-col gap-1">
@@ -467,7 +467,7 @@ function ManualAddDialog({
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as FactCategory)}
-              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
             >
               {(Object.entries(CATEGORY_LABEL) as [FactCategory, string][]).map(
                 ([k, v]) => (
@@ -493,7 +493,7 @@ function ManualAddDialog({
             type="button"
             onClick={handleSave}
             disabled={busy || !text.trim()}
-            className="rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300 disabled:opacity-60"
+            className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
           >
             {busy ? '保存中…' : '保存'}
           </button>
@@ -752,7 +752,7 @@ function BackfillDialog({
                     <label
                       className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
                         isCurrent
-                          ? 'border-mint-300 bg-mint-50'
+                          ? 'border-lavender-300 bg-lavender-50'
                           : isSelected
                             ? 'border-lavender-300 bg-lavender-50'
                             : 'border-transparent hover:bg-lavender-50/60'
@@ -770,7 +770,7 @@ function BackfillDialog({
                             {c.title || '（无标题）'}
                           </span>
                           {c.memoryBackfilledAt && (
-                            <span className="shrink-0 rounded bg-mint-50 px-1.5 py-0.5 text-[10px] text-mint-500">
+                            <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-500">
                               已抽过
                             </span>
                           )}
@@ -785,7 +785,7 @@ function BackfillDialog({
                         </div>
                       </div>
                       {isCurrent && progress && (
-                        <span className="shrink-0 text-[11px] text-mint-500">
+                        <span className="shrink-0 text-[11px] text-sky-500">
                           {progress.phase === 'embedding' ? '嵌入中' : '抽取中'}{' '}
                           {progress.batchDone + 1}/{progress.batchTotal}
                         </span>
@@ -804,7 +804,7 @@ function BackfillDialog({
             <p className="mb-2 text-xs text-rose-500">{runError}</p>
           )}
           {doneSummary && !running && (
-            <p className="mb-2 text-xs text-mint-500">
+            <p className="mb-2 text-xs text-sky-500">
               完成：处理 {doneSummary.convs} 个对话，新增 {doneSummary.facts} 条记忆。
             </p>
           )}
@@ -843,7 +843,7 @@ function BackfillDialog({
                     type="button"
                     onClick={start}
                     disabled={selectedRows.length === 0}
-                    className="rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300 disabled:opacity-50"
+                    className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-50"
                   >
                     开始抽取
                   </button>

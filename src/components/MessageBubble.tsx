@@ -155,7 +155,7 @@ export default function MessageBubble({
         <div
           className={`min-w-0 text-[15px] leading-relaxed ${
             isUser
-              ? 'rounded-2xl px-4 py-3 text-ink-900 shadow-[0_1px_2px_rgba(124,105,160,0.06)] ring-1 backdrop-blur-sm'
+              ? 'rounded-2xl px-4 py-3 text-ink-900 ring-1'
               : isError
                 ? 'rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700'
                 : 'px-1 py-1 text-ink-900'
@@ -163,9 +163,8 @@ export default function MessageBubble({
           style={
             isUser
               ? {
-                  background: `${accent}cc`,
-                  // Soften ring with a translucent darker variant of the same accent.
-                  boxShadow: `inset 0 0 0 1px ${accent}66`,
+                  background: `${accent}73`,
+                  boxShadow: `inset 0 0 0 1px ${accent}40`,
                 }
               : undefined
           }
@@ -176,7 +175,7 @@ export default function MessageBubble({
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 rows={Math.max(2, Math.min(12, draft.split('\n').length + 1))}
-                className="w-full resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 text-[15px] text-ink-900 focus:border-mint-300"
+                className="w-full resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 text-[15px] text-ink-900 focus:border-lavender-300"
                 autoFocus
               />
               <div className="flex justify-end gap-2">
@@ -190,7 +189,7 @@ export default function MessageBubble({
                 <button
                   type="button"
                   onClick={saveEdit}
-                  className="flex items-center gap-1 rounded-lg bg-mint-300 px-3 py-1.5 text-xs font-medium text-ink-900 transition hover:bg-mint-400"
+                  className="flex items-center gap-1 rounded-lg bg-lavender-200 px-3 py-1.5 text-xs font-medium text-ink-900 transition hover:bg-lavender-300"
                 >
                   <Check size={14} /> 保存并重发
                 </button>
@@ -246,7 +245,7 @@ export default function MessageBubble({
                 )}
                 {message.usage.cacheReadTokens !== undefined &&
                   message.usage.cacheReadTokens > 0 && (
-                    <span className="text-mint-500">
+                    <span className="text-sky-500">
                       缓存命中 {message.usage.cacheReadTokens}
                     </span>
                   )}
@@ -298,7 +297,7 @@ export default function MessageBubble({
               >
                 {copied ? (
                   <>
-                    <Check size={12} className="text-mint-500" /> 已复制
+                    <Check size={12} className="text-sky-500" /> 已复制
                   </>
                 ) : (
                   <>
@@ -377,20 +376,20 @@ function ThinkingBlock({
   }, [streaming]);
 
   return (
-    <div className="rounded-2xl border border-dashed border-lavender-200/80 bg-white/40 px-3 py-2 backdrop-blur-sm">
+    <div className="px-1 py-1">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 text-xs italic text-lavender-600 transition hover:text-lavender-500"
+        className="flex w-full items-center gap-1.5 text-xs text-ink-500/70 transition hover:text-ink-500"
       >
-        <Brain size={13} />
-        <span>{streaming ? '在想……' : '想了想'}</span>
-        <span className="ml-auto opacity-60">
+        <Brain size={13} className="opacity-60" />
+        <span className="italic">{streaming ? '在想……' : '想了想'}</span>
+        <span className="ml-auto opacity-50">
           {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         </span>
       </button>
       {open && (
-        <div className="mt-2 whitespace-pre-wrap text-[13px] italic leading-relaxed text-ink-500">
+        <div className="mt-2 whitespace-pre-wrap pl-5 text-[13px] italic leading-relaxed text-ink-500">
           {text}
           {streaming && (
             <span className="ml-1 inline-block h-3 w-[2px] animate-pulse bg-lavender-400 align-middle" />
@@ -420,7 +419,7 @@ function Attachments({
           href={attachmentDataUrl(a)}
           target="_blank"
           rel="noopener"
-          className="block overflow-hidden rounded-xl ring-1 ring-lavender-200 transition hover:ring-lavender-300"
+          className="block overflow-hidden rounded-[14px] ring-1 ring-sky-300/20 shadow-[0_1px_4px_rgba(124,105,160,0.06)]"
         >
           <img
             src={attachmentDataUrl(a)}

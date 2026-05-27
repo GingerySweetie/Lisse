@@ -43,7 +43,7 @@ export default function BooksPage() {
         <button
           type="button"
           onClick={() => setCreating(true)}
-          className="ml-auto flex items-center gap-1.5 rounded-lg bg-mint-200 px-3 py-1.5 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+          className="ml-auto flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-1.5 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
         >
           <Plus size={16} />
           加书
@@ -161,7 +161,7 @@ function BookEditor({ onClose }: { onClose: () => void }) {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="书名"
-                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -171,7 +171,7 @@ function BookEditor({ onClose }: { onClose: () => void }) {
               <input
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
-                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-mint-300"
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
               />
             </label>
             <div className="flex flex-col gap-1">
@@ -204,7 +204,7 @@ function BookEditor({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="或者直接把书的内容粘进来……"
                 rows={10}
-                className="mt-1 resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed focus:border-mint-300"
+                className="mt-1 resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed focus:border-lavender-300"
               />
             </div>
           </div>
@@ -220,7 +220,7 @@ function BookEditor({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={handleSave}
-            className="rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+            className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
           >
             加入书架
           </button>

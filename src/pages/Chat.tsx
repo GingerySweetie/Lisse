@@ -18,6 +18,7 @@ import MessageBubble from '../components/MessageBubble';
 import ChatInput from '../components/ChatInput';
 import EndpointPicker from '../components/EndpointPicker';
 import PersonaPicker from '../components/PersonaPicker';
+import PersonaSecret from '../components/PersonaSecret';
 import StylePicker from '../components/StylePicker';
 import ExportMenu from '../components/ExportMenu';
 import AccentPicker from '../components/AccentPicker';
@@ -92,6 +93,7 @@ export default function ChatPage() {
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
   const [streamingThinking, setStreamingThinking] = useState('');
+  const [showSecret, setShowSecret] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const [branch, setBranch] = useState<Message[]>([]);
@@ -359,25 +361,37 @@ export default function ChatPage() {
   return (
     <div className="flex h-full w-full flex-col">
       <header className="border-b border-lavender-100/70 bg-white/40 backdrop-blur-md">
-        {/* Row 1: title + meta subtitle + collapse + export */}
+        {/* Row 1: persona name + model meta + collapse + export */}
         <div className="flex items-center gap-2 px-3 py-2 pl-14 md:px-6 md:pl-6">
           <div className="min-w-0 flex-1">
-            <h2
-              className="truncate text-lg font-normal tracking-wide text-ink-900"
-              style={{ fontFamily: 'var(--font-serif)' }}
-            >
-              {conversation?.title ?? '新聊天'}
-            </h2>
+            {persona ? (
+              <button
+                type="button"
+                onClick={() => setShowSecret(true)}
+                className="group flex items-center gap-2"
+              >
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                  style={{ background: persona.color }}
+                >
+                  {persona.avatar}
+                </span>
+                <span
+                  className="text-lg font-normal tracking-wide transition group-hover:opacity-80"
+                  style={{ fontFamily: 'var(--font-serif)', color: persona.color }}
+                >
+                  {persona.name}
+                </span>
+              </button>
+            ) : (
+              <h2
+                className="truncate text-lg font-normal tracking-wide text-ink-900"
+                style={{ fontFamily: 'var(--font-serif)' }}
+              >
+                新聊天
+              </h2>
+            )}
             <div className="truncate text-[11px] font-light tracking-wide text-ink-500">
-              {persona && (
-                <>
-                  <span>{persona.name}</span>
-                  <span className="opacity-60">（{persona.avatar}）</span>
-                </>
-              )}
-              {persona && (model || endpointName) && (
-                <span className="mx-1.5 opacity-40">/</span>
-              )}
               {model && <span>{model}</span>}
               {endpointName && (
                 <span className="opacity-60"> ({endpointName})</span>
@@ -506,6 +520,18 @@ export default function ChatPage() {
         busy={busy}
         disabled={hasNoEndpoints || !endpointId || !model}
       />
+
+      {showSecret && persona && (
+        <PersonaSecret
+          persona={persona}
+          contextText={branch
+            .slice(-4)
+            .map((m) => m.content)
+            .filter(Boolean)
+            .join('\n')}
+          onClose={() => setShowSecret(false)}
+        />
+      )}
     </div>
   );
 }
@@ -520,7 +546,7 @@ function EmptyEndpoints() {
       </p>
       <Link
         to="/settings"
-        className="mt-4 inline-flex rounded-lg bg-mint-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-mint-300"
+        className="mt-4 inline-flex rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
       >
         去设置
       </Link>
