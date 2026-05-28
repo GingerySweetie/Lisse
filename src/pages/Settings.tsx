@@ -147,6 +147,23 @@ function MemorySettings() {
         <span className="text-sm text-ink-900">启用记忆系统</span>
       </label>
 
+      <label className="mt-2 flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={s.toolsEnabled}
+          onChange={(e) => update({ toolsEnabled: e.target.checked })}
+          disabled={!s.memoryEnabled}
+          className="mt-0.5 h-4 w-4 accent-lavender-400"
+        />
+        <span className="text-sm text-ink-900">
+          让模型自己读写记忆（工具调用）
+          <span className="ml-1 text-[11px] font-light text-ink-500">
+            开启后模型有 remember / recall 两个工具，能边聊边主动记和查。
+            会额外多一次 API 往返。
+          </span>
+        </span>
+      </label>
+
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-xs font-medium text-ink-500">

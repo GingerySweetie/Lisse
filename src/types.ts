@@ -26,6 +26,20 @@ export interface Endpoint {
 
 export type Role = 'system' | 'user' | 'assistant';
 
+/** One tool call the model made and (usually) executed. Stored on the
+ *  assistant message so we can replay it and so the bubble can show
+ *  what happened ("📝 记住了 …", "🔍 查 …"). */
+export interface ToolCallRecord {
+  id: string;
+  name: string;
+  /** Parsed input arguments (JSON object). */
+  input: unknown;
+  /** Result of the tool's handler, if it ran. */
+  result?: unknown;
+  /** Error message if the handler threw or the args were malformed. */
+  error?: string;
+}
+
 export interface Attachment {
   id: string;
   kind: 'image' | 'file';
@@ -71,6 +85,10 @@ export interface Message {
   errorMessage?: string;
   endpointId?: string;
   model?: string;
+  /** Tool calls the model made during this assistant turn (in order). For
+   *  user/system messages, undefined. Persisted so the model can be
+   *  regenerated against the same prior context. */
+  toolCalls?: ToolCallRecord[];
   createdAt: number;
   /** token usage if returned by API. */
   usage?: {
@@ -144,6 +162,9 @@ export interface AppSettings {
   retrievalThreshold: number;
   /** Maximum recent message pairs to send each turn (null = unlimited). */
   maxHistoryTurns: number | null;
+  /** When true, expose remember/recall tools to the chat model. Requires
+   *  memoryEnabled + embedding endpoint to function. Default off. */
+  toolsEnabled: boolean;
 }
 
 export interface Persona {

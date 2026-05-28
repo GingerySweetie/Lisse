@@ -5,6 +5,7 @@ import type {
   Endpoint,
   Message,
   Persona,
+  ToolCallRecord,
   WritingStyle,
 } from '../types';
 import { newId } from './id';
@@ -15,6 +16,7 @@ import {
   formatFactsBlock,
   extractAndStoreFacts,
 } from './memory';
+import { availableTools, findTool, toolDefs, type Tool } from './tools';
 import { buildGroupTurns, groupAwarenessSnippet } from './group';
 import { formatStatusBlock } from './behavior';
 
@@ -133,7 +135,9 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
   return { userMessage, assistantMessage: final ?? assistantMessage };
 }
 
-/** Fire-and-forget extraction; never throws into the chat path. */
+/** Fire-and-forget extraction; never throws into the chat path. Skipped
+ *  when the model used the remember tool this turn — it already decided
+ *  what to keep, so the auto-extractor would double up. */
 function scheduleFactExtraction(args: {
   persona?: Persona;
   conversationId: string;
@@ -143,6 +147,10 @@ function scheduleFactExtraction(args: {
   if (!args.persona) return;
   if (args.assistantMessage.status !== 'done') return;
   if (!args.assistantMessage.content.trim()) return;
+  const usedRemember = (args.assistantMessage.toolCalls ?? []).some(
+    (c) => c.name === 'remember',
+  );
+  if (usedRemember) return;
   void extractAndStoreFacts({
     persona: args.persona,
     conversationId: args.conversationId,
@@ -470,40 +478,136 @@ async function streamAssistant(args: {
     }
   }
 
+  // Resolve available tools for this turn (memory tools if memoryEnabled +
+  // embedding configured + tools toggle on). When the list is empty, the
+  // loop runs exactly once — same as the pre-tool-use path.
+  let tools: Tool[] = [];
+  if (settings.toolsEnabled) {
+    const convId = branch[0]?.conversationId;
+    if (convId) {
+      tools = await availableTools({ persona, conversationId: convId });
+    }
+  }
+  const toolDefList = toolDefs(tools);
+
   let acc = '';
   let thinkingAcc = '';
   let errored = false;
   let errorMessage: string | undefined;
   let usage: Message['usage'];
+  const toolCalls: ToolCallRecord[] = [];
 
-  try {
-    for await (const evt of streamChat({
-      endpoint,
-      model,
-      messages: turns,
-      signal,
-      thinking:
-        endpoint.format === 'anthropic' && endpoint.thinkingEnabled
-          ? { enabled: true, budgetTokens: endpoint.thinkingBudget }
-          : undefined,
-    })) {
-      if (evt.type === 'delta' && evt.delta) {
-        acc += evt.delta;
-        onDelta?.(evt.delta, assistantMessageId);
-      } else if (evt.type === 'thinking_delta' && evt.thinkingDelta) {
-        thinkingAcc += evt.thinkingDelta;
-        onThinking?.(evt.thinkingDelta, assistantMessageId);
-      } else if (evt.type === 'error') {
-        errored = true;
-        errorMessage = evt.errorMessage;
-        break;
-      } else if (evt.type === 'done') {
-        usage = evt.usage;
+  // Per-round mutable continuation history.
+  const continuation: ChatTurn[] = [...turns];
+  const MAX_ROUNDS = 6;
+
+  outer: for (let round = 0; round < MAX_ROUNDS; round++) {
+    let stopReason: string | undefined;
+    const activeCalls: Record<string, { name: string; argsBuf: string }> = {};
+    const completed: { id: string; name: string; input: unknown }[] = [];
+    let roundText = '';
+
+    try {
+      for await (const evt of streamChat({
+        endpoint,
+        model,
+        messages: continuation,
+        signal,
+        thinking:
+          endpoint.format === 'anthropic' && endpoint.thinkingEnabled
+            ? { enabled: true, budgetTokens: endpoint.thinkingBudget }
+            : undefined,
+        ...(toolDefList.length > 0 && { tools: toolDefList }),
+      })) {
+        if (evt.type === 'delta' && evt.delta) {
+          acc += evt.delta;
+          roundText += evt.delta;
+          onDelta?.(evt.delta, assistantMessageId);
+        } else if (evt.type === 'thinking_delta' && evt.thinkingDelta) {
+          thinkingAcc += evt.thinkingDelta;
+          onThinking?.(evt.thinkingDelta, assistantMessageId);
+        } else if (evt.type === 'tool_call_start' && evt.toolCallStart) {
+          activeCalls[evt.toolCallStart.id] = {
+            name: evt.toolCallStart.name,
+            argsBuf: '',
+          };
+        } else if (evt.type === 'tool_call_args_delta' && evt.toolCallArgsDelta) {
+          const a = activeCalls[evt.toolCallArgsDelta.id];
+          if (a) a.argsBuf += evt.toolCallArgsDelta.chunk;
+        } else if (evt.type === 'tool_call_end' && evt.toolCallEnd) {
+          const a = activeCalls[evt.toolCallEnd.id];
+          if (a) {
+            let input: unknown = {};
+            try {
+              input = a.argsBuf ? JSON.parse(a.argsBuf) : {};
+            } catch {
+              input = { _rawArgs: a.argsBuf };
+            }
+            completed.push({ id: evt.toolCallEnd.id, name: a.name, input });
+          }
+        } else if (evt.type === 'error') {
+          errored = true;
+          errorMessage = evt.errorMessage;
+          break outer;
+        } else if (evt.type === 'done') {
+          usage = evt.usage;
+          stopReason = evt.stopReason;
+        }
       }
+    } catch (err) {
+      errored = true;
+      errorMessage = err instanceof Error ? err.message : String(err);
+      break outer;
     }
-  } catch (err) {
-    errored = true;
-    errorMessage = err instanceof Error ? err.message : String(err);
+
+    if (stopReason !== 'tool_use' || completed.length === 0) break;
+
+    // Execute tools, persist records, build the continuation turn for the
+    // next round.
+    const convId = branch[0]?.conversationId;
+    const ctx = { persona, conversationId: convId ?? '' };
+    const toolResultTurns: ChatTurn[] = [];
+    for (const call of completed) {
+      const tool = findTool(tools, call.name);
+      let result: unknown;
+      let error: string | undefined;
+      if (!tool) {
+        error = `unknown tool: ${call.name}`;
+      } else {
+        try {
+          result = await tool.handler(call.input, ctx);
+        } catch (e) {
+          error = e instanceof Error ? e.message : String(e);
+        }
+      }
+      toolCalls.push({
+        id: call.id,
+        name: call.name,
+        input: call.input,
+        result,
+        error,
+      });
+      toolResultTurns.push({
+        role: 'tool',
+        toolCallId: call.id,
+        content: JSON.stringify(error ? { error } : (result ?? null)),
+      });
+    }
+
+    // Persist the running record + visible text so the user sees the
+    // tool chips inline before the next round finishes.
+    await db.messages.update(assistantMessageId, {
+      content: acc,
+      thinking: thinkingAcc || undefined,
+      toolCalls: [...toolCalls],
+    });
+
+    continuation.push({
+      role: 'assistant',
+      content: roundText,
+      toolCalls: completed,
+    });
+    for (const tr of toolResultTurns) continuation.push(tr);
   }
 
   const finalStatus: Message['status'] = errored ? 'error' : 'done';
@@ -513,6 +617,7 @@ async function streamAssistant(args: {
     status: finalStatus,
     errorMessage,
     usage,
+    toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
   });
   const conv = (await db.messages.get(assistantMessageId))?.conversationId;
   if (conv) {
