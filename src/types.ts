@@ -207,13 +207,19 @@ export interface Book {
  * Expense / billing record. Storage for the 账单 room — separate from
  * conversations so it can have its own schema and listing semantics.
  */
-export type BillCategory =
+export type ExpenseCategory =
   | '餐饮'
   | '交通'
   | '购物'
   | '日用'
   | '娱乐'
   | '医疗';
+
+export type IncomeCategory = '工资' | '红包' | '退款' | '兼职' | '其他';
+
+export type BillCategory = ExpenseCategory | IncomeCategory;
+
+export type BillKind = 'expense' | 'income';
 
 export interface Bill {
   id: string;
@@ -224,6 +230,8 @@ export interface Bill {
   /** Amount in user's local currency (treat as ¥). */
   amount: number;
   category: BillCategory;
+  /** Expense vs income. Defaults to 'expense' for legacy rows that lack it. */
+  kind?: BillKind;
   /** Whether this was auto-detected from somewhere or hand-entered. */
   source: 'auto' | 'manual';
   createdAt: number;

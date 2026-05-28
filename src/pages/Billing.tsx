@@ -3,15 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 import { newId } from '../lib/id';
-import type { Bill, BillCategory } from '../types';
+import type {
+  Bill,
+  BillCategory,
+  BillKind,
+  ExpenseCategory,
+  IncomeCategory,
+} from '../types';
 
 /**
- * Billing — expense tracking. Bills are stored in their own Dexie table.
- * Currency assumed ¥ for display. Donut chart aggregates the visible
- * month's spend by category.
+ * Billing — expense + income tracking. Bills are stored in their own
+ * Dexie table. Currency assumed ¥ for display. Donut chart aggregates
+ * the visible month's expenses by category; income shown as a separate
+ * summary row above the donut.
  */
 
-const cats: Record<BillCategory, string> = {
+const expenseCats: Record<ExpenseCategory, string> = {
   餐饮: '#e8a060',
   交通: '#7baab8',
   购物: '#b08acc',
@@ -19,6 +26,27 @@ const cats: Record<BillCategory, string> = {
   娱乐: '#d88898',
   医疗: '#6890b0',
 };
+
+const incomeCats: Record<IncomeCategory, string> = {
+  工资: '#7ab896',
+  红包: '#e89880',
+  退款: '#7baab8',
+  兼职: '#b08acc',
+  其他: '#a090a8',
+};
+
+const INCOME_GREEN = '#5fa57e';
+
+function billKind(b: Bill): BillKind {
+  return b.kind ?? 'expense';
+}
+
+function catColor(b: Bill): string {
+  if (billKind(b) === 'income') {
+    return incomeCats[b.category as IncomeCategory] ?? INCOME_GREEN;
+  }
+  return expenseCats[b.category as ExpenseCategory] ?? '#aaa';
+}
 
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
@@ -53,8 +81,9 @@ function BackButton({ onClick }: { onClick: () => void }) {
 }
 
 function Donut({ data }: { data: Bill[] }) {
+  const expenses = data.filter((d) => billKind(d) === 'expense');
   const tot: Record<string, number> = {};
-  data.forEach((d) => {
+  expenses.forEach((d) => {
     tot[d.category] = (tot[d.category] || 0) + d.amount;
   });
   const total = Object.values(tot).reduce((a, b) => a + b, 0);
@@ -77,7 +106,7 @@ function Donut({ data }: { data: Bill[] }) {
               cy={cy}
               r={r}
               fill="none"
-              stroke={cats[c as BillCategory] || '#aaa'}
+              stroke={expenseCats[c as ExpenseCategory] || '#aaa'}
               strokeWidth="8"
               strokeDasharray={`${d} ${g}`}
               strokeDashoffset={-off}
@@ -128,7 +157,7 @@ function Donut({ data }: { data: Bill[] }) {
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: cats[c as BillCategory],
+                background: expenseCats[c as ExpenseCategory],
               }}
             />
             <span style={{ color: '#6a5a70', minWidth: 28 }}>{c}</span>
@@ -160,7 +189,8 @@ export default function BillingPage() {
     a: string;
     i: string;
     c: BillCategory;
-  }>({ a: '', i: '', c: '餐饮' });
+    k: BillKind;
+  }>({ a: '', i: '', c: '餐饮', k: 'expense' });
 
   // Group by date string
   const grouped: Record<string, Bill[]> = {};
@@ -170,22 +200,56 @@ export default function BillingPage() {
   });
   const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
 
+  // Month totals for the header summary row.
+  const totals = (recs ?? []).reduce(
+    (acc, r) => {
+      if (billKind(r) === 'income') acc.income += r.amount;
+      else acc.expense += r.amount;
+      return acc;
+    },
+    { income: 0, expense: 0 },
+  );
+  const net = totals.income - totals.expense;
+
+  const amountNum = parseFloat(ni.a);
+  const canSave = Number.isFinite(amountNum) && amountNum > 0;
+
   async function add() {
-    if (!ni.a || !ni.i) return;
+    if (!canSave) return;
     const today = new Date();
     const ds = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+    // Item is optional now — fall back to category label so the row
+    // still has a recognizable name when she's just tapping in a quick
+    // amount.
+    const item = ni.i.trim() || ni.c;
     await db.bills.add({
       id: newId(),
       date: ds,
-      item: ni.i,
-      amount: parseFloat(ni.a),
+      item,
+      amount: amountNum,
       category: ni.c,
+      kind: ni.k,
       source: 'manual',
       createdAt: Date.now(),
     });
-    setNi({ a: '', i: '', c: '餐饮' });
+    setNi({ a: '', i: '', c: ni.k === 'income' ? '工资' : '餐饮', k: ni.k });
     setSheet(false);
   }
+
+  function switchKind(k: BillKind) {
+    setNi((p) => ({
+      ...p,
+      k,
+      c: k === 'income' ? '工资' : '餐饮',
+    }));
+  }
+
+  const sheetCats: BillCategory[] =
+    ni.k === 'income'
+      ? (Object.keys(incomeCats) as IncomeCategory[])
+      : (Object.keys(expenseCats) as ExpenseCategory[]);
+  const sheetColors: Record<string, string> =
+    ni.k === 'income' ? incomeCats : expenseCats;
 
   async function deleteBill(id: string, e: React.MouseEvent) {
     e.stopPropagation();
@@ -239,6 +303,26 @@ export default function BillingPage() {
         <span style={{ fontSize: 14, color: '#5a4060', letterSpacing: 1 }}>
           {monthLabel}
         </span>
+      </div>
+
+      {/* Summary row: 支 / 收 / 净 */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          gap: 28,
+          padding: '0 24px 16px',
+          fontFamily: "'JetBrains Mono',monospace",
+        }}
+      >
+        <SummaryStat label="支" value={totals.expense} color="#b08acc" />
+        <SummaryStat label="收" value={totals.income} color={INCOME_GREEN} />
+        <SummaryStat
+          label="净"
+          value={net}
+          color={net >= 0 ? INCOME_GREEN : '#c45858'}
+          signed
+        />
       </div>
 
       {/* Donut */}
@@ -303,7 +387,7 @@ export default function BillingPage() {
                     width: 3,
                     height: 28,
                     borderRadius: 2,
-                    background: cats[r.category] || '#aaa',
+                    background: catColor(r),
                     flexShrink: 0,
                   }}
                 />
@@ -347,12 +431,12 @@ export default function BillingPage() {
                 <div
                   style={{
                     fontSize: 15,
-                    color: '#4a3550',
+                    color: billKind(r) === 'income' ? INCOME_GREEN : '#4a3550',
                     fontWeight: 500,
                     fontFamily: "'JetBrains Mono',monospace",
                   }}
                 >
-                  ¥{r.amount}
+                  {billKind(r) === 'income' ? '+' : ''}¥{r.amount}
                 </div>
                 <button
                   onClick={(e) => deleteBill(r.id, e)}
@@ -449,11 +533,56 @@ export default function BillingPage() {
             fontSize: 14,
             color: '#4a3550',
             fontWeight: 500,
-            marginBottom: 16,
+            marginBottom: 14,
             textAlign: 'center',
           }}
         >
           记一笔
+        </div>
+        {/* Kind toggle */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: 6,
+            marginBottom: 16,
+          }}
+        >
+          {(['expense', 'income'] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => switchKind(k)}
+              style={{
+                padding: '6px 18px',
+                borderRadius: 18,
+                fontSize: 13,
+                border: '1.5px solid',
+                borderColor:
+                  ni.k === k
+                    ? k === 'income'
+                      ? INCOME_GREEN
+                      : '#b08acc'
+                    : 'rgba(157,110,189,0.12)',
+                background:
+                  ni.k === k
+                    ? k === 'income'
+                      ? `${INCOME_GREEN}18`
+                      : 'rgba(176,138,204,0.12)'
+                    : 'transparent',
+                color:
+                  ni.k === k
+                    ? k === 'income'
+                      ? INCOME_GREEN
+                      : '#7050a0'
+                    : '#8a7090',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'all .15s',
+              }}
+            >
+              {k === 'expense' ? '支出' : '收入'}
+            </button>
+          ))}
         </div>
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <span style={{ fontSize: 18, color: '#8a7090' }}>¥</span>
@@ -478,7 +607,7 @@ export default function BillingPage() {
         <input
           value={ni.i}
           onChange={(e) => setNi((p) => ({ ...p, i: e.target.value }))}
-          placeholder="买了什么"
+          placeholder={ni.k === 'income' ? '备注（可空）' : '买了什么（可空）'}
           style={{
             width: '100%',
             padding: '10px 14px',
@@ -500,48 +629,85 @@ export default function BillingPage() {
             marginBottom: 20,
           }}
         >
-          {(Object.keys(cats) as BillCategory[]).map((c) => (
-            <button
-              key={c}
-              onClick={() => setNi((p) => ({ ...p, c }))}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 20,
-                fontSize: 13,
-                border: `1.5px solid ${ni.c === c ? cats[c] : 'rgba(157,110,189,0.12)'}`,
-                background:
-                  ni.c === c ? `${cats[c]}18` : 'transparent',
-                color: ni.c === c ? cats[c] : '#8a7090',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                transition: 'all .15s',
-              }}
-            >
-              {c}
-            </button>
-          ))}
+          {sheetCats.map((c) => {
+            const tone = sheetColors[c];
+            const on = ni.c === c;
+            return (
+              <button
+                key={c}
+                onClick={() => setNi((p) => ({ ...p, c }))}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 20,
+                  fontSize: 13,
+                  border: `1.5px solid ${on ? tone : 'rgba(157,110,189,0.12)'}`,
+                  background: on ? `${tone}18` : 'transparent',
+                  color: on ? tone : '#8a7090',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all .15s',
+                }}
+              >
+                {c}
+              </button>
+            );
+          })}
         </div>
         <button
           onClick={() => void add()}
+          disabled={!canSave}
           style={{
             width: '100%',
             padding: '12px 0',
             borderRadius: 14,
             border: 'none',
-            background:
-              ni.a && ni.i
-                ? 'linear-gradient(135deg,#b08acc,#9068b8)'
-                : 'rgba(176,138,204,0.15)',
-            color: ni.a && ni.i ? '#fff' : '#b0a0b8',
+            background: canSave
+              ? ni.k === 'income'
+                ? `linear-gradient(135deg,${INCOME_GREEN},#4a8a68)`
+                : 'linear-gradient(135deg,#b08acc,#9068b8)'
+              : 'rgba(176,138,204,0.15)',
+            color: canSave ? '#fff' : '#b0a0b8',
             fontSize: 14,
             fontWeight: 500,
-            cursor: 'pointer',
+            cursor: canSave ? 'pointer' : 'not-allowed',
             fontFamily: 'inherit',
           }}
         >
           保存
         </button>
       </div>
+    </div>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  color,
+  signed,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  signed?: boolean;
+}) {
+  const sign = signed ? (value >= 0 ? '+' : '-') : '';
+  const display = Math.abs(value);
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 2,
+      }}
+    >
+      <span style={{ fontSize: 10, color: '#a090a8', letterSpacing: 1 }}>
+        {label}
+      </span>
+      <span style={{ fontSize: 15, color, fontWeight: 500 }}>
+        {sign}¥{display}
+      </span>
     </div>
   );
 }
