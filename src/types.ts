@@ -119,9 +119,10 @@ export interface Conversation {
   source?: 'native' | 'chatgpt' | 'claude';
   /** When set, this conversation is the discussion thread for a book. */
   bookId?: string;
-  /** Special room marker — e.g. 'bedroom' for intimate per-persona threads.
-   *  These conversations are hidden from the main conversation sidebar. */
-  room?: 'bedroom';
+  /** Special room marker — e.g. 'bedroom' for intimate per-persona threads,
+   *  'living-room' for the 理理酱+Rhema 三人群聊 singleton. These
+   *  conversations are hidden from the main conversation sidebar. */
+  room?: 'bedroom' | 'living-room';
   /** Per-conversation accent color (hex). Independent of persona — the user
    *  picks it after choosing who to talk to. Used for the user's own bubble
    *  and small UI accents. Falls back to the default sky tone when unset. */
