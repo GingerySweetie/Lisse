@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getSettings } from '../db';
-import { streamChat, type ChatTurn } from '../api';
+import { type ChatTurn } from '../api';
 import { newId } from '../lib/id';
 import {
   BEDROOM_THEMES,
   getBedroomTheme,
   type BedroomTheme,
 } from '../lib/bedroom-themes';
+import { availableTools } from '../lib/tools';
+import { runToolLoop } from '../lib/tools/loop';
 import TentaclePanel from '../components/TentaclePanel';
-import type { Conversation, Message } from '../types';
+import type { Conversation, Message, ToolCallRecord } from '../types';
 
 /**
  * BedroomChat — the actual intimate chat thread for one persona.
@@ -57,6 +59,7 @@ interface LocalMsg {
   role: 'user' | 'assistant';
   content: string;
   thinking?: string;
+  toolCalls?: ToolCallRecord[];
   parentId: string | null;
   createdAt: number;
 }
@@ -137,6 +140,7 @@ export default function BedroomChatPage() {
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content,
         thinking: m.thinking,
+        toolCalls: m.toolCalls,
         parentId: m.parentId,
         createdAt: m.createdAt,
       }),
@@ -214,24 +218,30 @@ export default function BedroomChatPage() {
     };
     setStreaming(streamingMsg);
 
+    // Tools (memory) — only if globally enabled and a persona resolves.
+    const persona = (await db.personas.get(pid)) ?? undefined;
+    const tools = settings.toolsEnabled
+      ? await availableTools({ persona, conversationId: conv.id })
+      : [];
+
     let acc = '';
     let lastVisible = '';
     let lastThinking: string | undefined;
-    let errored = false;
-    let errorMessage: string | undefined;
+    const liveToolCalls: ToolCallRecord[] = [];
 
-    try {
-      for await (const evt of streamChat({
-        endpoint: ep,
-        model,
-        messages: turns,
-        maxTokens: 1024,
-      })) {
-        if (evt.type === 'delta' && evt.delta) {
-          acc += evt.delta;
+    const result = await runToolLoop({
+      endpoint: ep,
+      model,
+      initialTurns: turns,
+      tools,
+      ctx: { persona, conversationId: conv.id },
+      maxTokens: 1024,
+      callbacks: {
+        onTextDelta: (d) => {
+          acc += d;
           const tm = acc.match(/<think>([\s\S]*?)<\/think>/);
-          // Strip both closed and still-streaming <think> blocks from
-          // visible text so the tag never leaks.
+          // Strip both closed and still-streaming <think> blocks so the
+          // tag never leaks to the visible body.
           lastVisible = acc
             .replace(/<think>[\s\S]*?<\/think>/g, '')
             .replace(/<think>[\s\S]*$/g, '')
@@ -241,17 +251,22 @@ export default function BedroomChatPage() {
             ...streamingMsg,
             content: lastVisible,
             thinking: lastThinking,
+            toolCalls: [...liveToolCalls],
           });
-        } else if (evt.type === 'error') {
-          errored = true;
-          errorMessage = evt.errorMessage;
-          break;
-        }
-      }
-    } catch (err) {
-      errored = true;
-      errorMessage = err instanceof Error ? err.message : String(err);
-    }
+        },
+        onToolCallResolved: (c) => {
+          liveToolCalls.push(c);
+          setStreaming({
+            ...streamingMsg,
+            content: lastVisible,
+            thinking: lastThinking,
+            toolCalls: [...liveToolCalls],
+          });
+        },
+      },
+    });
+    const errored = result.errored;
+    const errorMessage = result.errorMessage;
 
     const finalAssistant: Message = {
       id: assistantId,
@@ -265,6 +280,7 @@ export default function BedroomChatPage() {
       endpointId: ep.id,
       model,
       personaId: pid,
+      toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
       createdAt: Date.now(),
     };
     await db.messages.add(finalAssistant);
@@ -578,6 +594,20 @@ export default function BedroomChatPage() {
                   )}
                 </div>
               )}
+              {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                    marginBottom: 8,
+                  }}
+                >
+                  {msg.toolCalls.map((c) => (
+                    <BedroomToolChip key={c.id} call={c} t={t} />
+                  ))}
+                </div>
+              )}
               {msg.role === 'user' ? (
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <div
@@ -723,5 +753,46 @@ export default function BedroomChatPage() {
         <TentaclePanel theme={t} onClose={() => setTentacleOpen(false)} />
       )}
     </div>
+  );
+}
+
+function BedroomToolChip({ call, t }: { call: ToolCallRecord; t: BedroomTheme }) {
+  const isRemember = call.name === 'remember';
+  const isRecall = call.name === 'recall';
+  const icon = isRemember ? '记' : isRecall ? '查' : '·';
+  const label = (() => {
+    if (call.error) return `${call.name} 出错`;
+    if (isRemember) {
+      const text = (call.input as { text?: string })?.text ?? '';
+      return text.length > 24 ? `${text.slice(0, 24)}…` : text;
+    }
+    if (isRecall) {
+      const q = (call.input as { query?: string })?.query ?? '';
+      const facts = (call.result as { facts?: unknown[] })?.facts;
+      const n = Array.isArray(facts) ? facts.length : 0;
+      return `${q.length > 18 ? `${q.slice(0, 18)}…` : q} · ${n}`;
+    }
+    return call.name;
+  })();
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '3px 10px',
+        borderRadius: 12,
+        border: `1px solid ${t.bd}`,
+        background: t.sl,
+        color: call.error ? '#e89898' : t.tm,
+        fontSize: 11,
+        fontStyle: 'italic',
+        letterSpacing: 1,
+      }}
+      title={JSON.stringify(call.input)}
+    >
+      <span style={{ opacity: 0.7 }}>[{icon}]</span>
+      {label}
+    </span>
   );
 }

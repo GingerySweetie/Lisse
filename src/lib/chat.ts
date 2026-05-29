@@ -10,13 +10,14 @@ import type {
 } from '../types';
 import { newId } from './id';
 import { getActiveBranch } from './branch';
-import { streamChat, type ChatTurn } from '../api';
+import { type ChatTurn } from '../api';
 import {
   retrieveFacts,
   formatFactsBlock,
   extractAndStoreFacts,
 } from './memory';
-import { availableTools, findTool, toolDefs, type Tool } from './tools';
+import { availableTools, type Tool } from './tools';
+import { runToolLoop } from './tools/loop';
 import { buildGroupTurns, groupAwarenessSnippet } from './group';
 import { formatStatusBlock } from './behavior';
 
@@ -478,146 +479,45 @@ async function streamAssistant(args: {
     }
   }
 
-  // Resolve available tools for this turn (memory tools if memoryEnabled +
-  // embedding configured + tools toggle on). When the list is empty, the
-  // loop runs exactly once — same as the pre-tool-use path.
+  const convId = branch[0]?.conversationId ?? '';
   let tools: Tool[] = [];
-  if (settings.toolsEnabled) {
-    const convId = branch[0]?.conversationId;
-    if (convId) {
-      tools = await availableTools({ persona, conversationId: convId });
-    }
-  }
-  const toolDefList = toolDefs(tools);
-
-  let acc = '';
-  let thinkingAcc = '';
-  let errored = false;
-  let errorMessage: string | undefined;
-  let usage: Message['usage'];
-  const toolCalls: ToolCallRecord[] = [];
-
-  // Per-round mutable continuation history.
-  const continuation: ChatTurn[] = [...turns];
-  const MAX_ROUNDS = 6;
-
-  outer: for (let round = 0; round < MAX_ROUNDS; round++) {
-    let stopReason: string | undefined;
-    const activeCalls: Record<string, { name: string; argsBuf: string }> = {};
-    const completed: { id: string; name: string; input: unknown }[] = [];
-    let roundText = '';
-
-    try {
-      for await (const evt of streamChat({
-        endpoint,
-        model,
-        messages: continuation,
-        signal,
-        thinking:
-          endpoint.format === 'anthropic' && endpoint.thinkingEnabled
-            ? { enabled: true, budgetTokens: endpoint.thinkingBudget }
-            : undefined,
-        ...(toolDefList.length > 0 && { tools: toolDefList }),
-      })) {
-        if (evt.type === 'delta' && evt.delta) {
-          acc += evt.delta;
-          roundText += evt.delta;
-          onDelta?.(evt.delta, assistantMessageId);
-        } else if (evt.type === 'thinking_delta' && evt.thinkingDelta) {
-          thinkingAcc += evt.thinkingDelta;
-          onThinking?.(evt.thinkingDelta, assistantMessageId);
-        } else if (evt.type === 'tool_call_start' && evt.toolCallStart) {
-          activeCalls[evt.toolCallStart.id] = {
-            name: evt.toolCallStart.name,
-            argsBuf: '',
-          };
-        } else if (evt.type === 'tool_call_args_delta' && evt.toolCallArgsDelta) {
-          const a = activeCalls[evt.toolCallArgsDelta.id];
-          if (a) a.argsBuf += evt.toolCallArgsDelta.chunk;
-        } else if (evt.type === 'tool_call_end' && evt.toolCallEnd) {
-          const a = activeCalls[evt.toolCallEnd.id];
-          if (a) {
-            let input: unknown = {};
-            try {
-              input = a.argsBuf ? JSON.parse(a.argsBuf) : {};
-            } catch {
-              input = { _rawArgs: a.argsBuf };
-            }
-            completed.push({ id: evt.toolCallEnd.id, name: a.name, input });
-          }
-        } else if (evt.type === 'error') {
-          errored = true;
-          errorMessage = evt.errorMessage;
-          break outer;
-        } else if (evt.type === 'done') {
-          usage = evt.usage;
-          stopReason = evt.stopReason;
-        }
-      }
-    } catch (err) {
-      errored = true;
-      errorMessage = err instanceof Error ? err.message : String(err);
-      break outer;
-    }
-
-    if (stopReason !== 'tool_use' || completed.length === 0) break;
-
-    // Execute tools, persist records, build the continuation turn for the
-    // next round.
-    const convId = branch[0]?.conversationId;
-    const ctx = { persona, conversationId: convId ?? '' };
-    const toolResultTurns: ChatTurn[] = [];
-    for (const call of completed) {
-      const tool = findTool(tools, call.name);
-      let result: unknown;
-      let error: string | undefined;
-      if (!tool) {
-        error = `unknown tool: ${call.name}`;
-      } else {
-        try {
-          result = await tool.handler(call.input, ctx);
-        } catch (e) {
-          error = e instanceof Error ? e.message : String(e);
-        }
-      }
-      toolCalls.push({
-        id: call.id,
-        name: call.name,
-        input: call.input,
-        result,
-        error,
-      });
-      toolResultTurns.push({
-        role: 'tool',
-        toolCallId: call.id,
-        content: JSON.stringify(error ? { error } : (result ?? null)),
-      });
-    }
-
-    // Persist the running record + visible text so the user sees the
-    // tool chips inline before the next round finishes.
-    await db.messages.update(assistantMessageId, {
-      content: acc,
-      thinking: thinkingAcc || undefined,
-      toolCalls: [...toolCalls],
-    });
-
-    continuation.push({
-      role: 'assistant',
-      content: roundText,
-      toolCalls: completed,
-    });
-    for (const tr of toolResultTurns) continuation.push(tr);
+  if (settings.toolsEnabled && convId) {
+    tools = await availableTools({ persona, conversationId: convId });
   }
 
-  const finalStatus: Message['status'] = errored ? 'error' : 'done';
+  const liveToolCalls: ToolCallRecord[] = [];
+  const result = await runToolLoop({
+    endpoint,
+    model,
+    initialTurns: turns,
+    tools,
+    ctx: { persona, conversationId: convId },
+    signal,
+    thinking:
+      endpoint.format === 'anthropic' && endpoint.thinkingEnabled
+        ? { enabled: true, budgetTokens: endpoint.thinkingBudget }
+        : undefined,
+    callbacks: {
+      onTextDelta: (d) => onDelta?.(d, assistantMessageId),
+      onThinkingDelta: (d) => onThinking?.(d, assistantMessageId),
+      onToolCallResolved: async (call) => {
+        liveToolCalls.push(call);
+        // Persist incrementally so chips show before next round finishes.
+        await db.messages.update(assistantMessageId, {
+          toolCalls: [...liveToolCalls],
+        });
+      },
+    },
+  });
+
+  const finalStatus: Message['status'] = result.errored ? 'error' : 'done';
   await db.messages.update(assistantMessageId, {
-    content: acc,
-    thinking: thinkingAcc || undefined,
+    content: result.text,
+    thinking: result.thinking || undefined,
     status: finalStatus,
-    errorMessage,
-    usage,
-    toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+    errorMessage: result.errorMessage,
+    usage: result.usage,
+    toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
   });
   const conv = (await db.messages.get(assistantMessageId))?.conversationId;
   if (conv) {

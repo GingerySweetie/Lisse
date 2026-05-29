@@ -7,6 +7,7 @@ import type { Endpoint, EndpointFormat } from '../types';
 import { newId } from '../lib/id';
 import { streamChat } from '../api';
 import { embed } from '../api/embedding';
+import { fetchBalance } from '../api/balance';
 
 export default function SettingsPage() {
   const endpoints = useLiveQuery(
@@ -468,7 +469,7 @@ function EndpointCard({
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={handleTest}
@@ -477,20 +478,76 @@ function EndpointCard({
         >
           {testStatus === 'testing' ? '测试中…' : '测试连接'}
         </button>
-        {testStatus === 'ok' && (
-          <div className="mt-2 flex items-start gap-1 break-words text-xs text-sky-500">
-            <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
-            <span className="min-w-0 flex-1 break-words">{testMsg}</span>
-          </div>
-        )}
-        {testStatus === 'fail' && (
-          <div className="mt-2 flex items-start gap-1 break-words text-xs text-rose-500">
-            <XCircle size={14} className="mt-0.5 shrink-0" />
-            <span className="min-w-0 flex-1 break-words">{testMsg}</span>
-          </div>
-        )}
+        <BalanceButton endpoint={endpoint} />
       </div>
+      {testStatus === 'ok' && (
+        <div className="mt-2 flex items-start gap-1 break-words text-xs text-sky-500">
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 flex-1 break-words">{testMsg}</span>
+        </div>
+      )}
+      {testStatus === 'fail' && (
+        <div className="mt-2 flex items-start gap-1 break-words text-xs text-rose-500">
+          <XCircle size={14} className="mt-0.5 shrink-0" />
+          <span className="min-w-0 flex-1 break-words">{testMsg}</span>
+        </div>
+      )}
     </div>
+  );
+}
+
+function BalanceButton({ endpoint }: { endpoint: Endpoint }) {
+  const [state, setState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'loading' }
+    | { kind: 'ok'; text: string }
+    | { kind: 'unsupported'; reason: string }
+    | { kind: 'fail'; reason: string }
+  >({ kind: 'idle' });
+
+  async function check() {
+    setState({ kind: 'loading' });
+    try {
+      const r = await fetchBalance(endpoint);
+      if (!r.supported) {
+        setState({ kind: 'unsupported', reason: r.reason });
+        return;
+      }
+      const parts = [`${r.available.toFixed(2)} ${r.currency}`];
+      if (r.total !== undefined && r.used !== undefined) {
+        parts.push(`（用 ${r.used.toFixed(2)} / 共 ${r.total.toFixed(2)}）`);
+      } else if (r.used !== undefined) {
+        parts.push(`（已用 ${r.used.toFixed(2)}）`);
+      }
+      setState({ kind: 'ok', text: parts.join(' ') });
+    } catch (e) {
+      setState({
+        kind: 'fail',
+        reason: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={check}
+        disabled={state.kind === 'loading'}
+        className="rounded-lg border border-lavender-300 bg-lavender-50 px-3 py-1.5 text-xs font-medium text-lavender-600 transition hover:bg-lavender-100 disabled:opacity-60"
+      >
+        {state.kind === 'loading' ? '查询中…' : '查余额'}
+      </button>
+      {state.kind === 'ok' && (
+        <span className="text-xs font-mono text-lavender-600">{state.text}</span>
+      )}
+      {state.kind === 'unsupported' && (
+        <span className="text-xs text-ink-500">{state.reason}</span>
+      )}
+      {state.kind === 'fail' && (
+        <span className="text-xs text-rose-500 break-all">{state.reason}</span>
+      )}
+    </>
   );
 }
 
