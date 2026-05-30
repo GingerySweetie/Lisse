@@ -15,7 +15,7 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react';
-import type { Attachment, Message, Persona } from '../types';
+import type { Attachment, Message, Persona, ToolCallRecord } from '../types';
 import { getSiblingInfo, type SiblingInfo } from '../lib/branch';
 import { attachmentDataUrl, formatBytes } from '../lib/attachments';
 import { DEFAULT_ACCENT } from './AccentPicker';
@@ -146,6 +146,9 @@ export default function MessageBubble({
         )}
         {!isUser && hasThinking && (
           <ThinkingBlock text={thinking} streaming={isStreaming && !text} />
+        )}
+        {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
+          <ToolCallChips calls={message.toolCalls} />
         )}
 
         {message.attachments && message.attachments.length > 0 && (
@@ -441,4 +444,82 @@ function Attachments({
       ))}
     </div>
   );
+}
+
+function ToolCallChips({ calls }: { calls: ToolCallRecord[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {calls.map((c) => (
+        <ToolCallChip key={c.id} call={c} />
+      ))}
+    </div>
+  );
+}
+
+function ToolCallChip({ call }: { call: ToolCallRecord }) {
+  const [open, setOpen] = useState(false);
+  const isRemember = call.name === 'remember';
+  const isRecall = call.name === 'recall';
+  const icon = isRemember ? '📝' : isRecall ? '🔍' : '🛠';
+  const label = (() => {
+    if (call.error) return `${call.name} 出错`;
+    if (isRemember) {
+      const text = (call.input as { text?: string })?.text;
+      return text ? `记住：${text}` : '记住';
+    }
+    if (isRecall) {
+      const query = (call.input as { query?: string })?.query;
+      const facts = (call.result as { facts?: unknown[] })?.facts;
+      const count = Array.isArray(facts) ? facts.length : 0;
+      return query
+        ? `查"${truncate(query, 24)}"→ ${count} 条`
+        : `查 → ${count} 条`;
+    }
+    return call.name;
+  })();
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition ${
+          call.error
+            ? 'border-rose-200 bg-rose-50 text-rose-500'
+            : 'border-lavender-200/70 bg-white/60 text-ink-500 hover:bg-white'
+        }`}
+      >
+        <span>{icon}</span>
+        <span className="truncate">{label}</span>
+        {open ? (
+          <ChevronUp size={11} className="opacity-60" />
+        ) : (
+          <ChevronDown size={11} className="opacity-60" />
+        )}
+      </button>
+      {open && (
+        <div className="rounded-lg border border-lavender-100 bg-white/70 px-3 py-2 text-[11px] text-ink-500">
+          <div className="mb-1 font-mono text-ink-700">{call.name}</div>
+          <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-snug">
+{JSON.stringify(call.input, null, 2)}
+          </pre>
+          {call.result !== undefined && (
+            <>
+              <div className="mt-2 font-mono text-ink-700">→</div>
+              <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-snug">
+{JSON.stringify(call.result, null, 2)}
+              </pre>
+            </>
+          )}
+          {call.error && (
+            <div className="mt-2 text-rose-500">{call.error}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n)}…` : s;
 }

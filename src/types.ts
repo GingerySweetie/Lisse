@@ -26,6 +26,20 @@ export interface Endpoint {
 
 export type Role = 'system' | 'user' | 'assistant';
 
+/** One tool call the model made and (usually) executed. Stored on the
+ *  assistant message so we can replay it and so the bubble can show
+ *  what happened ("📝 记住了 …", "🔍 查 …"). */
+export interface ToolCallRecord {
+  id: string;
+  name: string;
+  /** Parsed input arguments (JSON object). */
+  input: unknown;
+  /** Result of the tool's handler, if it ran. */
+  result?: unknown;
+  /** Error message if the handler threw or the args were malformed. */
+  error?: string;
+}
+
 export interface Attachment {
   id: string;
   kind: 'image' | 'file';
@@ -71,6 +85,10 @@ export interface Message {
   errorMessage?: string;
   endpointId?: string;
   model?: string;
+  /** Tool calls the model made during this assistant turn (in order). For
+   *  user/system messages, undefined. Persisted so the model can be
+   *  regenerated against the same prior context. */
+  toolCalls?: ToolCallRecord[];
   createdAt: number;
   /** token usage if returned by API. */
   usage?: {
@@ -101,13 +119,18 @@ export interface Conversation {
   source?: 'native' | 'chatgpt' | 'claude';
   /** When set, this conversation is the discussion thread for a book. */
   bookId?: string;
-  /** Special room marker — e.g. 'bedroom' for intimate per-persona threads.
-   *  These conversations are hidden from the main conversation sidebar. */
-  room?: 'bedroom';
+  /** Special room marker — e.g. 'bedroom' for intimate per-persona threads,
+   *  'living-room' for the 理理酱+Rhema 三人群聊 singleton. These
+   *  conversations are hidden from the main conversation sidebar. */
+  room?: 'bedroom' | 'living-room';
   /** Per-conversation accent color (hex). Independent of persona — the user
    *  picks it after choosing who to talk to. Used for the user's own bubble
    *  and small UI accents. Falls back to the default sky tone when unset. */
   accentColor?: string;
+  /** Bedroom theme id (see BEDROOM_THEMES). Only meaningful when
+   *  room='bedroom'. Decouples the room's color palette from the
+   *  persona so the user picks who first, color second. */
+  bedroomTheme?: string;
   /** Timestamp of the last memory backfill over this conversation's history.
    *  Used to gray out already-backfilled rows in the batch UI. */
   memoryBackfilledAt?: number;
@@ -140,6 +163,9 @@ export interface AppSettings {
   retrievalThreshold: number;
   /** Maximum recent message pairs to send each turn (null = unlimited). */
   maxHistoryTurns: number | null;
+  /** When true, expose remember/recall tools to the chat model. Requires
+   *  memoryEnabled + embedding endpoint to function. Default off. */
+  toolsEnabled: boolean;
 }
 
 export interface Persona {
@@ -203,13 +229,19 @@ export interface Book {
  * Expense / billing record. Storage for the 账单 room — separate from
  * conversations so it can have its own schema and listing semantics.
  */
-export type BillCategory =
+export type ExpenseCategory =
   | '餐饮'
   | '交通'
   | '购物'
   | '日用'
   | '娱乐'
   | '医疗';
+
+export type IncomeCategory = '工资' | '红包' | '退款' | '兼职' | '其他';
+
+export type BillCategory = ExpenseCategory | IncomeCategory;
+
+export type BillKind = 'expense' | 'income';
 
 export interface Bill {
   id: string;
@@ -220,6 +252,8 @@ export interface Bill {
   /** Amount in user's local currency (treat as ¥). */
   amount: number;
   category: BillCategory;
+  /** Expense vs income. Defaults to 'expense' for legacy rows that lack it. */
+  kind?: BillKind;
   /** Whether this was auto-detected from somewhere or hand-entered. */
   source: 'auto' | 'manual';
   createdAt: number;

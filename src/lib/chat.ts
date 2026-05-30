@@ -5,16 +5,19 @@ import type {
   Endpoint,
   Message,
   Persona,
+  ToolCallRecord,
   WritingStyle,
 } from '../types';
 import { newId } from './id';
 import { getActiveBranch } from './branch';
-import { streamChat, type ChatTurn } from '../api';
+import { type ChatTurn } from '../api';
 import {
   retrieveFacts,
   formatFactsBlock,
   extractAndStoreFacts,
 } from './memory';
+import { availableTools, type Tool } from './tools';
+import { runToolLoop } from './tools/loop';
 import { buildGroupTurns, groupAwarenessSnippet } from './group';
 import { formatStatusBlock } from './behavior';
 
@@ -133,7 +136,9 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
   return { userMessage, assistantMessage: final ?? assistantMessage };
 }
 
-/** Fire-and-forget extraction; never throws into the chat path. */
+/** Fire-and-forget extraction; never throws into the chat path. Skipped
+ *  when the model used the remember tool this turn — it already decided
+ *  what to keep, so the auto-extractor would double up. */
 function scheduleFactExtraction(args: {
   persona?: Persona;
   conversationId: string;
@@ -143,6 +148,10 @@ function scheduleFactExtraction(args: {
   if (!args.persona) return;
   if (args.assistantMessage.status !== 'done') return;
   if (!args.assistantMessage.content.trim()) return;
+  const usedRemember = (args.assistantMessage.toolCalls ?? []).some(
+    (c) => c.name === 'remember',
+  );
+  if (usedRemember) return;
   void extractAndStoreFacts({
     persona: args.persona,
     conversationId: args.conversationId,
@@ -470,49 +479,45 @@ async function streamAssistant(args: {
     }
   }
 
-  let acc = '';
-  let thinkingAcc = '';
-  let errored = false;
-  let errorMessage: string | undefined;
-  let usage: Message['usage'];
-
-  try {
-    for await (const evt of streamChat({
-      endpoint,
-      model,
-      messages: turns,
-      signal,
-      thinking:
-        endpoint.format === 'anthropic' && endpoint.thinkingEnabled
-          ? { enabled: true, budgetTokens: endpoint.thinkingBudget }
-          : undefined,
-    })) {
-      if (evt.type === 'delta' && evt.delta) {
-        acc += evt.delta;
-        onDelta?.(evt.delta, assistantMessageId);
-      } else if (evt.type === 'thinking_delta' && evt.thinkingDelta) {
-        thinkingAcc += evt.thinkingDelta;
-        onThinking?.(evt.thinkingDelta, assistantMessageId);
-      } else if (evt.type === 'error') {
-        errored = true;
-        errorMessage = evt.errorMessage;
-        break;
-      } else if (evt.type === 'done') {
-        usage = evt.usage;
-      }
-    }
-  } catch (err) {
-    errored = true;
-    errorMessage = err instanceof Error ? err.message : String(err);
+  const convId = branch[0]?.conversationId ?? '';
+  let tools: Tool[] = [];
+  if (settings.toolsEnabled && convId) {
+    tools = await availableTools({ persona, conversationId: convId });
   }
 
-  const finalStatus: Message['status'] = errored ? 'error' : 'done';
+  const liveToolCalls: ToolCallRecord[] = [];
+  const result = await runToolLoop({
+    endpoint,
+    model,
+    initialTurns: turns,
+    tools,
+    ctx: { persona, conversationId: convId },
+    signal,
+    thinking:
+      endpoint.format === 'anthropic' && endpoint.thinkingEnabled
+        ? { enabled: true, budgetTokens: endpoint.thinkingBudget }
+        : undefined,
+    callbacks: {
+      onTextDelta: (d) => onDelta?.(d, assistantMessageId),
+      onThinkingDelta: (d) => onThinking?.(d, assistantMessageId),
+      onToolCallResolved: async (call) => {
+        liveToolCalls.push(call);
+        // Persist incrementally so chips show before next round finishes.
+        await db.messages.update(assistantMessageId, {
+          toolCalls: [...liveToolCalls],
+        });
+      },
+    },
+  });
+
+  const finalStatus: Message['status'] = result.errored ? 'error' : 'done';
   await db.messages.update(assistantMessageId, {
-    content: acc,
-    thinking: thinkingAcc || undefined,
+    content: result.text,
+    thinking: result.thinking || undefined,
     status: finalStatus,
-    errorMessage,
-    usage,
+    errorMessage: result.errorMessage,
+    usage: result.usage,
+    toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
   });
   const conv = (await db.messages.get(assistantMessageId))?.conversationId;
   if (conv) {

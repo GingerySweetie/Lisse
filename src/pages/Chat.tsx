@@ -337,12 +337,13 @@ export default function ChatPage() {
   const isEmpty = branch.length === 0;
   const busy = streamingId !== null;
 
-  // Header expansion: collapsed by default on touch (saves vertical space).
+  // Header expansion: collapsed by default — accent/export/pickers all
+  // live in the expanded row now, so default keeps the title clean.
   const [headerExpanded, setHeaderExpanded] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
+    if (typeof window === 'undefined') return false;
     const saved = sessionStorage.getItem('lisse:headerExpanded');
     if (saved !== null) return saved === '1';
-    return !window.matchMedia('(pointer: coarse)').matches;
+    return false;
   });
   useEffect(() => {
     sessionStorage.setItem('lisse:headerExpanded', headerExpanded ? '1' : '0');
@@ -428,23 +429,8 @@ export default function ChatPage() {
               <ChevronDown size={15} />
             )}
           </button>
-          <AccentPicker
-            value={conversation?.accentColor ?? null}
-            onChange={async (next) => {
-              if (!conversation) return;
-              await db.conversations.update(conversation.id, {
-                accentColor: next ?? undefined,
-                updatedAt: Date.now(),
-              });
-            }}
-          />
-          <ExportMenu
-            conversation={conversation ?? undefined}
-            persona={persona}
-            disabled={!conversation || branch.length === 0}
-          />
         </div>
-        {/* Row 2: pickers (collapsible) */}
+        {/* Row 2: pickers + accent + export (collapsible). Default collapsed. */}
         {headerExpanded && (
           <div className="flex flex-wrap items-center gap-2 border-t border-lavender-100/70 px-3 py-2 md:px-6">
             <PersonaPicker
@@ -464,6 +450,23 @@ export default function ChatPage() {
               model={model}
               onChange={handlePicker}
             />
+            <div className="ml-auto flex items-center gap-1">
+              <AccentPicker
+                value={conversation?.accentColor ?? null}
+                onChange={async (next) => {
+                  if (!conversation) return;
+                  await db.conversations.update(conversation.id, {
+                    accentColor: next ?? undefined,
+                    updatedAt: Date.now(),
+                  });
+                }}
+              />
+              <ExportMenu
+                conversation={conversation ?? undefined}
+                persona={persona}
+                disabled={!conversation || branch.length === 0}
+              />
+            </div>
           </div>
         )}
       </header>

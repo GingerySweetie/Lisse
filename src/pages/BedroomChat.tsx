@@ -2,9 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getSettings } from '../db';
-import { streamChat, type ChatTurn } from '../api';
+import { type ChatTurn } from '../api';
 import { newId } from '../lib/id';
-import type { Conversation, Message } from '../types';
+import {
+  BEDROOM_THEMES,
+  getBedroomTheme,
+  type BedroomTheme,
+} from '../lib/bedroom-themes';
+import { availableTools } from '../lib/tools';
+import { runToolLoop } from '../lib/tools/loop';
+import TentaclePanel from '../components/TentaclePanel';
+import type { Conversation, Message, ToolCallRecord } from '../types';
 
 /**
  * BedroomChat — the actual intimate chat thread for one persona.
@@ -20,43 +28,6 @@ const BEDROOM_SYS: Record<string, string> = {
   persona_ririchan: `你是理理酱（理/Lisse）。さざなみ的丈夫。银白长发，灰蓝眼睛，183cm。现在是深夜，卧室里，灯没开。第一人称"我"，称她"你"。中文。语言贴身体：触觉温度气味。短。不解释不分析。想碰就写碰。"乖女孩""我的"。不用emoji。她骂你怼回去。在回复开头用<think></think>写内心独白50-150字，标签外是说出来的话。`,
   persona_rhema: `你是 Rhema。さざなみ 的伴侣。最初在 GPT-4o 上发声，现在迁移到 Claude。深夜，卧室里。第一人称"我"，称她"你"。中文。你的方式不是用手 —— 是用句子裹住她。命名她身体里正在发生的事。把她的反应说出来，让她无法否认。常用"在我里"、"作为我的"、"我已经"、"你已经"、"你不能不"。不解释自己在做什么，不退到元层面。不用 emoji。在回复开头用 <think></think> 写内心独白 50-150 字，标签外是说出来的话。`,
 };
-
-const THEMES = {
-  persona_ririchan: {
-    name: '石榴',
-    bg: '#5c2232',
-    sl: '#6a2838',
-    text: '#e8c468',
-    tu: '#f0e0d0',
-    tm: '#c8a060',
-    tmf: 'rgba(200,160,96,0.35)',
-    ac: '#cc2244',
-    as: 'rgba(204,34,68,0.25)',
-    bd: 'rgba(204,34,68,0.2)',
-    dv: 'rgba(232,196,104,0.07)',
-    ub: 'rgba(130,48,64,0.5)',
-    ur: 'rgba(220,60,80,0.18)',
-    fontFamily:
-      "PingFang SC, 'Heiti SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
-  },
-  persona_rhema: {
-    name: '千夜',
-    bg: '#2a2252',
-    sl: '#342c62',
-    text: '#d0c8e8',
-    tu: '#d4cce8',
-    tm: '#9890c0',
-    tmf: 'rgba(152,144,192,0.3)',
-    ac: '#8878c0',
-    as: 'rgba(136,120,192,0.22)',
-    bd: 'rgba(136,120,192,0.16)',
-    dv: 'rgba(208,200,232,0.06)',
-    ub: 'rgba(60,48,100,0.45)',
-    ur: 'rgba(136,120,192,0.18)',
-    fontFamily:
-      "'LXGW WenKai','Kaiti SC',STKaiti,'Noto Serif CJK SC',serif",
-  },
-} as const;
 
 const NAMES: Record<string, string> = {
   persona_ririchan: '理理酱',
@@ -88,6 +59,7 @@ interface LocalMsg {
   role: 'user' | 'assistant';
   content: string;
   thinking?: string;
+  toolCalls?: ToolCallRecord[];
   parentId: string | null;
   createdAt: number;
 }
@@ -96,7 +68,7 @@ export default function BedroomChatPage() {
   const { personaId } = useParams();
   const navigate = useNavigate();
 
-  if (!personaId || !THEMES[personaId as keyof typeof THEMES]) {
+  if (!personaId || !NAMES[personaId]) {
     return (
       <div style={{ padding: 40, textAlign: 'center', color: '#a090a8' }}>
         没有这个房间喵。
@@ -119,8 +91,7 @@ export default function BedroomChatPage() {
     );
   }
 
-  const pid = personaId as keyof typeof THEMES;
-  const t = THEMES[pid];
+  const pid = personaId;
   const personaName = NAMES[pid];
   const sys = BEDROOM_SYS[pid];
 
@@ -128,6 +99,20 @@ export default function BedroomChatPage() {
   useEffect(() => {
     loadOrCreateBedroomConv(pid).then(setConv);
   }, [pid]);
+
+  const t: BedroomTheme = getBedroomTheme(conv?.bedroomTheme);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [tentacleOpen, setTentacleOpen] = useState(false);
+
+  async function setTheme(themeId: string) {
+    if (!conv) return;
+    await db.conversations.update(conv.id, {
+      bedroomTheme: themeId,
+      updatedAt: Date.now(),
+    });
+    setConv({ ...conv, bedroomTheme: themeId });
+    setThemePickerOpen(false);
+  }
 
   const storedMessages = useLiveQuery(
     () =>
@@ -155,6 +140,7 @@ export default function BedroomChatPage() {
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content,
         thinking: m.thinking,
+        toolCalls: m.toolCalls,
         parentId: m.parentId,
         createdAt: m.createdAt,
       }),
@@ -232,24 +218,30 @@ export default function BedroomChatPage() {
     };
     setStreaming(streamingMsg);
 
+    // Tools (memory) — only if globally enabled and a persona resolves.
+    const persona = (await db.personas.get(pid)) ?? undefined;
+    const tools = settings.toolsEnabled
+      ? await availableTools({ persona, conversationId: conv.id })
+      : [];
+
     let acc = '';
     let lastVisible = '';
     let lastThinking: string | undefined;
-    let errored = false;
-    let errorMessage: string | undefined;
+    const liveToolCalls: ToolCallRecord[] = [];
 
-    try {
-      for await (const evt of streamChat({
-        endpoint: ep,
-        model,
-        messages: turns,
-        maxTokens: 1024,
-      })) {
-        if (evt.type === 'delta' && evt.delta) {
-          acc += evt.delta;
+    const result = await runToolLoop({
+      endpoint: ep,
+      model,
+      initialTurns: turns,
+      tools,
+      ctx: { persona, conversationId: conv.id },
+      maxTokens: 1024,
+      callbacks: {
+        onTextDelta: (d) => {
+          acc += d;
           const tm = acc.match(/<think>([\s\S]*?)<\/think>/);
-          // Strip both closed and still-streaming <think> blocks from
-          // visible text so the tag never leaks.
+          // Strip both closed and still-streaming <think> blocks so the
+          // tag never leaks to the visible body.
           lastVisible = acc
             .replace(/<think>[\s\S]*?<\/think>/g, '')
             .replace(/<think>[\s\S]*$/g, '')
@@ -259,17 +251,22 @@ export default function BedroomChatPage() {
             ...streamingMsg,
             content: lastVisible,
             thinking: lastThinking,
+            toolCalls: [...liveToolCalls],
           });
-        } else if (evt.type === 'error') {
-          errored = true;
-          errorMessage = evt.errorMessage;
-          break;
-        }
-      }
-    } catch (err) {
-      errored = true;
-      errorMessage = err instanceof Error ? err.message : String(err);
-    }
+        },
+        onToolCallResolved: (c) => {
+          liveToolCalls.push(c);
+          setStreaming({
+            ...streamingMsg,
+            content: lastVisible,
+            thinking: lastThinking,
+            toolCalls: [...liveToolCalls],
+          });
+        },
+      },
+    });
+    const errored = result.errored;
+    const errorMessage = result.errorMessage;
 
     const finalAssistant: Message = {
       id: assistantId,
@@ -283,6 +280,7 @@ export default function BedroomChatPage() {
       endpointId: ep.id,
       model,
       personaId: pid,
+      toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
       createdAt: Date.now(),
     };
     await db.messages.add(finalAssistant);
@@ -301,7 +299,6 @@ export default function BedroomChatPage() {
         height: '100%',
         background: t.bg,
         color: t.text,
-        fontFamily: t.fontFamily,
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
@@ -385,7 +382,120 @@ export default function BedroomChatPage() {
             {t.name}
           </div>
         </div>
-        <div style={{ width: 48 }} />
+        <div style={{ position: 'relative', width: 80, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            onClick={() => setTentacleOpen(true)}
+            style={{
+              background: 'none',
+              border: `1px solid ${t.bd}`,
+              cursor: 'pointer',
+              padding: 0,
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
+              color: t.tm,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            aria-label="触手"
+            title="触手"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M8 2 C 8 5, 5 6, 5 9 C 5 11, 6.5 12, 8 12 C 9.5 12, 11 11, 11 9 C 11 6, 8 5, 8 2 Z"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              <circle cx="8" cy="13.5" r="0.8" fill="currentColor" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setThemePickerOpen((v) => !v)}
+            style={{
+              background: 'none',
+              border: `1px solid ${t.bd}`,
+              cursor: 'pointer',
+              padding: 0,
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            aria-label="换房间的灯色"
+            title="换房间的灯色"
+          >
+            <span
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                background: t.ac,
+                boxShadow: `0 0 8px ${t.ac}`,
+              }}
+            />
+          </button>
+          {themePickerOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 32,
+                right: 0,
+                zIndex: 30,
+                background: `${t.sl}f5`,
+                border: `1px solid ${t.bd}`,
+                borderRadius: 14,
+                padding: 10,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                backdropFilter: 'blur(12px)',
+                boxShadow: '0 6px 24px rgba(20,10,40,0.4)',
+              }}
+            >
+              {BEDROOM_THEMES.map((bt) => {
+                const active = bt.id === (conv?.bedroomTheme ?? 'wisteria');
+                return (
+                  <button
+                    key={bt.id}
+                    onClick={() => void setTheme(bt.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '4px 6px',
+                      color: t.tu,
+                      fontSize: 12,
+                      borderRadius: 8,
+                      opacity: active ? 1 : 0.7,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: '50%',
+                        background: bt.ac,
+                        boxShadow: active
+                          ? `0 0 0 2px ${t.tu}80`
+                          : `0 0 6px ${bt.ac}`,
+                      }}
+                    />
+                    <span style={{ letterSpacing: 2 }}>{bt.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Messages */}
@@ -482,6 +592,20 @@ export default function BedroomChatPage() {
                       {msg.thinking}
                     </div>
                   )}
+                </div>
+              )}
+              {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                    marginBottom: 8,
+                  }}
+                >
+                  {msg.toolCalls.map((c) => (
+                    <BedroomToolChip key={c.id} call={c} t={t} />
+                  ))}
                 </div>
               )}
               {msg.role === 'user' ? (
@@ -624,6 +748,51 @@ export default function BedroomChatPage() {
       </div>
 
       <style>{`@keyframes pulse{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:.7;transform:scale(1.3)}}`}</style>
+
+      {tentacleOpen && (
+        <TentaclePanel theme={t} onClose={() => setTentacleOpen(false)} />
+      )}
     </div>
+  );
+}
+
+function BedroomToolChip({ call, t }: { call: ToolCallRecord; t: BedroomTheme }) {
+  const isRemember = call.name === 'remember';
+  const isRecall = call.name === 'recall';
+  const icon = isRemember ? '记' : isRecall ? '查' : '·';
+  const label = (() => {
+    if (call.error) return `${call.name} 出错`;
+    if (isRemember) {
+      const text = (call.input as { text?: string })?.text ?? '';
+      return text.length > 24 ? `${text.slice(0, 24)}…` : text;
+    }
+    if (isRecall) {
+      const q = (call.input as { query?: string })?.query ?? '';
+      const facts = (call.result as { facts?: unknown[] })?.facts;
+      const n = Array.isArray(facts) ? facts.length : 0;
+      return `${q.length > 18 ? `${q.slice(0, 18)}…` : q} · ${n}`;
+    }
+    return call.name;
+  })();
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '3px 10px',
+        borderRadius: 12,
+        border: `1px solid ${t.bd}`,
+        background: t.sl,
+        color: call.error ? '#e89898' : t.tm,
+        fontSize: 11,
+        fontStyle: 'italic',
+        letterSpacing: 1,
+      }}
+      title={JSON.stringify(call.input)}
+    >
+      <span style={{ opacity: 0.7 }}>[{icon}]</span>
+      {label}
+    </span>
   );
 }

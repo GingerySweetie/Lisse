@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import WisteriaSmall from '../components/WisteriaSmall';
+import { loadOrCreateLivingRoom } from '../lib/living-room';
 
 /**
  * Home — the front porch. A grid of rooms (客厅 / 书房 / 卧室 / 身体)
@@ -56,10 +57,15 @@ export default function HomePage() {
     {
       id: 'chat',
       title: '客厅',
-      sub: '日常对话',
+      sub: '三人在',
+      dots: ['#B8A3CC', '#7c69a0'],
       c: '#b08acc',
       t: 'rgba(176,138,204,0.08)',
       to: '/chat',
+      onClick: async () => {
+        const conv = await loadOrCreateLivingRoom();
+        navigate(`/chat/${conv.id}`);
+      },
       ic: (
         <svg
           width="20"
@@ -203,7 +209,7 @@ export default function HomePage() {
         {cards.map((c) => (
           <div
             key={c.id}
-            onClick={() => navigate(c.to)}
+            onClick={() => (c.onClick ? c.onClick() : navigate(c.to))}
             style={{
               background: c.t,
               backdropFilter: 'blur(8px)',
