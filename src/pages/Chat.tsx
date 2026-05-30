@@ -56,6 +56,24 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!endpoints || !settings) return;
+    // Per-persona override (group chats): if the current persona has its
+    // own endpoint+model in conversation.personaModels, use that.
+    const override =
+      personaId && conversation?.personaModels?.[personaId]
+        ? conversation.personaModels[personaId]
+        : null;
+    if (override) {
+      const ep = endpoints.find((e) => e.id === override.endpointId);
+      if (ep) {
+        setEndpointId(ep.id);
+        setModel(
+          ep.chatModels.includes(override.model)
+            ? override.model
+            : ep.chatModels[0] ?? null,
+        );
+        return;
+      }
+    }
     const fromConv = conversation?.defaultEndpointId
       ? endpoints.find((e) => e.id === conversation.defaultEndpointId)
       : undefined;
@@ -76,7 +94,7 @@ export default function ChatPage() {
           : ep.chatModels[0] ?? null;
     setEndpointId(ep.id);
     setModel(m);
-  }, [endpoints, settings, conversation]);
+  }, [endpoints, settings, conversation, personaId]);
 
   useEffect(() => {
     if (!settings) return;
@@ -160,9 +178,14 @@ export default function ChatPage() {
   }
 
   async function handleLetSpeak(speaker: import('../types').Persona) {
-    if (!conversation || !endpointId || !model) return;
-    const ep = selectedEndpoint();
-    if (!ep) return;
+    if (!conversation) return;
+    // Group chat: prefer the speaker's per-persona model override.
+    const override = conversation.personaModels?.[speaker.id];
+    const epToUse = override
+      ? endpoints?.find((e) => e.id === override.endpointId)
+      : selectedEndpoint();
+    const modelToUse = override?.model ?? model;
+    if (!epToUse || !modelToUse) return;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -173,8 +196,8 @@ export default function ChatPage() {
     );
     await letPersonaSpeak({
       conversation,
-      endpoint: ep,
-      model,
+      endpoint: epToUse,
+      model: modelToUse,
       persona: speaker,
       style: selectedStyle(),
       groupOthers: others.length > 0 ? others : undefined,

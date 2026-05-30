@@ -708,6 +708,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
   const [name, setName] = useState(endpoint?.name ?? '');
   const [baseUrl, setBaseUrl] = useState(endpoint?.baseUrl ?? '');
   const [apiKey, setApiKey] = useState(endpoint?.apiKey ?? '');
+  const [manageKey, setManageKey] = useState(endpoint?.manageKey ?? '');
   const [format, setFormat] = useState<EndpointFormat>(
     endpoint?.format ?? 'openai',
   );
@@ -752,6 +753,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
       name: name.trim(),
       baseUrl: baseUrl.trim(),
       apiKey: apiKey.trim(),
+      manageKey: manageKey.trim() || undefined,
       format,
       authStyle,
       chatModels: parseList(chatModelsText),
@@ -832,6 +834,18 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
               className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-lavender-300"
             />
           </Field>
+
+          {/aihubmix\.com/i.test(baseUrl) && (
+            <Field label="管理 Key（仅 AIHubMix · 查余额用）">
+              <input
+                type="password"
+                value={manageKey}
+                onChange={(e) => setManageKey(e.target.value)}
+                placeholder="AIHubMix 后台「令牌→管理密钥」复制"
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-lavender-300"
+              />
+            </Field>
+          )}
 
           <div className="flex gap-3">
             <Field label="格式" className="flex-1">

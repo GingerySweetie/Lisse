@@ -6,6 +6,7 @@ import { type ChatTurn } from '../api';
 import { newId } from '../lib/id';
 import {
   BEDROOM_THEMES,
+  defaultThemeForPersona,
   getBedroomTheme,
   type BedroomTheme,
 } from '../lib/bedroom-themes';
@@ -100,7 +101,7 @@ export default function BedroomChatPage() {
     loadOrCreateBedroomConv(pid).then(setConv);
   }, [pid]);
 
-  const t: BedroomTheme = getBedroomTheme(conv?.bedroomTheme);
+  const t: BedroomTheme = getBedroomTheme(conv?.bedroomTheme, pid);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tentacleOpen, setTentacleOpen] = useState(false);
 
@@ -459,7 +460,7 @@ export default function BedroomChatPage() {
               }}
             >
               {BEDROOM_THEMES.map((bt) => {
-                const active = bt.id === (conv?.bedroomTheme ?? 'wisteria');
+                const active = bt.id === (conv?.bedroomTheme ?? defaultThemeForPersona(pid));
                 return (
                   <button
                     key={bt.id}

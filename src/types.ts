@@ -20,6 +20,10 @@ export interface Endpoint {
    *  2x cost per write, same 10% read price; pays off when conversations
    *  pause > 5 min between turns. */
   cacheLongTTL?: boolean;
+  /** AIHubMix-specific second credential: balance / quota queries need
+   *  the Manage Key (separate from the chat API key). Other providers
+   *  ignore it. */
+  manageKey?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -112,6 +116,10 @@ export interface Conversation {
   /** When set, this conversation is a group: every persona in the list
    *  participates, and each assistant turn is authored by one of them. */
   personaIds?: string[];
+  /** Per-persona endpoint+model override. For group chats where each
+   *  persona is wired to a different model. If a persona has no entry,
+   *  the conversation's defaultEndpointId / defaultModel is used. */
+  personaModels?: Record<string, { endpointId: string; model: string }>;
   /** Writing style applied to every assistant turn in this conversation. */
   styleId?: string;
   /** if imported from ChatGPT, original conversation id. */
