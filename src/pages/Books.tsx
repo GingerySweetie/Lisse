@@ -31,7 +31,7 @@ export default function BooksPage() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="flex items-center gap-3 border-b border-lavender-200 bg-white/60 px-3 py-3 pl-14 backdrop-blur md:px-6 md:pl-6">
+      <header className="topbar flex items-center gap-3 px-3 py-3 pl-14 md:px-6 md:pl-6">
         <Link
           to="/chat"
           className="hidden items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-500 transition hover:bg-lavender-50 md:inline-flex"
@@ -39,7 +39,7 @@ export default function BooksPage() {
           <ChevronLeft size={16} />
           返回
         </Link>
-        <h2 className="serif-title text-lg">书架</h2>
+        <h2 className="endpoint-card-title">书架</h2>
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
@@ -83,7 +83,7 @@ export default function BooksPage() {
                 <button
                   type="button"
                   onClick={() => navigate(`/read/${b.id}`)}
-                  className="group flex w-full items-center gap-3 rounded-2xl border border-lavender-200 bg-white/80 p-4 text-left shadow-sm transition hover:bg-white"
+                  className="endpoint-card !mt-0 group flex w-full items-center gap-3 !p-4 text-left transition hover:bg-white"
                 >
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-lavender-100 text-lavender-600">
                     <BookOpen size={20} />
@@ -109,7 +109,7 @@ export default function BooksPage() {
                   <button
                     type="button"
                     onClick={(e) => handleDelete(b.id, e)}
-                    className="rounded-lg p-2 text-ink-500 transition hover:bg-rose-50 hover:text-rose-500"
+                    className="icon-btn danger"
                     aria-label="删除"
                   >
                     <Trash2 size={16} />
