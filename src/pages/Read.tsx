@@ -329,7 +329,11 @@ export default function ReadPage() {
           className="mx-auto max-w-2xl text-[16px] leading-[1.9]"
           style={{ fontFamily: 'var(--font-serif)' }}
         >
-          {book.format === 'md' ? (
+          {!book.content || !book.content.trim() ? (
+            <div className="py-12 text-center text-sm text-ink-500">
+              这本书的内容是空的喵——可能导入时只填了标题没填正文。回到书架重新导入一次吧。
+            </div>
+          ) : book.format === 'md' ? (
             <div className="prose-msg">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {book.content}
