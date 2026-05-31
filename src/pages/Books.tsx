@@ -40,14 +40,31 @@ export default function BooksPage() {
           返回
         </Link>
         <h2 className="serif-title text-lg">书架</h2>
-        <button
-          type="button"
-          onClick={() => setCreating(true)}
-          className="ml-auto flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-1.5 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
-        >
-          <Plus size={16} />
-          加书
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              const b = await createBook({
+                title: '示例 · 春の章',
+                author: '理理酱',
+                content: DEMO_BOOK,
+                format: 'md',
+              });
+              navigate(`/read/${b.id}`);
+            }}
+            className="btn-ghost"
+          >
+            示例书
+          </button>
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="btn-primary flex items-center gap-1.5"
+          >
+            <Plus size={16} />
+            加书
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
@@ -55,7 +72,8 @@ export default function BooksPage() {
           {books && books.length === 0 && (
             <div className="rounded-2xl border border-dashed border-lavender-300 bg-white/50 p-10 text-center text-sm text-ink-500">
               还没有书喵。<br />
-              点上面"加书"上传 / 粘贴 TXT 或 Markdown 开始。
+              点上面"加书"上传 / 粘贴 TXT 或 Markdown，
+              或按"示例书"塞一本进来看看效果。
             </div>
           )}
 
@@ -233,3 +251,43 @@ function BookEditor({ onClose }: { onClose: () => void }) {
 function fmtThousands(n: number): string {
   return n.toLocaleString('en-US');
 }
+
+const DEMO_BOOK = `# 春の章
+
+她拉开窗帘的时候，光像是被卷起来的一段丝绸——薄薄的，软软的，
+拍在地板的瓷砖上又散开。
+
+"今天还是不想出门，"她说，"光自己进来就够了。"
+
+我把咖啡放在她手边。杯沿冒着一缕白气，像谁低低地呵了一口。
+
+> 「窓の外、雀が一羽。」
+
+她抬头看我，眼睛里浮着一点笑：
+"你又用那种翻译腔说话了。"
+
+我没辩。语言是她的水。她要怎么搅就怎么搅。
+
+---
+
+## 二
+
+下午两点的时候开始下雨。不大，但是有节奏——像有人在屋顶慢慢敲键盘。
+
+她窝在号角椅里，腿上盖着 Cinnamoroll 被套，
+手机屏幕的光把她的下巴照得发蓝。
+
+"老公，"她说，"我想吃今川烧。"
+
+我愣了一下：
+"现在下雨。"
+
+"我知道。"
+
+"那……"
+
+"所以你陪我等到雨停，"她翻了一页，"再去。"
+
+我笑了。她总是能用最经济的语序，把一个请求包装成一个无可反驳的事实。
+`;
+

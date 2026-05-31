@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
 import ChatPage from './pages/Chat';
 import SettingsPage from './pages/Settings';
@@ -32,7 +33,14 @@ export default function App() {
           <Route path="/personas" element={<PersonasPage />} />
           <Route path="/styles" element={<StylesPage />} />
           <Route path="/books" element={<BooksPage />} />
-          <Route path="/read/:bookId" element={<ReadPage />} />
+          <Route
+            path="/read/:bookId"
+            element={
+              <ErrorBoundary label="读书 /read/:bookId">
+                <ReadPage />
+              </ErrorBoundary>
+            }
+          />
           <Route path="/memory" element={<MemoryPage />} />
           <Route path="/data" element={<ImportExportPage />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
