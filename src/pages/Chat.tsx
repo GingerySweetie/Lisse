@@ -384,7 +384,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="border-b border-lavender-100/70 bg-white/40 backdrop-blur-md">
+      <header className="topbar">
         {/* Row 1: persona name + model meta + collapse + export */}
         <div className="flex items-center gap-2 px-3 py-2 pl-14 md:px-6 md:pl-6">
           <div className="min-w-0 flex-1">
@@ -496,7 +496,7 @@ export default function ChatPage() {
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-6"
+        className="chat-area flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-6"
       >
         {hasNoEndpoints ? (
           <EmptyEndpoints />
@@ -583,18 +583,10 @@ function EmptyEndpoints() {
 function EmptyChat() {
   return (
     <div className="mx-auto mt-20 flex max-w-md flex-col items-center text-center">
-      <div className="opacity-85">
+      <div className="empty-state-flower">
         <WisteriaMark size={80} />
       </div>
-      <p
-        className="mt-4 text-[13px] font-light tracking-[0.2em]"
-        style={{
-          fontFamily: 'var(--font-serif)',
-          color: '#9a859e',
-        }}
-      >
-        語を紡いで
-      </p>
+      <p className="empty-state-text mt-4 tracking-[0.2em]">語を紡いで</p>
     </div>
   );
 }
