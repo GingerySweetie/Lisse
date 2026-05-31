@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
@@ -185,6 +185,15 @@ export default function BillingPage() {
     [],
   );
   const [sheet, setSheet] = useState(false);
+  const amountRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus amount input on open — the input is the most common
+  // "wait, where do I type?" stumble.
+  useEffect(() => {
+    if (!sheet) return;
+    const t = setTimeout(() => amountRef.current?.focus(), 250);
+    return () => clearTimeout(t);
+  }, [sheet]);
   const [ni, setNi] = useState<{
     a: string;
     i: string;
@@ -268,23 +277,31 @@ export default function BillingPage() {
         width: '100%',
         minHeight: '100%',
         position: 'relative',
+        background: 'var(--page)',
         fontFamily: "-apple-system,'PingFang SC',sans-serif",
       }}
     >
       {/* Header */}
       <div
+        className="topbar"
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '14px 16px 12px',
-          borderBottom: '1px solid rgba(157,110,189,0.08)',
-          background: 'rgba(245,238,248,0.85)',
-          backdropFilter: 'blur(16px)',
         }}
       >
         <BackButton onClick={() => navigate('/home')} />
-        <div style={{ fontSize: 15, color: '#4a3550', fontWeight: 500, letterSpacing: 1 }}>
+        <div
+          style={{
+            fontFamily: "'Cormorant Garamond', serif",
+            fontStyle: 'italic',
+            fontWeight: 500,
+            fontSize: 18,
+            color: 'var(--head)',
+            letterSpacing: 1,
+          }}
+        >
           账单
         </div>
         <div style={{ width: 48 }} />
@@ -587,10 +604,12 @@ export default function BillingPage() {
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <span style={{ fontSize: 18, color: '#8a7090' }}>¥</span>
           <input
+            ref={amountRef}
             value={ni.a}
             onChange={(e) => setNi((p) => ({ ...p, a: e.target.value }))}
             placeholder="0"
             type="number"
+            inputMode="decimal"
             style={{
               fontSize: 36,
               fontFamily: "'JetBrains Mono',monospace",
@@ -598,9 +617,11 @@ export default function BillingPage() {
               color: '#3a2840',
               background: 'transparent',
               border: 'none',
+              borderBottom: '1.5px solid rgba(157,110,189,0.25)',
               outline: 'none',
-              width: 120,
+              width: 140,
               textAlign: 'center',
+              padding: '4px 8px',
             }}
           />
         </div>

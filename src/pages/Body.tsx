@@ -14,18 +14,17 @@ export default function BodyPage() {
         width: '100%',
         minHeight: '100%',
         position: 'relative',
+        background: 'var(--page)',
         fontFamily: "-apple-system,'PingFang SC',sans-serif",
       }}
     >
       <div
+        className="topbar"
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '14px 16px 12px',
-          borderBottom: '1px solid rgba(157,110,189,0.08)',
-          background: 'rgba(245,238,248,0.85)',
-          backdropFilter: 'blur(16px)',
         }}
       >
         <button
@@ -34,7 +33,7 @@ export default function BodyPage() {
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            color: '#8a7090',
+            color: 'var(--text-3)',
             padding: 4,
             display: 'flex',
             alignItems: 'center',
@@ -57,9 +56,11 @@ export default function BodyPage() {
         </button>
         <div
           style={{
-            fontSize: 15,
-            color: '#4a3550',
+            fontFamily: "'Cormorant Garamond', serif",
+            fontStyle: 'italic',
             fontWeight: 500,
+            fontSize: 18,
+            color: 'var(--head)',
             letterSpacing: 1,
           }}
         >

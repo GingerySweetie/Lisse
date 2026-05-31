@@ -119,9 +119,18 @@ export function getBedroomTheme(
   id: string | undefined,
   fallbackPersonaId?: string,
 ): BedroomTheme {
-  const resolved = id ?? defaultThemeForPersona(fallbackPersonaId);
+  // If the saved theme happens to be the old global default ('wisteria')
+  // AND this persona has a different per-persona default, prefer the
+  // persona default. Migrates rooms that got 'wisteria' baked in during
+  // the brief window when everyone defaulted to it.
+  const personaDefault = defaultThemeForPersona(fallbackPersonaId);
+  const effective =
+    id === DEFAULT_BEDROOM_THEME_ID &&
+    personaDefault !== DEFAULT_BEDROOM_THEME_ID
+      ? personaDefault
+      : id ?? personaDefault;
   return (
-    BEDROOM_THEMES.find((t) => t.id === resolved) ??
+    BEDROOM_THEMES.find((t) => t.id === effective) ??
     BEDROOM_THEMES.find((t) => t.id === DEFAULT_BEDROOM_THEME_ID) ??
     BEDROOM_THEMES[0]
   );
