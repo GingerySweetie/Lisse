@@ -829,3 +829,152 @@
   border-radius: 2px;
 }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ─── Health (Body page) ─────────────────────────────────────────── */
+.wis-screen-eyebrow {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--text-3);
+  letter-spacing: 0.03em;
+}
+.wis-screen-title {
+  font-family: 'Cormorant Garamond', 'Noto Serif SC', serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: clamp(28px, 5vw, 40px);
+  color: var(--head);
+  line-height: 1.1;
+  margin: 2px 0 0;
+}
+
+.wis-health-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 26px;
+}
+.wis-hcard {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+}
+.wis-hcard-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.wis-hcard-ic {
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-tint);
+  color: var(--accent-deep);
+}
+.wis-hcard-label {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 16px;
+  color: var(--text-2);
+}
+.wis-hcard-aside {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.wis-steps-row { display: flex; align-items: center; gap: 24px; }
+.wis-ring-wrap { position: relative; flex-shrink: 0; }
+.wis-ring-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.wis-ring-num {
+  font-size: 26px; font-weight: 500;
+  color: var(--head); line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.wis-ring-unit { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+.wis-steps-side { flex: 1; min-width: 0; }
+.wis-steps-goal { font-size: 13px; color: var(--text-2); }
+.wis-steps-goal b { color: var(--head); font-weight: 500; }
+.wis-spark { margin-top: 12px; }
+.wis-spark-days {
+  display: flex; justify-content: space-between;
+  margin-top: 4px; font-size: 10px; color: var(--text-mute);
+}
+
+.wis-sleep-bars { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+.wis-sleep-track { position: relative; height: 18px; }
+.wis-sleep-scale {
+  display: flex; justify-content: space-between;
+  margin-top: 6px; font-size: 10px; color: var(--text-mute);
+}
+.wis-sleep-tot { display: flex; align-items: baseline; gap: 8px; margin-top: 14px; }
+.wis-sleep-big {
+  font-size: 24px; font-weight: 500;
+  color: var(--head); font-variant-numeric: tabular-nums;
+}
+.wis-sleep-cap { font-size: 12px; color: var(--text-3); }
+.wis-legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--text-3); }
+.wis-legend i {
+  display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+  margin-right: 5px; vertical-align: -1px;
+}
+
+.wis-period { display: flex; align-items: center; gap: 18px; }
+.wis-period-badge {
+  width: 64px; height: 64px; border-radius: var(--r-round);
+  flex-shrink: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: var(--amber-100); color: var(--amber-text);
+}
+.wis-period-day { font-size: 22px; font-weight: 500; line-height: 1; }
+.wis-period-lab { font-size: 10px; margin-top: 2px; }
+.wis-period-main { flex: 1; }
+.wis-period-state { font-size: 15px; color: var(--head); font-weight: 500; }
+.wis-period-sub { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
+.wis-period-cal {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 5px; margin-top: 16px; max-width: 320px;
+}
+.wis-cal-dot {
+  aspect-ratio: 1; border-radius: var(--r-round);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--text-3);
+}
+.wis-cal-dot.on { background: var(--amber-300); color: var(--amber-text); }
+.wis-cal-dot.predict { box-shadow: inset 0 0 0 1.5px var(--amber-300); color: var(--amber-text); }
+.wis-cal-dot.today { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent-deep); }
+
+.wis-weight-row { display: flex; align-items: baseline; gap: 10px; }
+.wis-weight-big {
+  font-size: 28px; font-weight: 500;
+  color: var(--head); font-variant-numeric: tabular-nums;
+}
+.wis-weight-unit { font-size: 13px; color: var(--text-3); }
+.wis-weight-delta { font-size: 12px; color: var(--accent-deep); margin-left: auto; }
+.wis-weight-input { display: flex; gap: 8px; margin-top: 14px; }
+.wis-weight-input input {
+  flex: 1; height: 38px;
+  border: 1px solid var(--input-line); border-radius: var(--r-card);
+  background: var(--input-bg); padding: 0 14px;
+  font-size: 13px; color: var(--text); outline: none;
+}
+.wis-weight-input input:focus { border-color: var(--accent); }
+.wis-mini-btn {
+  height: 38px; padding: 0 16px; border: 0; border-radius: var(--r-card);
+  background: var(--accent); color: var(--accent-on);
+  font-size: 13px; font-weight: 500; cursor: pointer;
+}
