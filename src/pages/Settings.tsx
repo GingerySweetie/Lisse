@@ -20,7 +20,7 @@ export default function SettingsPage() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="flex items-center gap-3 border-b border-lavender-200 bg-white/60 px-3 py-3 pl-14 backdrop-blur md:px-6 md:pl-6">
+      <header className="topbar flex items-center gap-3 px-3 py-3 pl-14 md:px-6 md:pl-6">
         <Link
           to="/chat"
           className="hidden items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-500 transition hover:bg-lavender-50 md:inline-flex"
@@ -41,7 +41,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
+              className="btn-primary flex items-center gap-1.5"
             >
               <Plus size={16} />
               添加
@@ -74,9 +74,57 @@ export default function SettingsPage() {
           )}
 
           <MemorySettings />
+          <AppMaintenance />
         </div>
       </div>
     </div>
+  );
+}
+
+function AppMaintenance() {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  async function forceRefresh() {
+    setBusy(true);
+    setMsg('清理中…');
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map((n) => caches.delete(n)));
+      }
+      setMsg('SW 已注销，正在重载…');
+      setTimeout(() => window.location.reload(), 250);
+    } catch (e) {
+      setBusy(false);
+      setMsg(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <section className="endpoint-card mt-4">
+      <h3 className="endpoint-card-title">App 维护</h3>
+      <p className="mt-1 text-xs text-ink-500">
+        强制注销 Service Worker + 清掉 PWA 缓存后重载，用来拿最新部署的版本。
+        <strong className="ml-1 text-ink-700">不会动你的对话/人格/记忆</strong>
+        （那些存在 IndexedDB 里，独立于 SW 缓存）。
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void forceRefresh()}
+          disabled={busy}
+          className="btn-ghost"
+        >
+          {busy ? '清理中…' : '强制刷新（清 SW 缓存）'}
+        </button>
+        {msg && <span className="text-xs text-ink-500">{msg}</span>}
+      </div>
+    </section>
   );
 }
 
@@ -345,11 +393,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
         还没有 endpoint 喵。<br />
         点上面的"添加"或下面这个按钮开始：
       </p>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="mt-4 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
-      >
+      <button type="button" onClick={onCreate} className="btn-primary mt-4">
         添加 endpoint
       </button>
     </div>
@@ -416,32 +460,26 @@ function EndpointCard({
   }
 
   return (
-    <div className="rounded-2xl border border-lavender-200 bg-white/55 p-4 shadow-sm backdrop-blur-sm">
+    <div className="endpoint-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-base font-semibold text-ink-900">
-              {endpoint.name}
-            </h3>
+            <h3 className="endpoint-card-title truncate">{endpoint.name}</h3>
             <span
-              className={`rounded px-1.5 py-0.5 text-xs ${
-                endpoint.format === 'anthropic'
-                  ? 'bg-lavender-100 text-lavender-600'
-                  : 'bg-sky-100 text-sky-500'
-              }`}
+              className={
+                endpoint.format === 'anthropic' ? 'tag-anthropic' : 'tag-openai'
+              }
             >
               {endpoint.format}
             </span>
           </div>
-          <div className="mt-1 truncate text-xs text-ink-500">
-            {endpoint.baseUrl}
-          </div>
+          <div className="endpoint-url mt-1 truncate">{endpoint.baseUrl}</div>
           {endpoint.chatModels.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {endpoint.chatModels.map((m) => (
                 <span
                   key={m}
-                  className="rounded bg-lavender-50 px-1.5 py-0.5 text-xs text-ink-700"
+                  className="model-name rounded bg-lavender-50 px-2 py-0.5"
                 >
                   {m}
                 </span>
@@ -453,7 +491,7 @@ function EndpointCard({
           <button
             type="button"
             onClick={onEdit}
-            className="rounded-lg p-2 text-ink-500 transition hover:bg-lavender-50 hover:text-ink-900"
+            className="icon-btn"
             aria-label="编辑"
           >
             <Pencil size={16} />
@@ -461,7 +499,7 @@ function EndpointCard({
           <button
             type="button"
             onClick={handleDelete}
-            className="rounded-lg p-2 text-ink-500 transition hover:bg-rose-50 hover:text-rose-500"
+            className="icon-btn danger"
             aria-label="删除"
           >
             <Trash2 size={16} />
@@ -474,7 +512,7 @@ function EndpointCard({
           type="button"
           onClick={handleTest}
           disabled={testStatus === 'testing'}
-          className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-500 transition hover:bg-sky-100 disabled:opacity-60"
+          className="btn-ghost"
         >
           {testStatus === 'testing' ? '测试中…' : '测试连接'}
         </button>
@@ -534,7 +572,7 @@ function BalanceButton({ endpoint }: { endpoint: Endpoint }) {
         type="button"
         onClick={check}
         disabled={state.kind === 'loading'}
-        className="rounded-lg border border-lavender-300 bg-lavender-50 px-3 py-1.5 text-xs font-medium text-lavender-600 transition hover:bg-lavender-100 disabled:opacity-60"
+        className="btn-ghost"
       >
         {state.kind === 'loading' ? '查询中…' : '查余额'}
       </button>
@@ -708,6 +746,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
   const [name, setName] = useState(endpoint?.name ?? '');
   const [baseUrl, setBaseUrl] = useState(endpoint?.baseUrl ?? '');
   const [apiKey, setApiKey] = useState(endpoint?.apiKey ?? '');
+  const [manageKey, setManageKey] = useState(endpoint?.manageKey ?? '');
   const [format, setFormat] = useState<EndpointFormat>(
     endpoint?.format ?? 'openai',
   );
@@ -752,6 +791,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
       name: name.trim(),
       baseUrl: baseUrl.trim(),
       apiKey: apiKey.trim(),
+      manageKey: manageKey.trim() || undefined,
       format,
       authStyle,
       chatModels: parseList(chatModelsText),
@@ -832,6 +872,18 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
               className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-lavender-300"
             />
           </Field>
+
+          {/aihubmix\.com/i.test(baseUrl) && (
+            <Field label="管理 Key（仅 AIHubMix · 查余额用）">
+              <input
+                type="password"
+                value={manageKey}
+                onChange={(e) => setManageKey(e.target.value)}
+                placeholder="AIHubMix 后台「令牌→管理密钥」复制"
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-lavender-300"
+              />
+            </Field>
+          )}
 
           <div className="flex gap-3">
             <Field label="格式" className="flex-1">
@@ -941,18 +993,10 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-lavender-200 px-4 py-2 text-sm text-ink-700 transition hover:bg-lavender-50"
-          >
+          <button type="button" onClick={onClose} className="btn-ghost">
             取消
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
-          >
+          <button type="button" onClick={handleSave} className="btn-primary">
             保存
           </button>
         </div>

@@ -125,7 +125,7 @@ export default function ChatInput({
   const canSend = !disabled && !busy && (value.trim() || attachments.length > 0);
 
   return (
-    <div className="border-t border-lavender-100/70 bg-white/55 px-3 py-2.5 backdrop-blur-md md:px-6">
+    <div className="px-3 pb-3 pt-2 md:px-6">
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
         {showStateChips && <StateChips />}
 
@@ -141,8 +141,7 @@ export default function ChatInput({
           </div>
         )}
 
-        {/* Pill input row: left attach +, text, right send/stop */}
-        <div className="flex items-end gap-1.5 rounded-3xl border border-lavender-100/80 bg-white/85 py-1 pl-1 pr-1 shadow-[0_1px_2px_rgba(124,105,160,0.05)] backdrop-blur-sm focus-within:border-lavender-300 focus-within:bg-white">
+        <div className="composer flex items-end gap-1.5">
           {supportsImages && (
             <>
               <input
@@ -160,7 +159,7 @@ export default function ChatInput({
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={disabled || uploading}
-                className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full text-ink-500 transition hover:bg-lavender-50 hover:text-ink-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="composer-tool self-end"
                 aria-label="附图片"
                 title="附图片"
               >
@@ -177,13 +176,17 @@ export default function ChatInput({
             placeholder={disabled ? '请先去设置里配一个 endpoint 喵' : placeholder}
             disabled={disabled}
             rows={1}
-            className="min-h-[36px] flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] font-light text-ink-900 placeholder:text-ink-500/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            className="composer-input"
           />
           {busy ? (
             <button
               type="button"
               onClick={onAbort}
-              className="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full bg-rose-100 text-rose-500 ring-1 ring-rose-200/60 transition hover:bg-rose-200"
+              className="send-btn self-end"
+              style={{
+                background: 'rgba(196,88,88,0.18)',
+                color: '#C45858',
+              }}
               aria-label="停止"
             >
               <Square size={14} fill="currentColor" />
@@ -193,11 +196,7 @@ export default function ChatInput({
               type="button"
               onClick={submit}
               disabled={!canSend}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-full ring-1 backdrop-blur-sm transition ${
-                canSend
-                  ? 'bg-lavender-200/80 text-lavender-600 ring-lavender-300/60 hover:bg-lavender-300/85 hover:text-ink-900'
-                  : 'bg-lavender-100/60 text-ink-500/50 ring-lavender-100/40'
-              }`}
+              className={`send-btn self-end ${canSend ? 'is-ready' : ''}`}
               aria-label="发送"
             >
               <ArrowUp size={16} strokeWidth={1.7} />

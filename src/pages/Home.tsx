@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import WisteriaSmall from '../components/WisteriaSmall';
-import { loadOrCreateLivingRoom } from '../lib/living-room';
+import GroupChatSetup from '../components/GroupChatSetup';
 
 /**
  * Home — the front porch. A grid of rooms (客厅 / 书房 / 卧室 / 身体)
@@ -48,6 +48,7 @@ function pickG(): { persona: string; text: string } {
 export default function HomePage() {
   const navigate = useNavigate();
   const [g, setG] = useState<{ persona: string; text: string } | null>(null);
+  const [groupOpen, setGroupOpen] = useState(false);
 
   useEffect(() => {
     setG(pickG());
@@ -57,15 +58,11 @@ export default function HomePage() {
     {
       id: 'chat',
       title: '客厅',
-      sub: '三人在',
-      dots: ['#B8A3CC', '#7c69a0'],
+      sub: '新建群聊',
       c: '#b08acc',
       t: 'rgba(176,138,204,0.08)',
       to: '/chat',
-      onClick: async () => {
-        const conv = await loadOrCreateLivingRoom();
-        navigate(`/chat/${conv.id}`);
-      },
+      onClick: () => setGroupOpen(true),
       ic: (
         <svg
           width="20"
@@ -337,6 +334,16 @@ export default function HomePage() {
           設定
         </button>
       </div>
+
+      {groupOpen && (
+        <GroupChatSetup
+          onClose={() => setGroupOpen(false)}
+          onCreated={(conv) => {
+            setGroupOpen(false);
+            navigate(`/chat/${conv.id}`);
+          }}
+        />
+      )}
     </div>
   );
 }

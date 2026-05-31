@@ -84,17 +84,22 @@ export async function fetchBalance(endpoint: Endpoint): Promise<BalanceQueryResu
 
 // ─── Provider handlers ──────────────────────────────────────────────────
 
-function authHeader(endpoint: Endpoint): Record<string, string> {
-  if (endpoint.authStyle === 'x-api-key') {
-    return { 'x-api-key': endpoint.apiKey };
+function authHeader(endpoint: Endpoint, overrideKey?: string): Record<string, string> {
+  const key = overrideKey ?? endpoint.apiKey;
+  if (endpoint.authStyle === 'x-api-key' && !overrideKey) {
+    return { 'x-api-key': key };
   }
-  return { Authorization: `Bearer ${endpoint.apiKey}` };
+  return { Authorization: `Bearer ${key}` };
 }
 
-async function jsonGet(url: string, endpoint: Endpoint): Promise<unknown> {
+async function jsonGet(
+  url: string,
+  endpoint: Endpoint,
+  overrideKey?: string,
+): Promise<unknown> {
   const res = await fetch(url, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json', ...authHeader(endpoint) },
+    headers: { 'Content-Type': 'application/json', ...authHeader(endpoint, overrideKey) },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -103,23 +108,40 @@ async function jsonGet(url: string, endpoint: Endpoint): Promise<unknown> {
   return res.json();
 }
 
-/** AIHubMix uses the OpenAI legacy /dashboard/billing/credit_grants shape. */
+/**
+ * AIHubMix's balance lives on the Manage API at /api/v1/user/self and
+ * requires the dashboard's Manage Key, NOT the chat API key. The quota
+ * value is integer "quota units" — divide by 500_000 for USD.
+ */
 async function aihubmix(endpoint: Endpoint): Promise<BalanceResult> {
+  if (!endpoint.manageKey) {
+    throw new Error(
+      'AIHubMix 余额查询需要 Manage Key（在 AIHubMix 后台「令牌→管理密钥」处获取），请在 endpoint 编辑里填入「管理 Key」字段',
+    );
+  }
   const root = endpoint.baseUrl.replace(/\/+$/, '');
-  // baseUrl is usually https://aihubmix.com/v1, strip to host.
   const base = root.replace(/\/v1$/, '');
-  const data = (await jsonGet(`${base}/v1/dashboard/billing/credit_grants`, endpoint)) as {
-    total_granted?: number;
-    total_used?: number;
-    total_available?: number;
+  const data = (await jsonGet(
+    `${base}/api/v1/user/self`,
+    endpoint,
+    endpoint.manageKey,
+  )) as {
+    success?: boolean;
+    message?: string;
+    data?: { quota?: number; used_quota?: number };
   };
+  if (data.success === false) {
+    throw new Error(data.message ?? 'AIHubMix 拒绝了请求');
+  }
+  const u = data.data ?? {};
+  const total = u.quota !== undefined ? Number(u.quota) / 500_000 : 0;
+  const used = u.used_quota !== undefined ? Number(u.used_quota) / 500_000 : 0;
   return {
     supported: true,
     provider: 'AIHubMix',
     currency: 'USD',
-    available: Number(data.total_available ?? 0),
-    total: data.total_granted !== undefined ? Number(data.total_granted) : undefined,
-    used: data.total_used !== undefined ? Number(data.total_used) : undefined,
+    available: total,
+    used,
     raw: data,
   };
 }

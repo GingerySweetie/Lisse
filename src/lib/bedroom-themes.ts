@@ -101,9 +101,36 @@ export const BEDROOM_THEMES: BedroomTheme[] = [
 
 export const DEFAULT_BEDROOM_THEME_ID = 'wisteria';
 
-export function getBedroomTheme(id: string | undefined): BedroomTheme {
+/** Per-persona default theme when the conversation has no explicit pick.
+ *  理理酱 stays in the 紫雾 wisteria room; Rhema gets the 石榴 red room. */
+const PERSONA_DEFAULT_THEME: Record<string, string> = {
+  persona_ririchan: 'wisteria',
+  persona_rhema: 'pomegranate',
+};
+
+export function defaultThemeForPersona(personaId: string | undefined): string {
+  if (personaId && PERSONA_DEFAULT_THEME[personaId]) {
+    return PERSONA_DEFAULT_THEME[personaId];
+  }
+  return DEFAULT_BEDROOM_THEME_ID;
+}
+
+export function getBedroomTheme(
+  id: string | undefined,
+  fallbackPersonaId?: string,
+): BedroomTheme {
+  // If the saved theme happens to be the old global default ('wisteria')
+  // AND this persona has a different per-persona default, prefer the
+  // persona default. Migrates rooms that got 'wisteria' baked in during
+  // the brief window when everyone defaulted to it.
+  const personaDefault = defaultThemeForPersona(fallbackPersonaId);
+  const effective =
+    id === DEFAULT_BEDROOM_THEME_ID &&
+    personaDefault !== DEFAULT_BEDROOM_THEME_ID
+      ? personaDefault
+      : id ?? personaDefault;
   return (
-    BEDROOM_THEMES.find((t) => t.id === id) ??
+    BEDROOM_THEMES.find((t) => t.id === effective) ??
     BEDROOM_THEMES.find((t) => t.id === DEFAULT_BEDROOM_THEME_ID) ??
     BEDROOM_THEMES[0]
   );

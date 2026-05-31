@@ -124,101 +124,31 @@ export default function MessageBubble({
 
   return (
     <div
-      className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
+      className={`group msg-enter flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div
         className={`flex min-w-0 flex-col gap-1.5 ${
           isUser ? 'max-w-[85%]' : 'w-full max-w-full'
         }`}
       >
-        {!isUser && isGroup && authorPersona && (
-          <div className="flex items-center gap-1.5 px-1 text-xs">
-            <span
-              className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-              style={{ background: authorPersona.color }}
-            >
-              {authorPersona.avatar}
-            </span>
-            <span className="font-normal italic tracking-wide text-ink-500">
-              {authorPersona.name}
-            </span>
-          </div>
-        )}
-        {!isUser && hasThinking && (
-          <ThinkingBlock text={thinking} streaming={isStreaming && !text} />
-        )}
-        {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
-          <ToolCallChips calls={message.toolCalls} />
-        )}
-
-        {message.attachments && message.attachments.length > 0 && (
-          <Attachments attachments={message.attachments} alignRight={isUser} />
-        )}
-
-        <div
-          className={`min-w-0 text-[15px] leading-relaxed ${
-            isUser
-              ? 'rounded-2xl px-4 py-3 text-ink-900 ring-1'
-              : isError
-                ? 'rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-700'
-                : 'px-1 py-1 text-ink-900'
-          }`}
-          style={
-            isUser
-              ? {
-                  background: `${accent}73`,
-                  boxShadow: `inset 0 0 0 1px ${accent}40`,
-                }
-              : undefined
-          }
-        >
-          {editing ? (
-            <div className="flex flex-col gap-2">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                rows={Math.max(2, Math.min(12, draft.split('\n').length + 1))}
-                className="w-full resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 text-[15px] text-ink-900 focus:border-lavender-300"
-                autoFocus
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-ink-500 transition hover:bg-lavender-50"
-                >
-                  <X size={14} /> 取消
-                </button>
-                <button
-                  type="button"
-                  onClick={saveEdit}
-                  className="flex items-center gap-1 rounded-lg bg-lavender-200 px-3 py-1.5 text-xs font-medium text-ink-900 transition hover:bg-lavender-300"
-                >
-                  <Check size={14} /> 保存并重发
-                </button>
+        {!isUser && !isError && (
+          <div className="ai-message">
+            {authorPersona && (
+              <div className="ai-byline">
+                <span className="ai-dot" />
+                <span className="ai-name">{authorPersona.name}</span>
               </div>
-            </div>
-          ) : isError ? (
-            <div className="flex items-start gap-2">
-              <AlertCircle size={18} className="mt-0.5 shrink-0" />
-              <div>
-                <div className="font-medium">请求出错</div>
-                <div className="mt-1 break-all text-sm opacity-90">
-                  {message.errorMessage ?? '未知错误'}
-                </div>
-              </div>
-            </div>
-          ) : isUser ? (
-            <div className="prose-msg">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-              >
-                {text}
-              </ReactMarkdown>
-            </div>
-          ) : (
-            <div className="prose-msg">
+            )}
+            {hasThinking && (
+              <ThinkingBlock text={thinking} streaming={isStreaming && !text} />
+            )}
+            {message.toolCalls && message.toolCalls.length > 0 && (
+              <ToolCallChips calls={message.toolCalls} />
+            )}
+            {message.attachments && message.attachments.length > 0 && (
+              <Attachments attachments={message.attachments} alignRight={false} />
+            )}
+            <div className="ai-body prose-msg min-w-0">
               {text ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -227,34 +157,94 @@ export default function MessageBubble({
                   {text}
                 </ReactMarkdown>
               ) : isStreaming ? (
-                <span className="inline-flex gap-1 text-ink-500">
-                  <span className="animate-pulse">●</span>
-                  <span className="animate-pulse [animation-delay:0.15s]">●</span>
-                  <span className="animate-pulse [animation-delay:0.3s]">●</span>
-                </span>
+                <span className="stream-cursor" />
               ) : null}
-            </div>
-          )}
-
-          {message.usage &&
-            message.role === 'assistant' &&
-            message.status === 'done' && (
-              <div className="mt-2 flex flex-wrap gap-x-3 text-xs text-ink-500">
-                {message.usage.inputTokens !== undefined && (
-                  <span>输入 {message.usage.inputTokens}</span>
-                )}
-                {message.usage.outputTokens !== undefined && (
-                  <span>输出 {message.usage.outputTokens}</span>
-                )}
-                {message.usage.cacheReadTokens !== undefined &&
-                  message.usage.cacheReadTokens > 0 && (
-                    <span className="text-sky-500">
-                      缓存命中 {message.usage.cacheReadTokens}
-                    </span>
+              {message.usage && message.status === 'done' && (
+                <div className="mt-2 flex flex-wrap gap-x-3 text-xs text-ink-500">
+                  {message.usage.inputTokens !== undefined && (
+                    <span>输入 {message.usage.inputTokens}</span>
                   )}
+                  {message.usage.outputTokens !== undefined && (
+                    <span>输出 {message.usage.outputTokens}</span>
+                  )}
+                  {message.usage.cacheReadTokens !== undefined &&
+                    message.usage.cacheReadTokens > 0 && (
+                      <span className="text-sky-500">
+                        缓存命中 {message.usage.cacheReadTokens}
+                      </span>
+                    )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isUser && message.attachments && message.attachments.length > 0 && (
+          <Attachments attachments={message.attachments} alignRight={true} />
+        )}
+
+        {(isUser || isError) && (
+          <div
+            className={
+              isUser
+                ? 'bubble-user prose-msg min-w-0'
+                : 'min-w-0 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[15px] leading-relaxed text-rose-700'
+            }
+            style={
+              isUser && accentColor
+                ? {
+                    background: `${accent}73`,
+                    boxShadow: `inset 0 0 0 1px ${accent}40`,
+                  }
+                : undefined
+            }
+          >
+            {editing ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  rows={Math.max(2, Math.min(12, draft.split('\n').length + 1))}
+                  className="w-full resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 text-[15px] text-ink-900 focus:border-lavender-300"
+                  autoFocus
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-ink-500 transition hover:bg-lavender-50"
+                  >
+                    <X size={14} /> 取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveEdit}
+                    className="flex items-center gap-1 rounded-lg bg-lavender-200 px-3 py-1.5 text-xs font-medium text-ink-900 transition hover:bg-lavender-300"
+                  >
+                    <Check size={14} /> 保存并重发
+                  </button>
+                </div>
               </div>
+            ) : isError ? (
+              <div className="flex items-start gap-2">
+                <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-medium">请求出错</div>
+                  <div className="mt-1 break-all text-sm opacity-90">
+                    {message.errorMessage ?? '未知错误'}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+              >
+                {text}
+              </ReactMarkdown>
             )}
-        </div>
+          </div>
+        )}
 
         {/* Action row: sibling nav + edit/regenerate */}
         {/*
@@ -263,17 +253,17 @@ export default function MessageBubble({
         */}
         {!editing && !isStreaming && (
           <div
-            className={`flex items-center gap-1 px-1 text-xs text-ink-500 opacity-60 transition group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-90 ${
+            className={`msg-actions opacity-60 transition group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-90 ${
               isUser ? 'justify-end' : 'justify-start'
             }`}
           >
             {sib && sib.total > 1 && (
-              <div className="flex items-center gap-0.5 rounded-full bg-white/80 px-1 py-0.5 shadow-sm ring-1 ring-lavender-100">
+              <div className="flex items-center gap-0.5 rounded-full bg-white/80 px-1 py-0.5 ring-1 ring-lavender-100">
                 <button
                   type="button"
                   onClick={() => gotoSibling(-1)}
                   disabled={disabled}
-                  className="rounded-full p-1 transition hover:bg-lavender-100 disabled:opacity-40"
+                  className="msg-act p-1"
                   aria-label="上一条分支"
                 >
                   <ChevronLeft size={14} />
@@ -285,7 +275,7 @@ export default function MessageBubble({
                   type="button"
                   onClick={() => gotoSibling(1)}
                   disabled={disabled}
-                  className="rounded-full p-1 transition hover:bg-lavender-100 disabled:opacity-40"
+                  className="msg-act p-1"
                   aria-label="下一条分支"
                 >
                   <ChevronRight size={14} />
@@ -293,11 +283,7 @@ export default function MessageBubble({
               </div>
             )}
             {message.content && (
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 shadow-sm ring-1 ring-lavender-100 transition hover:bg-white"
-              >
+              <button type="button" onClick={handleCopy} className="msg-act">
                 {copied ? (
                   <>
                     <Check size={12} className="text-sky-500" /> 已复制
@@ -314,7 +300,7 @@ export default function MessageBubble({
                 type="button"
                 onClick={startEdit}
                 disabled={disabled}
-                className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 shadow-sm ring-1 ring-lavender-100 transition hover:bg-white disabled:opacity-40"
+                className="msg-act"
               >
                 <Pencil size={12} /> 编辑
               </button>
@@ -324,7 +310,7 @@ export default function MessageBubble({
                 type="button"
                 onClick={onRegenerate}
                 disabled={disabled}
-                className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 shadow-sm ring-1 ring-lavender-100 transition hover:bg-white disabled:opacity-40"
+                className="msg-act"
               >
                 <RefreshCw size={12} /> 重生成
               </button>
@@ -341,7 +327,7 @@ export default function MessageBubble({
                     type="button"
                     onClick={() => onLetSpeak(p)}
                     disabled={disabled}
-                    className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 shadow-sm ring-1 ring-lavender-100 transition hover:bg-white disabled:opacity-40"
+                    className="msg-act"
                     style={{ color: p.color }}
                     title={`让 ${p.name} 说几句`}
                   >
@@ -379,24 +365,24 @@ function ThinkingBlock({
   }, [streaming]);
 
   return (
-    <div className="px-1 py-1">
+    <div className={`thinking-panel ${open ? 'is-open' : ''}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 text-xs text-ink-500/70 transition hover:text-ink-500"
+        className="thinking-head"
       >
         <Brain size={13} className="opacity-60" />
         <span className="italic">{streaming ? '在想……' : '想了想'}</span>
-        <span className="ml-auto opacity-50">
-          {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        <span className="thinking-chevron ml-1">
+          <ChevronDown size={13} />
         </span>
       </button>
       {open && (
-        <div className="mt-2 whitespace-pre-wrap pl-5 text-[13px] italic leading-relaxed text-ink-500">
-          {text}
-          {streaming && (
-            <span className="ml-1 inline-block h-3 w-[2px] animate-pulse bg-lavender-400 align-middle" />
-          )}
+        <div className="thinking-body">
+          <div className="thinking-list">
+            {text}
+            {streaming && <span className="stream-cursor" />}
+          </div>
         </div>
       )}
     </div>

@@ -51,12 +51,16 @@ export default function StateChips() {
             key={k}
             type="button"
             onClick={() => toggle(k)}
-            className={`shrink-0 rounded-full px-3 py-1 font-light tracking-wide transition ${
+            className={`quick-tag shrink-0 ${isOn ? 'is-on' : ''}`}
+            style={
               isOn
-                ? 'bg-lavender-200/80 text-lavender-600 ring-1 ring-lavender-300/60'
-                : 'bg-white/55 text-ink-500 ring-1 ring-lavender-100/80 hover:bg-white/80 hover:text-ink-700'
-            }`}
-            style={{ fontFamily: 'var(--font-serif)' }}
+                ? {
+                    fontFamily: 'var(--font-serif)',
+                    background: 'var(--lav-200)',
+                    color: 'var(--lav-700)',
+                  }
+                : { fontFamily: 'var(--font-serif)' }
+            }
           >
             {def.label}
           </button>

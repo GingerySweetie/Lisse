@@ -143,7 +143,7 @@ export default function BedroomPickerPage() {
       >
         {ROOMS.map((r) => {
           const count = msgCounts?.[r.personaId] ?? 0;
-          const theme = getBedroomTheme(themeByPersona[r.personaId]);
+          const theme = getBedroomTheme(themeByPersona[r.personaId], r.personaId);
           return (
             <button
               key={r.personaId}
