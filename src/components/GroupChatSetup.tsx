@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { X, Users } from 'lucide-react';
-import { db, getSettings } from '../db';
+import { X, Users, AlertCircle } from 'lucide-react';
+import { db } from '../db';
 import { newId } from '../lib/id';
 import type { Conversation } from '../types';
 
@@ -15,28 +15,19 @@ interface Props {
  * 新建群聊：选 2+ 个 persona，给每个 persona 单独配 endpoint + model，
  * 然后开一个新会话。和卧室/客厅 singleton 不同——每次点都开新的，
  * 历史进侧栏。第一个被选中的 persona 是默认发言者。
+ *
+ * 模型不预填——群聊的卖点就是"一个人格一条模型"，强制手动挑，
+ * 顺便检测重复并警告。
  */
 export default function GroupChatSetup({ onClose, onCreated }: Props) {
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
   const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
 
   const [selected, setSelected] = useState<string[]>([]);
-  // Per-persona model override: personaId → {endpointId, model}.
   const [models, setModels] = useState<
     Record<string, { endpointId: string; model: string }>
   >({});
-  const [defaultEpId, setDefaultEpId] = useState<string>('');
-  const [defaultModel, setDefaultModel] = useState<string>('');
   const [busy, setBusy] = useState(false);
-
-  // Seed defaults from app settings on first load.
-  useEffect(() => {
-    (async () => {
-      const s = await getSettings();
-      if (s.defaultEndpointId) setDefaultEpId(s.defaultEndpointId);
-      if (s.defaultModel) setDefaultModel(s.defaultModel);
-    })();
-  }, []);
 
   function toggle(personaId: string) {
     setSelected((prev) => {
@@ -48,11 +39,6 @@ export default function GroupChatSetup({ onClose, onCreated }: Props) {
         });
         return next;
       }
-      // Add: seed with defaults.
-      setModels((m) => ({
-        ...m,
-        [personaId]: { endpointId: defaultEpId, model: defaultModel },
-      }));
       return [...prev, personaId];
     });
   }
@@ -60,6 +46,20 @@ export default function GroupChatSetup({ onClose, onCreated }: Props) {
   function setPersonaModel(personaId: string, epId: string, model: string) {
     setModels((m) => ({ ...m, [personaId]: { endpointId: epId, model } }));
   }
+
+  /** Set of (endpointId|model) keys that appear more than once. */
+  const dupedKeys = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const id of selected) {
+      const m = models[id];
+      if (!m || !m.endpointId || !m.model) continue;
+      const k = `${m.endpointId}|${m.model}`;
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+    return new Set(Object.entries(counts).filter(([, n]) => n > 1).map(([k]) => k));
+  }, [selected, models]);
+
+  const hasDupes = dupedKeys.size > 0;
 
   const canCreate = useMemo(
     () =>
@@ -142,13 +142,20 @@ export default function GroupChatSetup({ onClose, onCreated }: Props) {
                 const on = selected.includes(p.id);
                 const cfg = models[p.id];
                 const ep = endpoints?.find((e) => e.id === cfg?.endpointId);
+                const isDuped =
+                  on &&
+                  cfg?.endpointId &&
+                  cfg?.model &&
+                  dupedKeys.has(`${cfg.endpointId}|${cfg.model}`);
                 return (
                   <li
                     key={p.id}
                     className={`flex flex-col gap-2 rounded-xl border px-3 py-2.5 transition ${
-                      on
-                        ? 'border-lavender-300 bg-lavender-50/70'
-                        : 'border-lavender-100 bg-white'
+                      isDuped
+                        ? 'border-amber-300 bg-amber-50/60'
+                        : on
+                          ? 'border-lavender-300 bg-lavender-50/70'
+                          : 'border-lavender-100 bg-white'
                     }`}
                   >
                     <label className="flex cursor-pointer items-center gap-3">
@@ -220,6 +227,14 @@ export default function GroupChatSetup({ onClose, onCreated }: Props) {
 
         {/* Footer */}
         <div className="border-t border-lavender-100 bg-lavender-50/40 px-5 py-3">
+          {hasDupes && (
+            <div className="mb-2 flex items-start gap-1.5 text-xs text-amber-600">
+              <AlertCircle size={13} className="mt-0.5 shrink-0" />
+              <span>
+                有重复模型——群聊建议一个人格一条模型，区分度会更高。
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs text-ink-500">
               {selected.length === 0
