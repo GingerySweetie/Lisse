@@ -41,7 +41,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
+              className="btn-primary flex items-center gap-1.5"
             >
               <Plus size={16} />
               添加
@@ -345,11 +345,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
         还没有 endpoint 喵。<br />
         点上面的"添加"或下面这个按钮开始：
       </p>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="mt-4 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
-      >
+      <button type="button" onClick={onCreate} className="btn-primary mt-4">
         添加 endpoint
       </button>
     </div>
@@ -416,32 +412,26 @@ function EndpointCard({
   }
 
   return (
-    <div className="rounded-2xl border border-lavender-200 bg-white/55 p-4 shadow-sm backdrop-blur-sm">
+    <div className="endpoint-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-base font-semibold text-ink-900">
-              {endpoint.name}
-            </h3>
+            <h3 className="endpoint-card-title truncate">{endpoint.name}</h3>
             <span
-              className={`rounded px-1.5 py-0.5 text-xs ${
-                endpoint.format === 'anthropic'
-                  ? 'bg-lavender-100 text-lavender-600'
-                  : 'bg-sky-100 text-sky-500'
-              }`}
+              className={
+                endpoint.format === 'anthropic' ? 'tag-anthropic' : 'tag-openai'
+              }
             >
               {endpoint.format}
             </span>
           </div>
-          <div className="mt-1 truncate text-xs text-ink-500">
-            {endpoint.baseUrl}
-          </div>
+          <div className="endpoint-url mt-1 truncate">{endpoint.baseUrl}</div>
           {endpoint.chatModels.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {endpoint.chatModels.map((m) => (
                 <span
                   key={m}
-                  className="rounded bg-lavender-50 px-1.5 py-0.5 text-xs text-ink-700"
+                  className="model-name rounded bg-lavender-50 px-2 py-0.5"
                 >
                   {m}
                 </span>
@@ -453,7 +443,7 @@ function EndpointCard({
           <button
             type="button"
             onClick={onEdit}
-            className="rounded-lg p-2 text-ink-500 transition hover:bg-lavender-50 hover:text-ink-900"
+            className="icon-btn"
             aria-label="编辑"
           >
             <Pencil size={16} />
@@ -461,7 +451,7 @@ function EndpointCard({
           <button
             type="button"
             onClick={handleDelete}
-            className="rounded-lg p-2 text-ink-500 transition hover:bg-rose-50 hover:text-rose-500"
+            className="icon-btn danger"
             aria-label="删除"
           >
             <Trash2 size={16} />
@@ -474,7 +464,7 @@ function EndpointCard({
           type="button"
           onClick={handleTest}
           disabled={testStatus === 'testing'}
-          className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-500 transition hover:bg-sky-100 disabled:opacity-60"
+          className="btn-ghost"
         >
           {testStatus === 'testing' ? '测试中…' : '测试连接'}
         </button>
@@ -534,7 +524,7 @@ function BalanceButton({ endpoint }: { endpoint: Endpoint }) {
         type="button"
         onClick={check}
         disabled={state.kind === 'loading'}
-        className="rounded-lg border border-lavender-300 bg-lavender-50 px-3 py-1.5 text-xs font-medium text-lavender-600 transition hover:bg-lavender-100 disabled:opacity-60"
+        className="btn-ghost"
       >
         {state.kind === 'loading' ? '查询中…' : '查余额'}
       </button>
@@ -955,18 +945,10 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-lavender-200 px-4 py-2 text-sm text-ink-700 transition hover:bg-lavender-50"
-          >
+          <button type="button" onClick={onClose} className="btn-ghost">
             取消
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
-          >
+          <button type="button" onClick={handleSave} className="btn-primary">
             保存
           </button>
         </div>
