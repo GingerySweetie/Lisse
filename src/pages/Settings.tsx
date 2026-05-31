@@ -74,9 +74,57 @@ export default function SettingsPage() {
           )}
 
           <MemorySettings />
+          <AppMaintenance />
         </div>
       </div>
     </div>
+  );
+}
+
+function AppMaintenance() {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  async function forceRefresh() {
+    setBusy(true);
+    setMsg('清理中…');
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map((n) => caches.delete(n)));
+      }
+      setMsg('SW 已注销，正在重载…');
+      setTimeout(() => window.location.reload(), 250);
+    } catch (e) {
+      setBusy(false);
+      setMsg(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <section className="endpoint-card mt-4">
+      <h3 className="endpoint-card-title">App 维护</h3>
+      <p className="mt-1 text-xs text-ink-500">
+        强制注销 Service Worker + 清掉 PWA 缓存后重载，用来拿最新部署的版本。
+        <strong className="ml-1 text-ink-700">不会动你的对话/人格/记忆</strong>
+        （那些存在 IndexedDB 里，独立于 SW 缓存）。
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void forceRefresh()}
+          disabled={busy}
+          className="btn-ghost"
+        >
+          {busy ? '清理中…' : '强制刷新（清 SW 缓存）'}
+        </button>
+        {msg && <span className="text-xs text-ink-500">{msg}</span>}
+      </div>
+    </section>
   );
 }
 
