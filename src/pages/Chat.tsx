@@ -512,7 +512,7 @@ export default function ChatPage() {
                   authorPersona={
                     m.personaId
                       ? personas?.find((p) => p.id === m.personaId)
-                      : undefined
+                      : persona
                   }
                   isGroup={isGroup(conversation?.personaIds)}
                   groupMembers={
