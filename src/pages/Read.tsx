@@ -5,11 +5,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   ChevronLeft,
+  ListTree,
   MessageSquarePlus,
   Send,
   Square,
   X,
 } from 'lucide-react';
+import BookmarkTocPanel from '../components/BookmarkTocPanel';
 import { db, getSettings, saveSettings } from '../db';
 import {
   extractExcerpt,
@@ -114,6 +116,17 @@ export default function ReadPage() {
     const pos = Math.floor(frac * book.totalChars);
     void updateReadingPosition(book.id, pos);
   }
+
+  /** Scroll to a specific character offset in book.content. */
+  function jumpToPosition(pos: number) {
+    const el = readerRef.current;
+    if (!el || !book || book.totalChars <= 0) return;
+    const frac = Math.max(0, Math.min(1, pos / book.totalChars));
+    el.scrollTop = frac * (el.scrollHeight - el.clientHeight);
+  }
+
+  // Bookmark / TOC drawer
+  const [tocOpen, setTocOpen] = useState(false);
 
   // Selection-driven comment popover
   const [selection, setSelection] = useState<{
@@ -287,6 +300,15 @@ export default function ReadPage() {
         </div>
         <button
           type="button"
+          onClick={() => setTocOpen(true)}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#B66B82] transition hover:bg-[#F8E8EE]"
+          title="目录 / 书签"
+          aria-label="目录 / 书签"
+        >
+          <ListTree size={16} />
+        </button>
+        <button
+          type="button"
           onClick={() => navigate(`/chat/${conversation?.id ?? ''}`)}
           disabled={!conversation}
           className="rounded-full bg-lavender-200/60 px-3 py-1.5 text-xs text-lavender-600 ring-1 ring-lavender-300/40 transition hover:bg-lavender-300/70 disabled:opacity-50"
@@ -443,6 +465,19 @@ export default function ReadPage() {
               </div>
             )}
         </div>
+      )}
+
+      {tocOpen && book && (
+        <BookmarkTocPanel
+          book={book}
+          currentPosition={Math.floor(scrollFraction * book.totalChars)}
+          currentSnippet={book.content.slice(
+            Math.floor(scrollFraction * book.totalChars),
+            Math.floor(scrollFraction * book.totalChars) + 80,
+          )}
+          onClose={() => setTocOpen(false)}
+          onJump={jumpToPosition}
+        />
       )}
     </div>
   );

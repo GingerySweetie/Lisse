@@ -229,8 +229,30 @@ export interface Book {
   conversationId?: string;
   /** Last reading position (character offset into content). */
   lastPosition?: number;
+  /** Cached TOC extracted from headings (md) or 章节 markers (txt). */
+  toc?: TocEntry[];
   createdAt: number;
   updatedAt: number;
+}
+
+export interface TocEntry {
+  title: string;
+  /** Character offset into book.content. */
+  position: number;
+  /** Heading level — 1 = top, deeper levels indent further. */
+  level: number;
+}
+
+export interface Bookmark {
+  id: string;
+  bookId: string;
+  /** Character offset into book.content. */
+  position: number;
+  /** First ~60 chars of the body at the bookmark, for the list label. */
+  snippet: string;
+  /** Optional free-form note the user added. */
+  note?: string;
+  createdAt: number;
 }
 
 /**

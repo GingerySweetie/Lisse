@@ -984,3 +984,261 @@
   background: var(--accent); color: var(--accent-on);
   font-size: 13px; font-weight: 500; cursor: pointer;
 }
+
+/* ─── Bookmark / TOC drawer (rose tint) ──────────────────────────── */
+.rose-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(60, 30, 50, 0.28);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: roseFadeIn 200ms var(--ease) both;
+}
+@keyframes roseFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.rose-drawer {
+  --rose-50:  #FBF4F7;
+  --rose-100: #F8E8EE;
+  --rose-200: #F4DDE6;
+  --rose-300: #EBC5D4;
+  --rose-400: #D88FA4;
+  --rose-500: #C47189;
+  --rose-600: #B66B82;
+  --rose-700: #6B3F4E;
+
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  background: linear-gradient(180deg, var(--rose-50) 0%, #FCEFF4 100%);
+  border-top: 1px solid var(--rose-200);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -8px 32px rgba(180, 100, 130, 0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: roseSlideUp 260ms var(--ease) both;
+}
+@media (min-width: 768px) {
+  .rose-drawer {
+    align-self: center;
+    margin-bottom: 0;
+    border-radius: 22px;
+    border: 1px solid var(--rose-200);
+  }
+  .rose-drawer-backdrop { align-items: center; }
+}
+@keyframes roseSlideUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+.rose-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--rose-200);
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  flex-shrink: 0;
+}
+.rose-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 13px;
+  color: var(--rose-600);
+  transition: background var(--t-mid) var(--ease), color var(--t-mid) var(--ease);
+}
+.rose-tab:hover { background: var(--rose-100); }
+.rose-tab.is-active {
+  background: var(--rose-200);
+  color: var(--rose-700);
+  font-weight: 500;
+}
+.rose-tab-count {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--rose-400);
+  color: #fff;
+  font-weight: 500;
+}
+.rose-close {
+  margin-left: auto;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--rose-500);
+  padding: 6px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--t-mid) var(--ease);
+}
+.rose-close:hover { background: var(--rose-100); }
+
+.rose-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 12px;
+}
+
+.rose-empty {
+  padding: 40px 22px;
+  text-align: center;
+  color: var(--rose-600);
+  font-size: 13px;
+  line-height: 1.7;
+  font-style: italic;
+}
+
+/* TOC list */
+.rose-toc { list-style: none; margin: 0; padding: 6px 0; }
+.rose-toc-item {
+  position: relative;
+}
+.rose-toc-item button {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 9px 18px 9px 0;
+  width: 100%;
+  text-align: left;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--rose-700);
+  font-family: inherit;
+  transition: background var(--t-mid) var(--ease);
+}
+.rose-toc-item button:hover { background: var(--rose-100); }
+.rose-toc-item.is-current button {
+  background: var(--rose-200);
+  font-weight: 500;
+}
+.rose-toc-item.is-current::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--rose-400);
+}
+
+/* Bookmarks list */
+.rose-marks { list-style: none; margin: 0; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+.rose-mark {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--rose-200);
+  border-radius: 14px;
+  padding: 10px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.rose-mark-main {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: inherit;
+}
+.rose-mark-snippet {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--rose-700);
+  font-style: italic;
+}
+.rose-mark-meta {
+  font-size: 10.5px;
+  color: var(--rose-500);
+}
+.rose-mark-note {
+  background: transparent;
+  border: 1px dashed var(--rose-300);
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  color: var(--rose-500);
+  font-family: inherit;
+  align-self: flex-start;
+  transition: background var(--t-mid) var(--ease);
+}
+.rose-mark-note:hover { background: var(--rose-100); color: var(--rose-700); }
+.rose-mark-note-edit input {
+  width: 100%;
+  background: var(--rose-50);
+  border: 1px solid var(--rose-300);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--rose-700);
+  outline: 0;
+  font-family: inherit;
+}
+.rose-mark-note-edit input:focus { border-color: var(--rose-500); }
+.rose-mark-del {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--rose-300);
+  padding: 4px;
+  border-radius: 6px;
+  transition: color var(--t-mid) var(--ease);
+}
+.rose-mark-del:hover { color: var(--rose-600); }
+
+/* Add bookmark bar at the bottom of the marks tab */
+.rose-add-bar {
+  padding: 10px 12px 14px;
+  background: rgba(255, 255, 255, 0.55);
+  border-top: 1px solid var(--rose-200);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  flex-shrink: 0;
+}
+.rose-add-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--rose-400);
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--t-mid) var(--ease);
+}
+.rose-add-btn:hover { background: var(--rose-500); }
+.rose-add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
