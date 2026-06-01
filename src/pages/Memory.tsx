@@ -88,7 +88,7 @@ export default function MemoryPage() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="flex items-center gap-3 border-b border-lavender-200 bg-white/60 px-3 py-3 pl-14 backdrop-blur md:px-6 md:pl-6">
+      <header className="topbar flex items-center gap-3 px-3 py-3 pl-14 md:px-6 md:pl-6">
         <Link
           to="/chat"
           className="hidden items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-500 transition hover:bg-lavender-50 md:inline-flex"
@@ -96,13 +96,13 @@ export default function MemoryPage() {
           <ChevronLeft size={16} />
           返回
         </Link>
-        <h2 className="serif-title text-lg">记忆</h2>
+        <h2 className="endpoint-card-title">记忆</h2>
       </header>
 
       <div className="flex-1 overflow-y-auto px-3 py-4 md:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {/* Persona switcher + stats */}
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-lavender-200 bg-white/80 p-3">
+          <div className="endpoint-card !mt-0 !p-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm">
               <label className="text-xs font-medium text-ink-500">人格</label>
               <select
@@ -125,7 +125,7 @@ export default function MemoryPage() {
                 type="button"
                 onClick={() => setBackfilling(true)}
                 disabled={!personaId}
-                className="flex items-center gap-1 rounded-lg border border-lavender-200 bg-white px-2 py-1 text-xs font-medium text-lavender-600 transition hover:bg-lavender-50 disabled:opacity-50"
+                className="btn-ghost flex items-center gap-1 !px-2 !py-1 !text-xs"
               >
                 <Sparkles size={12} />
                 从对话回填
@@ -133,7 +133,7 @@ export default function MemoryPage() {
               <button
                 type="button"
                 onClick={() => setCreating(true)}
-                className="rounded-lg bg-lavender-200 px-2 py-1 text-xs font-medium text-ink-900 hover:bg-lavender-300"
+                className="btn-primary !px-2 !py-1 !text-xs"
               >
                 + 手工添加
               </button>
@@ -141,7 +141,7 @@ export default function MemoryPage() {
           </div>
 
           {/* Filter */}
-          <div className="flex items-center gap-2 rounded-2xl border border-lavender-200 bg-white/80 px-3 py-2">
+          <div className="endpoint-card !mt-0 !p-3 flex items-center gap-2">
             <Search size={16} className="text-ink-500" />
             <input
               value={filter}

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import ErrorBoundary from './ErrorBoundary';
 import { Menu } from 'lucide-react';
 import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
 
   // Track visibility transitions so ambient-status inference has fresh
   // timestamps to look at. Bootstraps once on mount, then listens for
@@ -58,7 +60,11 @@ export default function Layout() {
         >
           <Menu size={20} />
         </button>
-        <Outlet />
+        {/* key=pathname so a crash on /read/:id doesn't poison
+            the same boundary instance on /home etc. */}
+        <ErrorBoundary key={location.pathname} label={location.pathname}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   );

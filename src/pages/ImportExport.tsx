@@ -181,7 +181,7 @@ export default function ImportExportPage() {
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-6">
           {/* ChatGPT/Claude import shared options */}
-          <section className="rounded-2xl border border-lavender-200 bg-white/80 p-5 shadow-sm">
+          <section className="endpoint-card !mt-0">
             <h3 className="text-base font-semibold text-ink-900">
               从 ChatGPT / Claude 导入
             </h3>
@@ -267,7 +267,7 @@ export default function ImportExportPage() {
           </section>
 
           {/* Bulk export conversations */}
-          <section className="rounded-2xl border border-lavender-200 bg-white/80 p-5 shadow-sm">
+          <section className="endpoint-card !mt-0">
             <h3 className="text-base font-semibold text-ink-900">
               批量导出对话
             </h3>
@@ -321,7 +321,7 @@ export default function ImportExportPage() {
           </section>
 
           {/* Memory export */}
-          <section className="rounded-2xl border border-lavender-200 bg-white/80 p-5 shadow-sm">
+          <section className="endpoint-card !mt-0">
             <h3 className="text-base font-semibold text-ink-900">
               导出记忆为 Markdown
             </h3>
@@ -362,7 +362,7 @@ export default function ImportExportPage() {
           </section>
 
           {/* Backup */}
-          <section className="rounded-2xl border border-lavender-200 bg-white/80 p-5 shadow-sm">
+          <section className="endpoint-card !mt-0">
             <h3 className="text-base font-semibold text-ink-900">
               备份 / 恢复（Lisse 全量）
             </h3>

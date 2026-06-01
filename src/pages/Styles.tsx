@@ -17,7 +17,7 @@ export default function StylesPage() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="flex items-center gap-3 border-b border-lavender-200 bg-white/60 px-3 py-3 pl-14 backdrop-blur md:px-6 md:pl-6">
+      <header className="topbar flex items-center gap-3 px-3 py-3 pl-14 md:px-6 md:pl-6">
         <Link
           to="/chat"
           className="hidden items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-500 transition hover:bg-lavender-50 md:inline-flex"
@@ -25,7 +25,7 @@ export default function StylesPage() {
           <ChevronLeft size={16} />
           返回
         </Link>
-        <h2 className="serif-title text-lg">设置 · 写作风格</h2>
+        <h2 className="endpoint-card-title">设置 · 写作风格</h2>
       </header>
 
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
@@ -38,7 +38,7 @@ export default function StylesPage() {
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
+              className="btn-primary flex items-center gap-1.5"
             >
               <Plus size={16} />
               新风格
@@ -85,7 +85,7 @@ function StyleCard({
     ?.trim();
 
   return (
-    <div className="rounded-2xl border border-lavender-200 bg-white/80 p-4 shadow-sm">
+    <div className="endpoint-card !mt-0">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-lavender-100 text-lavender-600">
@@ -97,7 +97,7 @@ function StyleCard({
                 {style.name}
               </h3>
               {style.builtin && (
-                <span className="rounded bg-lavender-100 px-1.5 py-0.5 text-xs text-lavender-600">
+                <span className="tag-anthropic">
                   内置
                 </span>
               )}
@@ -116,7 +116,7 @@ function StyleCard({
           <button
             type="button"
             onClick={onEdit}
-            className="rounded-lg p-2 text-ink-500 transition hover:bg-lavender-50 hover:text-ink-900"
+            className="icon-btn"
             aria-label="编辑"
           >
             <Pencil size={16} />
@@ -125,7 +125,7 @@ function StyleCard({
             <button
               type="button"
               onClick={handleDelete}
-              className="rounded-lg p-2 text-ink-500 transition hover:bg-rose-50 hover:text-rose-500"
+              className="icon-btn danger"
               aria-label="删除"
             >
               <Trash2 size={16} />
