@@ -21,7 +21,7 @@ import { getActiveBranch } from '../lib/branch';
 import PersonaPicker from '../components/PersonaPicker';
 import StylePicker from '../components/StylePicker';
 import EndpointPicker from '../components/EndpointPicker';
-import type { Message, Persona } from '../types';
+import type { Conversation, Message, Persona } from '../types';
 
 export default function ReadPage() {
   const { bookId } = useParams();
@@ -32,10 +32,7 @@ export default function ReadPage() {
     [bookId],
   );
 
-  const conversation = useLiveQuery(async () => {
-    if (!book) return undefined;
-    return getBookConversation(book);
-  }, [book?.id]);
+  const conversation = useBookConversation(book);
 
   const allMessages = useLiveQuery(
     () =>
@@ -449,6 +446,35 @@ export default function ReadPage() {
       )}
     </div>
   );
+}
+
+/** Resolve (lazily create) the book's chat conversation. Lives in a
+ *  plain useEffect because getBookConversation does DB writes on first
+ *  call — useLiveQuery's querier runs inside a read-only transaction
+ *  and would throw ReadOnlyError on the write. */
+function useBookConversation(
+  book: ReturnType<typeof useLiveQuery<unknown>> & unknown,
+): Conversation | undefined {
+  const [conv, setConv] = useState<Conversation | undefined>(undefined);
+  const b = book as { id?: string; conversationId?: string } | undefined;
+  useEffect(() => {
+    if (!b) {
+      setConv(undefined);
+      return;
+    }
+    let cancelled = false;
+    getBookConversation(b as unknown as Parameters<typeof getBookConversation>[0])
+      .then((c) => {
+        if (!cancelled) setConv(c);
+      })
+      .catch((e) => {
+        console.error('[read] getBookConversation failed:', e);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [b?.id, b?.conversationId]);
+  return conv;
 }
 
 interface ComposerBarProps {
