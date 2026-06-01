@@ -130,15 +130,38 @@ function BookEditor({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [content, setContent] = useState('');
+  const [format, setFormat] = useState<'txt' | 'md'>('md');
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState<string>('');
   const fileRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
 
   async function handleFile(file: File) {
+    setParseError('');
+    const name = file.name.toLowerCase();
+    // EPUB: parse via jszip + OPF spine → markdown.
+    if (name.endsWith('.epub')) {
+      setParsing(true);
+      try {
+        const { parseEpub } = await import('../lib/epub');
+        const parsed = await parseEpub(file);
+        setContent(parsed.content);
+        setFormat(parsed.format);
+        if (!title) setTitle(parsed.title ?? file.name.replace(/\.epub$/i, ''));
+        if (!author && parsed.author) setAuthor(parsed.author);
+      } catch (e) {
+        setParseError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setParsing(false);
+      }
+      return;
+    }
     const text = await file.text();
     setContent(text);
     if (!title) {
       setTitle(file.name.replace(/\.(txt|md|markdown)$/i, ''));
     }
+    setFormat(/\.(md|markdown)$/i.test(file.name) ? 'md' : 'txt');
   }
 
   async function handleSave() {
@@ -146,7 +169,7 @@ function BookEditor({ onClose }: { onClose: () => void }) {
       alert('标题和内容都不能空');
       return;
     }
-    const book = await createBook({ title, author, content });
+    const book = await createBook({ title, author, content, format });
     onClose();
     navigate(`/read/${book.id}`);
   }
@@ -194,16 +217,17 @@ function BookEditor({ onClose }: { onClose: () => void }) {
             </label>
             <div className="flex flex-col gap-1">
               <span className="text-xs font-medium text-ink-500">
-                内容（粘贴 / 上传 TXT 或 Markdown）
+                内容（粘贴 / 上传 TXT · Markdown · EPUB）
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-lavender-200 bg-lavender-50 px-3 py-1.5 text-xs text-ink-700 transition hover:bg-lavender-100">
-                  <Upload size={13} /> 选文件
+                  <Upload size={13} /> {parsing ? '解析中…' : '选文件'}
                   <input
                     ref={fileRef}
                     type="file"
-                    accept=".txt,.md,.markdown,text/plain,text/markdown"
+                    accept=".txt,.md,.markdown,.epub,text/plain,text/markdown,application/epub+zip"
                     className="hidden"
+                    disabled={parsing}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) void handleFile(f);
@@ -213,8 +237,11 @@ function BookEditor({ onClose }: { onClose: () => void }) {
                 </label>
                 {content && (
                   <span className="text-xs text-ink-500">
-                    已加载 {fmtThousands(content.length)} 字
+                    已加载 {fmtThousands(content.length)} 字 · {format}
                   </span>
+                )}
+                {parseError && (
+                  <span className="text-xs text-rose-500">{parseError}</span>
                 )}
               </div>
               <textarea

@@ -18,7 +18,7 @@ importers:
         specifier: ^4.4.0
         version: 4.4.0(dexie@4.4.2)(react@19.2.5)
       jszip:
-        specifier: ^3.10.1
+        specifier: 3.10.1
         version: 3.10.1
       lucide-react:
         specifier: ^1.14.0

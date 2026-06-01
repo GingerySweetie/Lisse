@@ -13,7 +13,7 @@
     "@tailwindcss/vite": "^4.2.4",
     "dexie": "^4.4.2",
     "dexie-react-hooks": "^4.4.0",
-    "jszip": "^3.10.1",
+    "jszip": "3.10.1",
     "lucide-react": "^1.14.0",
     "nanoid": "^5.1.11",
     "react": "^19.2.5",
