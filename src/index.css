@@ -461,7 +461,13 @@
   color: var(--bubble-ai-text);
 }
 .ai-body > * + * { margin-top: 13px; }
-.ai-body strong { font-weight: 500; color: var(--head); }
+.ai-body strong,
+.ai-body b,
+.bubble-user strong,
+.bubble-user b {
+  font-weight: 600;
+  color: var(--head);
+}
 .ai-body em {
   font-family: 'Cormorant Garamond', serif;
   font-style: italic;

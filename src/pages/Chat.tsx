@@ -509,11 +509,6 @@ export default function ChatPage() {
                 <MessageBubble
                   message={m}
                   accentColor={conversation?.accentColor ?? null}
-                  authorPersona={
-                    m.personaId
-                      ? personas?.find((p) => p.id === m.personaId)
-                      : persona
-                  }
                   isGroup={isGroup(conversation?.personaIds)}
                   groupMembers={
                     isGroup(conversation?.personaIds) && personas
