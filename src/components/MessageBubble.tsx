@@ -28,8 +28,6 @@ interface Props {
   streamingThinking?: string;
   /** Disable interactive controls (during another stream). */
   disabled?: boolean;
-  /** The persona who authored this assistant message (for the in-group label). */
-  authorPersona?: Persona;
   /** Is this conversation a group chat? Toggles in-group affordances. */
   isGroup?: boolean;
   /** All persona members of the group (used to render 让 X 说 buttons). */
@@ -48,7 +46,6 @@ export default function MessageBubble({
   streamingText,
   streamingThinking,
   disabled,
-  authorPersona,
   isGroup,
   groupMembers,
   onLetSpeak,
@@ -133,12 +130,6 @@ export default function MessageBubble({
       >
         {!isUser && !isError && (
           <div className="ai-message">
-            {authorPersona && (
-              <div className="ai-byline">
-                <span className="ai-dot" />
-                <span className="ai-name">{authorPersona.name}</span>
-              </div>
-            )}
             {hasThinking && (
               <ThinkingBlock text={thinking} streaming={isStreaming && !text} />
             )}

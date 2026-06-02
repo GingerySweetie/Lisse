@@ -125,8 +125,8 @@ export default function ChatInput({
   const canSend = !disabled && !busy && (value.trim() || attachments.length > 0);
 
   return (
-    <div className="px-3 pb-3 pt-2 md:px-6">
-      <div className="mx-auto flex max-w-3xl flex-col gap-2">
+    <div className="px-1 pb-3 pt-2 md:px-4">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
         {showStateChips && <StateChips />}
 
         {attachments.length > 0 && (

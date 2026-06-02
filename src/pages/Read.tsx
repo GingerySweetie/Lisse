@@ -4,12 +4,16 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
+  ListTree,
   MessageSquarePlus,
   Send,
   Square,
   X,
 } from 'lucide-react';
+import BookmarkTocPanel from '../components/BookmarkTocPanel';
 import { db, getSettings, saveSettings } from '../db';
 import {
   extractExcerpt,
@@ -114,6 +118,27 @@ export default function ReadPage() {
     const pos = Math.floor(frac * book.totalChars);
     void updateReadingPosition(book.id, pos);
   }
+
+  /** Scroll to a specific character offset in book.content. */
+  function jumpToPosition(pos: number) {
+    const el = readerRef.current;
+    if (!el || !book || book.totalChars <= 0) return;
+    const frac = Math.max(0, Math.min(1, pos / book.totalChars));
+    el.scrollTop = frac * (el.scrollHeight - el.clientHeight);
+  }
+
+  // Bookmark / TOC drawer
+  const [tocOpen, setTocOpen] = useState(false);
+
+  // Picker row: collapsed by default (reading-first), sticks via sessionStorage.
+  const [pickersOpen, setPickersOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const saved = sessionStorage.getItem('lisse:readPickers');
+    return saved === '1';
+  });
+  useEffect(() => {
+    sessionStorage.setItem('lisse:readPickers', pickersOpen ? '1' : '0');
+  }, [pickersOpen]);
 
   // Selection-driven comment popover
   const [selection, setSelection] = useState<{
@@ -287,6 +312,24 @@ export default function ReadPage() {
         </div>
         <button
           type="button"
+          onClick={() => setPickersOpen((v) => !v)}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-500 transition hover:bg-lavender-50 hover:text-ink-700"
+          title={pickersOpen ? '收起 人格/风格/模型' : '展开 人格/风格/模型'}
+          aria-label={pickersOpen ? '收起设置' : '展开设置'}
+        >
+          {pickersOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTocOpen(true)}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#B66B82] transition hover:bg-[#F8E8EE]"
+          title="目录 / 书签"
+          aria-label="目录 / 书签"
+        >
+          <ListTree size={16} />
+        </button>
+        <button
+          type="button"
           onClick={() => navigate(`/chat/${conversation?.id ?? ''}`)}
           disabled={!conversation}
           className="rounded-full bg-lavender-200/60 px-3 py-1.5 text-xs text-lavender-600 ring-1 ring-lavender-300/40 transition hover:bg-lavender-300/70 disabled:opacity-50"
@@ -296,23 +339,26 @@ export default function ReadPage() {
         </button>
       </header>
 
-      {/* Picker row, compact */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-lavender-100/60 bg-white/30 px-3 py-1.5 text-xs md:px-6">
-        <PersonaPicker
-          personaId={personaId}
-          onChange={setPersonaId}
-          groupPersonaIds={conversation?.personaIds}
-        />
-        <StylePicker styleId={styleId} onChange={setStyleId} />
-        <EndpointPicker
-          endpointId={endpointId}
-          model={model}
-          onChange={(epId, m) => {
-            setEndpointId(epId);
-            setModel(m);
-          }}
-        />
-      </div>
+      {/* Picker row, collapsible — default collapsed so the reader gets
+          the screen. Chevron in the header toggles. */}
+      {pickersOpen && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-lavender-100/60 bg-white/30 px-3 py-1.5 text-xs md:px-6">
+          <PersonaPicker
+            personaId={personaId}
+            onChange={setPersonaId}
+            groupPersonaIds={conversation?.personaIds}
+          />
+          <StylePicker styleId={styleId} onChange={setStyleId} />
+          <EndpointPicker
+            endpointId={endpointId}
+            model={model}
+            onChange={(epId, m) => {
+              setEndpointId(epId);
+              setModel(m);
+            }}
+          />
+        </div>
+      )}
 
       {/* Reader */}
       <div
@@ -443,6 +489,19 @@ export default function ReadPage() {
               </div>
             )}
         </div>
+      )}
+
+      {tocOpen && book && (
+        <BookmarkTocPanel
+          book={book}
+          currentPosition={Math.floor(scrollFraction * book.totalChars)}
+          currentSnippet={book.content.slice(
+            Math.floor(scrollFraction * book.totalChars),
+            Math.floor(scrollFraction * book.totalChars) + 80,
+          )}
+          onClose={() => setTocOpen(false)}
+          onJump={jumpToPosition}
+        />
       )}
     </div>
   );
