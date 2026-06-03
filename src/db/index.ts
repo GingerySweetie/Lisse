@@ -321,6 +321,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   retrievalThreshold: 0.5,
   maxHistoryTurns: null,
   toolsEnabled: false,
+  autoApplyUpdate: true,
 };
 
 export async function getSettings(): Promise<AppSettings> {

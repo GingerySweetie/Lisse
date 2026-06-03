@@ -174,6 +174,10 @@ export interface AppSettings {
   /** When true, expose remember/recall tools to the chat model. Requires
    *  memoryEnabled + embedding endpoint to function. Default off. */
   toolsEnabled: boolean;
+  /** When true, applying a freshly-installed Service Worker no longer
+   *  needs the user to tap the update banner — the app reloads itself
+   *  as soon as the new version is detected. Default on. */
+  autoApplyUpdate: boolean;
 }
 
 export interface Persona {

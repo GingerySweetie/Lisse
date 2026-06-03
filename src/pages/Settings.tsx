@@ -82,8 +82,13 @@ export default function SettingsPage() {
 }
 
 function AppMaintenance() {
+  const settings = useLiveQuery(() => getSettings(), [], null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+
+  async function setAutoApply(on: boolean) {
+    await saveSettings({ autoApplyUpdate: on });
+  }
 
   async function forceRefresh() {
     setBusy(true);
@@ -113,6 +118,22 @@ function AppMaintenance() {
         <strong className="ml-1 text-ink-700">不会动你的对话/人格/记忆</strong>
         （那些存在 IndexedDB 里，独立于 SW 缓存）。
       </p>
+
+      <label className="mt-3 flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={settings?.autoApplyUpdate ?? true}
+          onChange={(e) => void setAutoApply(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-lavender-400"
+        />
+        <span className="text-sm text-ink-900">
+          自动应用新版本
+          <span className="ml-1 text-[11px] font-light text-ink-500">
+            每 5 分钟检测一次，回到 app 时也检测一次。检测到立刻自动重载，
+            不再需要手动来这里点强制刷新。
+          </span>
+        </span>
+      </label>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
