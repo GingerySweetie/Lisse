@@ -1,20 +1,19 @@
 import JSZip from 'jszip';
+import type { TocEntry } from '../types';
 
 /**
  * Minimal EPUB parser. Extracts title + author + concatenated body text
- * in markdown form, suitable for storing in our Book.content (which we
- * later render via remark).
- *
- * Skipped: images, fonts, CSS, cover art, footnotes-as-popups, page
- * breaks. The reader is a single long-scroll surface, so chapter order
- * is preserved (spine), but visual chapter boundaries are just `---`
- * separators and `# Title` headers.
+ * in markdown form + TOC keyed to char offsets of each spine file, so
+ * the reader gets accurate chapter navigation even when the original
+ * XHTML didn't use semantic <h*> for chapter titles.
  */
 export interface ParsedEpub {
   title?: string;
   author?: string;
   content: string;
   format: 'md';
+  /** One entry per spine file — the EPUB itself defines chapters. */
+  toc: TocEntry[];
 }
 
 export async function parseEpub(file: File): Promise<ParsedEpub> {
@@ -64,8 +63,18 @@ export async function parseEpub(file: File): Promise<ParsedEpub> {
     spineIds.push(m[1]);
   }
 
-  // 3. Read each spine item's XHTML in order, convert to markdown.
-  const chapters: string[] = [];
+  // 2b. Try to read the EPUB 3 nav doc or EPUB 2 NCX for nicer chapter
+  // titles. Optional — falls back to first-heading-or-filename when
+  // missing.
+  const navTitles = await readNavTitles(zip, opfXml, manifest, opfDir);
+
+  // 3. Read each spine item's XHTML in order, convert to markdown,
+  // track char offset so we can emit a TOC anchored to the body.
+  const SEP = '\n\n---\n\n';
+  const parts: string[] = [];
+  const toc: TocEntry[] = [];
+  let offset = 0;
+  let idx = 0;
   for (const id of spineIds) {
     const href = manifest[id];
     if (!href) continue;
@@ -79,19 +88,140 @@ export async function parseEpub(file: File): Promise<ParsedEpub> {
       continue;
     }
     const md = xhtmlToMarkdown(xhtml).trim();
-    if (md) chapters.push(md);
+    if (!md) continue;
+
+    // Chapter title priority: (a) nav/ncx label keyed by href,
+    // (b) first <h1-6> in the XHTML, (c) <title>, (d) "章节 N".
+    const navLabel = navTitles[normalizeHref(href)];
+    const headingFromXhtml = firstHeadingTitle(xhtml);
+    const docTitle = stripCDATA(xhtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]);
+    idx += 1;
+    const chapterTitle = navLabel ?? headingFromXhtml ?? docTitle ?? `章节 ${idx}`;
+
+    // Inject a markdown heading at the top of each chapter — that way
+    // the reader also visually has the chapter title.
+    const titledChapter = `# ${chapterTitle}\n\n${md}`;
+
+    // toc position = where this chapter starts in the final content.
+    const startOffset = offset + (parts.length > 0 ? SEP.length : 0);
+    toc.push({ title: chapterTitle, position: startOffset, level: 1 });
+    parts.push(titledChapter);
+    offset = startOffset + titledChapter.length;
   }
 
-  if (chapters.length === 0) {
+  if (parts.length === 0) {
     throw new Error('EPUB 里没有提取到任何章节文本');
   }
 
   return {
     title,
     author,
-    content: chapters.join('\n\n---\n\n'),
+    content: parts.join(SEP),
     format: 'md',
+    toc,
   };
+}
+
+/** First-heading text within an XHTML chapter. Returns text-only,
+ *  trimmed, decoded. */
+function firstHeadingTitle(xhtml: string): string | undefined {
+  const m = xhtml.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i);
+  if (!m) return undefined;
+  const text = m[1].replace(/<[^>]+>/g, '').trim();
+  return text ? decodeEntities(text) : undefined;
+}
+
+function normalizeHref(href: string): string {
+  // Strip fragment, decode percent-escapes, lowercase host-side bits.
+  const noFrag = href.split('#')[0];
+  try {
+    return decodeURIComponent(noFrag);
+  } catch {
+    return noFrag;
+  }
+}
+
+/** EPUB 3 nav doc OR EPUB 2 toc.ncx — extract href → label map. */
+async function readNavTitles(
+  zip: JSZip,
+  opfXml: string,
+  manifest: Record<string, string>,
+  opfDir: string,
+): Promise<Record<string, string>> {
+  const map: Record<string, string> = {};
+
+  // EPUB 3 nav: any item with properties="nav".
+  const navMatch = opfXml.match(
+    /<item[^>]*\bproperties=["'][^"']*\bnav\b[^"']*["'][^>]*\bhref=["']([^"']+)["']/i,
+  );
+  let navHref =
+    navMatch?.[1] ??
+    opfXml.match(
+      /<item[^>]*\bhref=["']([^"']+)["'][^>]*\bproperties=["'][^"']*\bnav\b[^"']*["']/i,
+    )?.[1];
+  if (navHref) {
+    const f = zip.file(opfDir + decodeURIComponent(navHref));
+    if (f) {
+      try {
+        const navXhtml = await f.async('string');
+        // Find <nav epub:type="toc"> (or any nav) and pull <a href> labels.
+        const navBlock = navXhtml.match(
+          /<nav[^>]*(?:epub:type=["'][^"']*toc[^"']*["'])?[^>]*>([\s\S]*?)<\/nav>/i,
+        );
+        const navSrc = navBlock ? navBlock[1] : navXhtml;
+        const linkRe =
+          /<a[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+        let m: RegExpExecArray | null;
+        while ((m = linkRe.exec(navSrc)) !== null) {
+          const label = decodeEntities(m[2].replace(/<[^>]+>/g, '').trim());
+          if (label) {
+            map[normalizeHref(m[1])] = label;
+          }
+        }
+        if (Object.keys(map).length > 0) return map;
+      } catch {
+        // fall through to NCX
+      }
+    }
+  }
+
+  // EPUB 2 NCX: manifest item with media-type="application/x-dtbncx+xml".
+  const ncxMatch = opfXml.match(
+    /<item[^>]*\bmedia-type=["']application\/x-dtbncx\+xml["'][^>]*\bhref=["']([^"']+)["']/i,
+  );
+  const ncxHref =
+    ncxMatch?.[1] ??
+    opfXml.match(
+      /<item[^>]*\bhref=["']([^"']+)["'][^>]*\bmedia-type=["']application\/x-dtbncx\+xml["']/i,
+    )?.[1];
+  // OPF can also reference NCX via <spine toc="..."> id ref.
+  const spineTocId = opfXml.match(/<spine[^>]*\btoc=["']([^"']+)["']/i)?.[1];
+  const ncxFromSpine = spineTocId ? manifest[spineTocId] : undefined;
+  const finalNcxHref = ncxHref ?? ncxFromSpine;
+  if (!finalNcxHref) return map;
+
+  const f = zip.file(opfDir + decodeURIComponent(finalNcxHref));
+  if (!f) return map;
+  try {
+    const ncx = await f.async('string');
+    // <navPoint><navLabel><text>Title</text></navLabel><content src="href"/></navPoint>
+    const npRe =
+      /<navPoint[^>]*>([\s\S]*?)<\/navPoint>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = npRe.exec(ncx)) !== null) {
+      const block = m[1];
+      const label = stripCDATA(
+        block.match(/<navLabel[^>]*>[\s\S]*?<text[^>]*>([\s\S]*?)<\/text>/i)?.[1],
+      );
+      const src = block.match(/<content[^>]*\bsrc=["']([^"']+)["']/i)?.[1];
+      if (label && src) {
+        map[normalizeHref(src)] = label;
+      }
+    }
+  } catch {
+    // give up, use fallback titles
+  }
+  return map;
 }
 
 function stripCDATA(s: string | undefined): string | undefined {

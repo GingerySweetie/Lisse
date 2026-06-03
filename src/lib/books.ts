@@ -8,6 +8,10 @@ export interface NewBookInput {
   author?: string;
   content: string;
   format?: 'txt' | 'md';
+  /** When the source (EPUB, etc.) already has authoritative chapter
+   *  boundaries, the caller passes them in and we use them as-is
+   *  instead of running regex heuristics on the body text. */
+  toc?: TocEntry[];
 }
 
 export async function createBook(input: NewBookInput): Promise<Book> {
@@ -21,7 +25,7 @@ export async function createBook(input: NewBookInput): Promise<Book> {
     format,
     totalChars: input.content.length,
     lastPosition: 0,
-    toc: extractToc(input.content, format),
+    toc: input.toc ?? extractToc(input.content, format),
     createdAt: now,
     updatedAt: now,
   };
@@ -47,6 +51,12 @@ export function extractToc(content: string, _format: 'txt' | 'md'): TocEntry[] {
   // Strategy 3: English chapters — "Chapter 1", "CHAPTER 1", "Part I" etc.
   const en = findEnglishChapters(content);
   if (en.length >= 2) return en;
+
+  // Strategy 3b: horizontal-rule split — when EPUB→md conversion used
+  // `\n\n---\n\n` as chapter joiners (no semantic <h*> survived), each
+  // segment between rules is one chapter.
+  const hr = findHorizontalRuleChapters(content);
+  if (hr.length >= 2) return hr;
 
   // Strategy 4: setext headings — line followed by ===/--- (md books).
   const setext = findSetextHeadings(content);
@@ -123,6 +133,33 @@ function findEnglishChapters(content: string): TocEntry[] {
     out.push({ title, position: m.index, level });
   }
   return out;
+}
+
+/** Each chunk between `\n\n---\n\n` separators becomes a chapter. Title
+ *  is the first non-blank line of the chunk if it's short enough,
+ *  otherwise "章节 N". Useful for EPUBs that were imported with the old
+ *  parser (rule-joined, no headings). */
+function findHorizontalRuleChapters(content: string): TocEntry[] {
+  const re = /\n\n---\n\n/g;
+  const positions: number[] = [0];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    positions.push(m.index + m[0].length);
+  }
+  if (positions.length < 3) return [];
+  return positions.map((pos, i) => {
+    let title = `章节 ${i + 1}`;
+    // Look at first non-empty line within first 200 chars of the chunk.
+    const window = content.slice(pos, pos + 200);
+    for (const raw of window.split('\n')) {
+      const line = raw.replace(/^#+\s*/, '').trim();
+      if (line.length > 0 && line.length < 80) {
+        title = line;
+        break;
+      }
+    }
+    return { title, position: pos, level: 1 };
+  });
 }
 
 function findSetextHeadings(content: string): TocEntry[] {

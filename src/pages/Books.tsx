@@ -133,13 +133,16 @@ function BookEditor({ onClose }: { onClose: () => void }) {
   const [format, setFormat] = useState<'txt' | 'md'>('md');
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string>('');
+  const [importedToc, setImportedToc] = useState<
+    import('../types').TocEntry[] | undefined
+  >(undefined);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
 
   async function handleFile(file: File) {
     setParseError('');
     const name = file.name.toLowerCase();
-    // EPUB: parse via jszip + OPF spine → markdown.
+    // EPUB: parse via jszip + OPF spine → markdown + spine-derived TOC.
     if (name.endsWith('.epub')) {
       setParsing(true);
       try {
@@ -147,6 +150,7 @@ function BookEditor({ onClose }: { onClose: () => void }) {
         const parsed = await parseEpub(file);
         setContent(parsed.content);
         setFormat(parsed.format);
+        setImportedToc(parsed.toc);
         if (!title) setTitle(parsed.title ?? file.name.replace(/\.epub$/i, ''));
         if (!author && parsed.author) setAuthor(parsed.author);
       } catch (e) {
@@ -158,6 +162,7 @@ function BookEditor({ onClose }: { onClose: () => void }) {
     }
     const text = await file.text();
     setContent(text);
+    setImportedToc(undefined);
     if (!title) {
       setTitle(file.name.replace(/\.(txt|md|markdown)$/i, ''));
     }
@@ -169,7 +174,13 @@ function BookEditor({ onClose }: { onClose: () => void }) {
       alert('标题和内容都不能空');
       return;
     }
-    const book = await createBook({ title, author, content, format });
+    const book = await createBook({
+      title,
+      author,
+      content,
+      format,
+      toc: importedToc,
+    });
     onClose();
     navigate(`/read/${book.id}`);
   }
