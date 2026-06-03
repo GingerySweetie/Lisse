@@ -8,6 +8,10 @@ export interface NewBookInput {
   author?: string;
   content: string;
   format?: 'txt' | 'md';
+  /** When the source (EPUB, etc.) already has authoritative chapter
+   *  boundaries, the caller passes them in and we use them as-is
+   *  instead of running regex heuristics on the body text. */
+  toc?: TocEntry[];
 }
 
 export async function createBook(input: NewBookInput): Promise<Book> {
@@ -21,7 +25,7 @@ export async function createBook(input: NewBookInput): Promise<Book> {
     format,
     totalChars: input.content.length,
     lastPosition: 0,
-    toc: extractToc(input.content, format),
+    toc: input.toc ?? extractToc(input.content, format),
     createdAt: now,
     updatedAt: now,
   };
@@ -29,52 +33,205 @@ export async function createBook(input: NewBookInput): Promise<Book> {
   return book;
 }
 
-/** Extract a flat TOC from book content. md: walk `#` headings. txt:
- *  look for `第X章 / 第X节 / 第X回` markers. Returns char-offset based
- *  entries so the reader can scroll directly. */
-export function extractToc(content: string, format: 'txt' | 'md'): TocEntry[] {
+/** Extract a flat TOC from book content. Tries multiple strategies in
+ *  priority order — md headings, 中文章节, English chapters, setext
+ *  headings, numbered sections. If none match, splits the book into
+ *  evenly-spaced anchor points so the user gets *some* navigation. */
+export function extractToc(content: string, _format: 'txt' | 'md'): TocEntry[] {
+  // Strategy 1: markdown headings (only meaningful when format='md',
+  // but we also try on txt since EPUB→md conversion sometimes leaves
+  // those markers in.)
+  const md = findMarkdownHeadings(content);
+  if (md.length >= 2) return md;
+
+  // Strategy 2: 中文章节 — 第X章 / 节 / 回 / 卷 / 部 / 篇 / 序 / 楔子 / 尾声.
+  const cn = findChineseChapters(content);
+  if (cn.length >= 2) return cn;
+
+  // Strategy 3: English chapters — "Chapter 1", "CHAPTER 1", "Part I" etc.
+  const en = findEnglishChapters(content);
+  if (en.length >= 2) return en;
+
+  // Strategy 3b: horizontal-rule split — when EPUB→md conversion used
+  // `\n\n---\n\n` as chapter joiners (no semantic <h*> survived), each
+  // segment between rules is one chapter.
+  const hr = findHorizontalRuleChapters(content);
+  if (hr.length >= 2) return hr;
+
+  // Strategy 4: setext headings — line followed by ===/--- (md books).
+  const setext = findSetextHeadings(content);
+  if (setext.length >= 2) return setext;
+
+  // Strategy 5: numbered sections like "1. Title" / "1.1 Title" alone
+  // on a line (academic books often).
+  const numbered = findNumberedSections(content);
+  if (numbered.length >= 2) return numbered;
+
+  // Strategy 6: take whichever single-strategy match returned 1 item
+  // (better than nothing).
+  const single = md.length ? md : cn.length ? cn : en.length ? en : setext.length ? setext : numbered;
+  if (single.length >= 1) return single;
+
+  // Fallback: virtual anchors every ~10% of the book.
+  return virtualChapters(content);
+}
+
+function findMarkdownHeadings(content: string): TocEntry[] {
   const out: TocEntry[] = [];
-  if (format === 'md') {
-    const lines = content.split('\n');
-    let offset = 0;
-    for (const line of lines) {
-      const m = line.match(/^(#{1,6})\s+(.+?)\s*$/);
-      if (m) {
-        out.push({
-          title: m[2].trim(),
-          position: offset,
-          level: m[1].length,
-        });
-      }
-      offset += line.length + 1;
+  const lines = content.split('\n');
+  let offset = 0;
+  for (const line of lines) {
+    const m = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (m) {
+      out.push({
+        title: m[2].trim(),
+        position: offset,
+        level: m[1].length,
+      });
     }
-    return out;
+    offset += line.length + 1;
   }
-  // TXT 章节启发: 行首 "第X章/节/回/卷/部" 等
-  const re =
-    /^[\t ]*(第\s*[一二三四五六七八九十百千零〇0-9０-９]+\s*[章节回卷部篇])(.*)$/gm;
+  return out;
+}
+
+function findChineseChapters(content: string): TocEntry[] {
+  const out: TocEntry[] = [];
+  // Match line-start "第X章/节/回/卷/部/篇" + optional title text.
+  // Also catch "序" / "序章" / "楔子" / "尾声" / "终章" as one-offs.
+  const re = new RegExp(
+    String.raw`^[\t 　]*(` +
+      String.raw`(?:第\s*[一二三四五六七八九十百千零〇0-9０-９]+\s*[章节回卷部篇])` +
+      String.raw`|(?:序章?|楔子|引子|尾声|终章|后记|前言|结语)` +
+      String.raw`)([^\n]*)$`,
+    'gm',
+  );
   let m: RegExpExecArray | null;
   while ((m = re.exec(content)) !== null) {
     const head = m[1].trim();
     const tail = m[2].trim();
     const title = tail ? `${head}　${tail}` : head;
+    const level =
+      /[部篇卷]/.test(head) ? 1 : /[章]/.test(head) ? 2 : 3;
+    out.push({ title, position: m.index, level });
+  }
+  return out;
+}
+
+function findEnglishChapters(content: string): TocEntry[] {
+  const out: TocEntry[] = [];
+  // Chapter / CHAPTER / Part / PART followed by a roman or arabic
+  // numeral, optionally with a title.
+  const re =
+    /^[\t ]*(?:(Chapter|CHAPTER|Part|PART|Book|BOOK|Section|SECTION)\s+(\d+|[IVXLCDM]+)(?:[:.\s—–-]+([^\n]+))?)$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const kind = m[1];
+    const num = m[2];
+    const tail = (m[3] ?? '').trim();
+    const title = tail ? `${kind} ${num}: ${tail}` : `${kind} ${num}`;
+    const level = /^(Part|PART|Book|BOOK)$/.test(kind) ? 1 : 2;
+    out.push({ title, position: m.index, level });
+  }
+  return out;
+}
+
+/** Each chunk between `\n\n---\n\n` separators becomes a chapter. Title
+ *  is the first non-blank line of the chunk if it's short enough,
+ *  otherwise "章节 N". Useful for EPUBs that were imported with the old
+ *  parser (rule-joined, no headings). */
+function findHorizontalRuleChapters(content: string): TocEntry[] {
+  const re = /\n\n---\n\n/g;
+  const positions: number[] = [0];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    positions.push(m.index + m[0].length);
+  }
+  if (positions.length < 3) return [];
+  return positions.map((pos, i) => {
+    let title = `章节 ${i + 1}`;
+    // Look at first non-empty line within first 200 chars of the chunk.
+    const window = content.slice(pos, pos + 200);
+    for (const raw of window.split('\n')) {
+      const line = raw.replace(/^#+\s*/, '').trim();
+      if (line.length > 0 && line.length < 80) {
+        title = line;
+        break;
+      }
+    }
+    return { title, position: pos, level: 1 };
+  });
+}
+
+function findSetextHeadings(content: string): TocEntry[] {
+  const out: TocEntry[] = [];
+  const lines = content.split('\n');
+  let offset = 0;
+  for (let i = 0; i < lines.length - 1; i++) {
+    const line = lines[i];
+    const next = lines[i + 1];
+    const text = line.trim();
+    if (text.length > 0 && text.length < 80) {
+      if (/^={3,}\s*$/.test(next)) {
+        out.push({ title: text, position: offset, level: 1 });
+      } else if (/^-{3,}\s*$/.test(next)) {
+        out.push({ title: text, position: offset, level: 2 });
+      }
+    }
+    offset += line.length + 1;
+  }
+  return out;
+}
+
+function findNumberedSections(content: string): TocEntry[] {
+  const out: TocEntry[] = [];
+  // Match lines like "1. Title", "1.1 Title", "1.2.3 Title", "1 Title"
+  // standing alone on a line, where Title is non-trivial.
+  const re = /^[\t ]*(\d+(?:\.\d+)*)\.?\s+([^\n]{2,80})$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const num = m[1];
+    const title = `${num} ${m[2].trim()}`;
+    const level = Math.min(6, num.split('.').length);
+    out.push({ title, position: m.index, level });
+  }
+  // Filter out spurious matches inside paragraphs: keep only entries
+  // that are preceded by a blank line (so the "1. xxx" really stands
+  // as a heading, not as the start of a numbered list inside text).
+  const filtered = out.filter((entry) => {
+    const before = content.slice(Math.max(0, entry.position - 2), entry.position);
+    return before === '\n\n' || entry.position === 0 || before.endsWith('\n');
+  });
+  return filtered.length >= 2 ? filtered : [];
+}
+
+function virtualChapters(content: string): TocEntry[] {
+  const total = content.length;
+  if (total < 4000) return [];
+  const out: TocEntry[] = [];
+  const segments = 10;
+  for (let i = 0; i < segments; i++) {
+    const pos = Math.floor((total / segments) * i);
     out.push({
-      title,
-      position: m.index,
-      level: head.includes('部') || head.includes('卷') ? 1 : 2,
+      title: `段 ${i + 1} (${Math.round((i / segments) * 100)}%)`,
+      position: pos,
+      level: 1,
     });
   }
   return out;
 }
 
-/** Backfill: re-derive TOC for a book that was created before the TOC
- *  field existed. Idempotent — overwrites whatever's stored. */
+/** Re-derive TOC if it's empty or looks suspicious (cached version from
+ *  an older extractor — fewer entries than the new multi-strategy
+ *  detector finds). Idempotent. */
 export async function ensureToc(book: Book): Promise<TocEntry[]> {
-  const toc = extractToc(book.content, book.format);
-  if (toc.length > 0) {
-    await db.books.update(book.id, { toc });
+  const fresh = extractToc(book.content, book.format);
+  const cached = book.toc ?? [];
+  // Use fresh if cache is empty OR if fresh finds noticeably more.
+  if (cached.length === 0 || fresh.length > cached.length) {
+    await db.books.update(book.id, { toc: fresh });
+    return fresh;
   }
-  return toc;
+  return cached;
 }
 
 // ─── Bookmarks ────────────────────────────────────────────────────

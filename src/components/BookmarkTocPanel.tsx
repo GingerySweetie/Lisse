@@ -39,12 +39,11 @@ export default function BookmarkTocPanel({
   const [tab, setTab] = useState<'toc' | 'marks'>('toc');
   const [toc, setToc] = useState<TocEntry[]>(book.toc ?? []);
 
-  // Backfill TOC for legacy books that don't have it cached.
+  // Backfill / refresh TOC. Always run ensureToc — it'll upgrade the
+  // cache if the new multi-strategy detector finds more entries than
+  // what was stored, otherwise it's a no-op.
   useEffect(() => {
-    if (book.toc && book.toc.length > 0) {
-      setToc(book.toc);
-      return;
-    }
+    if (book.toc && book.toc.length > 0) setToc(book.toc);
     ensureToc(book).then((next) => {
       if (next.length > 0) setToc(next);
     });
