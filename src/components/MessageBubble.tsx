@@ -129,7 +129,13 @@ export default function MessageBubble({
         }`}
       >
         {!isUser && !isError && (
-          <div className="ai-message">
+          <div className="wis-ai-msg ai-message">
+            {/* Letter header — small bud + gradient stroke. Pure visual,
+                no text. Replaces the previous .ai-byline persona name. */}
+            <div className="wis-ai-byline">
+              <span className="wis-ai-bud" />
+              <span className="wis-ai-stroke" />
+            </div>
             {hasThinking && (
               <ThinkingBlock text={thinking} streaming={isStreaming && !text} />
             )}
@@ -139,7 +145,7 @@ export default function MessageBubble({
             {message.attachments && message.attachments.length > 0 && (
               <Attachments attachments={message.attachments} alignRight={false} />
             )}
-            <div className="ai-body prose-msg min-w-0">
+            <div className="wis-ai-body ai-body prose-msg min-w-0">
               {text ? (
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -151,7 +157,7 @@ export default function MessageBubble({
                 <span className="stream-cursor" />
               ) : null}
               {message.usage && message.status === 'done' && (
-                <div className="mt-2 flex flex-wrap gap-x-3 text-xs text-ink-500">
+                <div className="mt-2 flex flex-wrap gap-x-3 text-[10px] text-ink-500/70">
                   {message.usage.inputTokens !== undefined && (
                     <span>输入 {message.usage.inputTokens}</span>
                   )}
@@ -178,7 +184,7 @@ export default function MessageBubble({
           <div
             className={
               isUser
-                ? 'bubble-user prose-msg min-w-0'
+                ? 'wis-user-bubble bubble-user prose-msg min-w-0'
                 : 'min-w-0 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[15px] leading-relaxed text-rose-700'
             }
             style={

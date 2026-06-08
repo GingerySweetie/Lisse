@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronUp } from 'lucide-react';
 import { db, getSettings, saveSettings } from '../db';
 import {
   sendMessage,
@@ -22,6 +21,8 @@ import PersonaSecret from '../components/PersonaSecret';
 import StylePicker from '../components/StylePicker';
 import ExportMenu from '../components/ExportMenu';
 import AccentPicker from '../components/AccentPicker';
+import { WisteriaDecor, LeafButton } from '../components/WisteriaDecor';
+import LeafMenu from '../components/LeafMenu';
 import WisteriaMark from '../components/WisteriaMark';
 import { estimateConversationCostUSD, formatUSD } from '../lib/pricing';
 import type { Attachment, Conversation, Message } from '../types';
@@ -360,17 +361,9 @@ export default function ChatPage() {
   const isEmpty = branch.length === 0;
   const busy = streamingId !== null;
 
-  // Header expansion: collapsed by default — accent/export/pickers all
-  // live in the expanded row now, so default keeps the title clean.
-  const [headerExpanded, setHeaderExpanded] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const saved = sessionStorage.getItem('lisse:headerExpanded');
-    if (saved !== null) return saved === '1';
-    return false;
-  });
-  useEffect(() => {
-    sessionStorage.setItem('lisse:headerExpanded', headerExpanded ? '1' : '0');
-  }, [headerExpanded]);
+  // Leaf-icon function menu: pickers / accent / export all live behind
+  // it. Defaults closed.
+  const [leafOpen, setLeafOpen] = useState(false);
 
   const persona = selectedPersona();
   const style = selectedStyle();
@@ -382,122 +375,65 @@ export default function ChatPage() {
     return estimateConversationCostUSD(allMessages);
   }, [allMessages]);
 
+  // Subline beneath the centered persona name (model · endpoint · style · cost).
+  const sublineParts: string[] = [];
+  if (model) sublineParts.push(model);
+  if (endpointName) sublineParts.push(`(${endpointName})`);
+  if (style && style.id !== 'style_default') sublineParts.push(style.name);
+  if (conversationCost > 0) sublineParts.push(formatUSD(conversationCost));
+  const subline = sublineParts.join(' · ');
+
   return (
-    <div className="flex h-full w-full flex-col">
-      <header className="topbar">
-        {/* Row 1: persona name + model meta + collapse + export */}
-        <div className="flex items-center gap-2 px-3 py-2 pl-14 md:px-6 md:pl-6">
-          <div className="min-w-0 flex-1">
-            {persona ? (
-              <button
-                type="button"
-                onClick={() => setShowSecret(true)}
-                className="group flex items-center gap-2"
-              >
-                <span
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                  style={{ background: persona.color }}
-                >
-                  {persona.avatar}
-                </span>
-                <span
-                  className="text-lg font-normal tracking-wide transition group-hover:opacity-80"
-                  style={{ fontFamily: 'var(--font-serif)', color: persona.color }}
-                >
-                  {persona.name}
-                </span>
-              </button>
-            ) : (
-              <h2
-                className="truncate text-lg font-normal tracking-wide text-ink-900"
-                style={{ fontFamily: 'var(--font-serif)' }}
-              >
-                新聊天
-              </h2>
-            )}
-            <div className="truncate text-[11px] font-light tracking-wide text-ink-500">
-              {model && <span>{model}</span>}
-              {endpointName && (
-                <span className="opacity-60"> ({endpointName})</span>
-              )}
-              {style && style.id !== 'style_default' && (
-                <>
-                  <span className="mx-1.5 opacity-40">·</span>
-                  <span className="opacity-80">{style.name}</span>
-                </>
-              )}
-              {conversationCost > 0 && (
-                <>
-                  <span className="mx-1.5 opacity-40">·</span>
-                  <span
-                    className="font-mono opacity-80"
-                    title="本对话累计估算成本（按官方牌价）"
-                  >
-                    {formatUSD(conversationCost)}
-                  </span>
-                </>
-              )}
+    <div className="wis-chat-page">
+      <WisteriaDecor />
+      <LeafButton onClick={() => setLeafOpen(true)} />
+
+      <div className="wis-chat-frame">
+        <header className="wis-chat-header">
+          {persona ? (
+            <button
+              type="button"
+              onClick={() => setShowSecret(true)}
+              style={{
+                background: 'transparent',
+                border: 0,
+                cursor: 'pointer',
+                padding: 0,
+                flex: 1,
+                textAlign: 'center',
+                paddingRight: 56,
+              }}
+            >
+              <div className="wis-chat-title">{persona.name}</div>
+              {subline && <div className="wis-chat-subline">{subline}</div>}
+            </button>
+          ) : (
+            <div style={{ flex: 1, paddingRight: 56 }}>
+              <div className="wis-chat-title">新聊天</div>
+              {subline && <div className="wis-chat-subline">{subline}</div>}
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setHeaderExpanded((v) => !v)}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-500 transition hover:bg-lavender-50 hover:text-ink-700"
-            aria-label={headerExpanded ? '收起' : '展开'}
-            title={headerExpanded ? '收起' : '展开'}
-          >
-            {headerExpanded ? (
-              <ChevronUp size={15} />
-            ) : (
-              <ChevronDown size={15} />
-            )}
-          </button>
-        </div>
-        {/* Row 2: pickers + accent + export (collapsible). Default collapsed. */}
-        {headerExpanded && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-lavender-100/70 px-3 py-2 md:px-6">
-            <PersonaPicker
-              personaId={personaId}
-              onChange={setPersonaId}
-              groupPersonaIds={conversation?.personaIds}
-              onChangeGroup={handleChangeGroup}
-              contextText={branch
-                .slice(-4)
-                .map((m) => m.content)
-                .filter(Boolean)
-                .join('\n')}
-            />
-            <StylePicker styleId={styleId} onChange={setStyleId} />
-            <EndpointPicker
-              endpointId={endpointId}
-              model={model}
-              onChange={handlePicker}
-            />
-            <div className="ml-auto flex items-center gap-1">
-              <AccentPicker
-                value={conversation?.accentColor ?? null}
-                onChange={async (next) => {
-                  if (!conversation) return;
-                  await db.conversations.update(conversation.id, {
-                    accentColor: next ?? undefined,
-                    updatedAt: Date.now(),
-                  });
-                }}
-              />
-              <ExportMenu
-                conversation={conversation ?? undefined}
-                persona={persona}
-                disabled={!conversation || branch.length === 0}
-              />
-            </div>
+          )}
+        </header>
+
+        {!isEmpty && (
+          <div className="wis-date-sep">
+            <div className="wis-date-sep-line" />
+            <span className="wis-date-sep-text">
+              {new Date().toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+              }).replace(/\//g, '.')}
+            </span>
+            <div className="wis-date-sep-line" />
           </div>
         )}
-      </header>
 
-      <div
-        ref={scrollRef}
-        className="chat-area flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 md:px-6"
-      >
+        <div
+          ref={scrollRef}
+          className="wis-chat-stream"
+          style={{ flex: 1, overflowY: 'auto' }}
+        >
         {hasNoEndpoints ? (
           <EmptyEndpoints />
         ) : isEmpty ? (
@@ -535,12 +471,60 @@ export default function ChatPage() {
         )}
       </div>
 
-      <ChatInput
-        onSend={handleSend}
-        onAbort={handleAbort}
-        busy={busy}
-        disabled={hasNoEndpoints || !endpointId || !model}
-      />
+        <ChatInput
+          onSend={handleSend}
+          onAbort={handleAbort}
+          busy={busy}
+          disabled={hasNoEndpoints || !endpointId || !model}
+        />
+      </div>
+
+      <LeafMenu open={leafOpen} onClose={() => setLeafOpen(false)}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <MenuRow label="人格">
+            <PersonaPicker
+              personaId={personaId}
+              onChange={setPersonaId}
+              groupPersonaIds={conversation?.personaIds}
+              onChangeGroup={handleChangeGroup}
+              contextText={branch
+                .slice(-4)
+                .map((m) => m.content)
+                .filter(Boolean)
+                .join('\n')}
+            />
+          </MenuRow>
+          <MenuRow label="风格">
+            <StylePicker styleId={styleId} onChange={setStyleId} />
+          </MenuRow>
+          <MenuRow label="模型">
+            <EndpointPicker
+              endpointId={endpointId}
+              model={model}
+              onChange={handlePicker}
+            />
+          </MenuRow>
+          <MenuRow label="颜色">
+            <AccentPicker
+              value={conversation?.accentColor ?? null}
+              onChange={async (next) => {
+                if (!conversation) return;
+                await db.conversations.update(conversation.id, {
+                  accentColor: next ?? undefined,
+                  updatedAt: Date.now(),
+                });
+              }}
+            />
+          </MenuRow>
+          <MenuRow label="导出">
+            <ExportMenu
+              conversation={conversation ?? undefined}
+              persona={persona}
+              disabled={!conversation || branch.length === 0}
+            />
+          </MenuRow>
+        </div>
+      </LeafMenu>
 
       {showSecret && persona && (
         <PersonaSecret
@@ -553,6 +537,39 @@ export default function ChatPage() {
           onClose={() => setShowSecret(false)}
         />
       )}
+    </div>
+  );
+}
+
+function MenuRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '6px 4px',
+      }}
+    >
+      <span
+        style={{
+          fontSize: 11,
+          color: 'hsla(268, 22%, 48%, 0.7)',
+          letterSpacing: '0.08em',
+          width: 36,
+          flexShrink: 0,
+          fontFamily: 'var(--font-serif)',
+        }}
+      >
+        {label}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
     </div>
   );
 }
