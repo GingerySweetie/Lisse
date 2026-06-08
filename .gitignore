@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Capacitor native builds (CI generates these from capacitor.config.ts).
+# Do not commit — the workflow runs `npx cap add android` fresh each run.
+/android/
+/ios/

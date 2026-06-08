@@ -84,7 +84,10 @@ export function WisteriaDecor() {
       <Strand left={18} dots={STRAND_A} stemHeight={18} />
       <Strand left={34} dots={STRAND_B} stemHeight={12} />
 
-      {/* Vertical hairline crossing the leaf to form a + */}
+      {/* Vertical gradient hairline on the right — crosses the header
+       *  bottom-border so the leaf + horizontal beam + this vertical
+       *  line form the trellis + intersection. The curvy spiral lives
+       *  inside the leaf SVG itself, NOT here. */}
       <div
         style={{
           position: 'absolute',

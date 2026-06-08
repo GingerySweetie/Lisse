@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
@@ -24,7 +24,6 @@ import AccentPicker from '../components/AccentPicker';
 import { WisteriaDecor, LeafButton } from '../components/WisteriaDecor';
 import LeafMenu from '../components/LeafMenu';
 import WisteriaMark from '../components/WisteriaMark';
-import { estimateConversationCostUSD, formatUSD } from '../lib/pricing';
 import type { Attachment, Conversation, Message } from '../types';
 
 export default function ChatPage() {
@@ -366,22 +365,6 @@ export default function ChatPage() {
   const [leafOpen, setLeafOpen] = useState(false);
 
   const persona = selectedPersona();
-  const style = selectedStyle();
-  const endpointName = endpoints?.find((e) => e.id === endpointId)?.name;
-
-  // Running cost estimate (USD) over all assistant messages in this conversation.
-  const conversationCost = useMemo(() => {
-    if (!allMessages || allMessages.length === 0) return 0;
-    return estimateConversationCostUSD(allMessages);
-  }, [allMessages]);
-
-  // Subline beneath the centered persona name (model · endpoint · style · cost).
-  const sublineParts: string[] = [];
-  if (model) sublineParts.push(model);
-  if (endpointName) sublineParts.push(`(${endpointName})`);
-  if (style && style.id !== 'style_default') sublineParts.push(style.name);
-  if (conversationCost > 0) sublineParts.push(formatUSD(conversationCost));
-  const subline = sublineParts.join(' · ');
 
   return (
     <div className="wis-chat-page">
@@ -399,31 +382,41 @@ export default function ChatPage() {
                 border: 0,
                 cursor: 'pointer',
                 padding: 0,
-                flex: 1,
-                textAlign: 'center',
-                paddingRight: 56,
+                fontSize: 15,
+                color: 'hsla(268, 30%, 32%, 0.85)',
+                letterSpacing: '0.1em',
+                fontWeight: 400,
+                fontFamily: "'Noto Serif SC', Georgia, serif",
               }}
             >
-              <div className="wis-chat-title">{persona.name}</div>
-              {subline && <div className="wis-chat-subline">{subline}</div>}
+              {persona.name}
             </button>
           ) : (
-            <div style={{ flex: 1, paddingRight: 56 }}>
-              <div className="wis-chat-title">新聊天</div>
-              {subline && <div className="wis-chat-subline">{subline}</div>}
-            </div>
+            <span
+              style={{
+                fontSize: 15,
+                color: 'hsla(268, 30%, 32%, 0.85)',
+                letterSpacing: '0.1em',
+                fontFamily: "'Noto Serif SC', Georgia, serif",
+              }}
+            >
+              新聊天
+            </span>
           )}
+          <div style={{ width: 28 }} />
         </header>
 
         {!isEmpty && (
           <div className="wis-date-sep">
             <div className="wis-date-sep-line" />
             <span className="wis-date-sep-text">
-              {new Date().toLocaleDateString('zh-CN', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-              }).replace(/\//g, '.')}
+              {new Date()
+                .toLocaleDateString('zh-CN', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                })
+                .replace(/\//g, '.')}
             </span>
             <div className="wis-date-sep-line" />
           </div>
