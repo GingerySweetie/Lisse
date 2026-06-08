@@ -84,20 +84,65 @@ export function WisteriaDecor() {
       <Strand left={18} dots={STRAND_A} stemHeight={18} />
       <Strand left={34} dots={STRAND_B} stemHeight={12} />
 
-      {/* Vertical hairline crossing the leaf to form a + */}
-      <div
+      {/* Curvy vertical vine on the right — emulates a wisteria trellis
+       *  post. Crosses the header bottom-border to form the + cross with
+       *  the leaf. SVG path is a gentle S-meander, the whole thing
+       *  scales to viewport height. */}
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 1000"
+        preserveAspectRatio="xMidYMin slice"
         style={{
           position: 'absolute',
-          right: 48,
+          right: 40,
           top: 0,
-          bottom: 0,
-          width: 1,
-          background:
-            'linear-gradient(180deg, hsla(270, 30%, 62%, 0.3) 0%, hsla(270, 28%, 65%, 0.22) 30%, hsla(270, 25%, 68%, 0.15) 60%, hsla(270, 22%, 72%, 0.06) 90%, transparent 100%)',
+          width: 16,
+          height: '100%',
           zIndex: 4,
           pointerEvents: 'none',
         }}
-      />
+      >
+        <defs>
+          <linearGradient id="vine-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="hsla(270, 35%, 58%, 0.55)" />
+            <stop offset="35%" stopColor="hsla(270, 32%, 62%, 0.40)" />
+            <stop offset="70%" stopColor="hsla(272, 28%, 66%, 0.22)" />
+            <stop offset="100%" stopColor="hsla(272, 25%, 70%, 0.05)" />
+          </linearGradient>
+        </defs>
+        <path
+          d="
+            M 12 0
+            C 12 50, 4 80, 12 120
+            C 20 160, 4 200, 12 240
+            C 20 280, 4 320, 12 360
+            C 20 400, 4 440, 12 480
+            C 20 520, 4 560, 12 600
+            C 20 640, 4 680, 12 720
+            C 20 760, 4 800, 12 840
+            C 20 880, 4 920, 12 960
+            L 12 1000
+          "
+          fill="none"
+          stroke="url(#vine-grad)"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          style={{
+            animation: 'strandSway 12s ease-in-out infinite alternate',
+            transformOrigin: 'center top',
+          }}
+        />
+        {/* Tiny buds at each curve crest, fade as they descend */}
+        {[120, 240, 360, 480, 600, 720, 840].map((y, i) => (
+          <circle
+            key={y}
+            cx={12}
+            cy={y}
+            r={1.6 - i * 0.15}
+            fill={`hsla(270, 40%, ${60 + i}%, ${0.45 - i * 0.04})`}
+          />
+        ))}
+      </svg>
 
       {/* Grain — lighter, multiply blend */}
       <div
