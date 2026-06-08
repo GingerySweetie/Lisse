@@ -183,6 +183,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="border-t border-lavender-100/70 py-2 pb-5">
         {[
           { to: '/home', glyph: '⌂', label: '玄関' },
+          { to: '/body', glyph: '♡', label: '身体' },
           { to: '/billing', glyph: '¥', label: '账单' },
           { to: '/personas', glyph: '◇', label: '人格' },
           { to: '/books', glyph: '☷', label: '书架' },

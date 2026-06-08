@@ -43,6 +43,7 @@ jobs:
         run: |
           npx cap add android || true
           npx cap sync android
+          bash scripts/cap-postsync.sh
 
       - name: Build debug APK
         working-directory: android
