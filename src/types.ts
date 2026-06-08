@@ -259,6 +259,20 @@ export interface Bookmark {
   createdAt: number;
 }
 
+/** Period log entry. Anchors the cycle: each entry is a "this is when
+ *  my period started" record. endDate optional; if absent, presumed
+ *  still ongoing. Used by the body page to compute current day, average
+ *  cycle length, predicted next start. */
+export interface PeriodEntry {
+  id: string;
+  /** YYYY-MM-DD (local date string). */
+  startDate: string;
+  /** YYYY-MM-DD or absent. */
+  endDate?: string;
+  notes?: string;
+  createdAt: number;
+}
+
 /**
  * Expense / billing record. Storage for the 账单 room — separate from
  * conversations so it can have its own schema and listing semantics.
