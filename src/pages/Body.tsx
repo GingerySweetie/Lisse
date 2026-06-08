@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { Capacitor } from '@capacitor/core';
-import { Footprints, Bed, Droplet, Scale } from 'lucide-react';
+import { Footprints, Bed, Droplet, Plus, Scale, Trash2, X } from 'lucide-react';
+import { db } from '../db';
 import StepCounter from '../lib/native/step-counter';
+import {
+  addPeriodStart,
+  daysBetween,
+  deletePeriodEntry,
+  isoDate,
+  summarizeCycle,
+} from '../lib/period';
+import type { PeriodEntry } from '../types';
 
 /**
  * Body / 健康 — preview implementation following the Lavender DS health
@@ -48,6 +58,16 @@ export default function BodyPage() {
   const [filled, setFilled] = useState(true);
   const [weightDraft, setWeightDraft] = useState('');
   const [liveSteps, setLiveSteps] = useState<number | null>(null);
+  const [periodSheet, setPeriodSheet] = useState(false);
+
+  // Real period entries — when the user has logged at least one cycle,
+  // we render that instead of the demo period card.
+  const periodEntries = useLiveQuery(
+    () => db.periodEntries.orderBy('startDate').toArray(),
+    [],
+    [],
+  );
+  const hasRealPeriod = (periodEntries ?? []).length > 0;
 
   // Subscribe to the native step counter when running on Android. On
   // web the plugin is a no-op shim — we stay on the demo number.
@@ -88,10 +108,13 @@ export default function BodyPage() {
     <div
       style={{
         width: '100%',
-        minHeight: '100%',
+        height: '100%',
         position: 'relative',
         background: 'var(--page)',
         fontFamily: "-apple-system,'PingFang SC',sans-serif",
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
       }}
     >
       <div
@@ -101,6 +124,9 @@ export default function BodyPage() {
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '14px 16px 12px',
+          position: 'sticky',
+          top: 0,
+          zIndex: 5,
         }}
       >
         <button
@@ -189,7 +215,17 @@ export default function BodyPage() {
           <div className="wis-health-cards">
             <StepsCard data={data.steps} />
             <SleepCard data={data.sleep} />
-            <PeriodCard data={data.period} />
+            {hasRealPeriod ? (
+              <RealPeriodCard
+                entries={periodEntries ?? []}
+                onAdd={() => setPeriodSheet(true)}
+              />
+            ) : (
+              <PeriodCard
+                data={data.period}
+                onAdd={() => setPeriodSheet(true)}
+              />
+            )}
             <WeightCard
               data={data.weight}
               draft={weightDraft}
@@ -200,6 +236,13 @@ export default function BodyPage() {
           <EmptyHealth />
         )}
       </div>
+
+      {periodSheet && (
+        <PeriodSheet
+          entries={periodEntries ?? []}
+          onClose={() => setPeriodSheet(false)}
+        />
+      )}
     </div>
   );
 }
@@ -310,7 +353,13 @@ function SleepCard({ data }: { data: typeof DEMO.sleep }) {
   );
 }
 
-function PeriodCard({ data }: { data: typeof DEMO.period }) {
+function PeriodCard({
+  data,
+  onAdd,
+}: {
+  data: typeof DEMO.period;
+  onAdd?: () => void;
+}) {
   const cal = Array.from({ length: data.cycle }, (_, i) => {
     const day = i + 1;
     if (day >= 1 && day <= 3) return 'on';
@@ -329,6 +378,18 @@ function PeriodCard({ data }: { data: typeof DEMO.period }) {
         </span>
         <span className="wis-hcard-label">经期</span>
         <span className="wis-hcard-aside">周期 {data.cycle} 天</span>
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="icon-btn"
+            style={{ marginLeft: 6 }}
+            aria-label="记一笔"
+            title="记一笔"
+          >
+            <Plus size={14} />
+          </button>
+        )}
       </div>
       <div className="wis-period">
         <div className="wis-period-badge">
@@ -504,5 +565,301 @@ function Sparkline({ data, h }: { data: number[]; h: number }) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+// ─── Real period card + add sheet ─────────────────────────────────────
+
+function RealPeriodCard({
+  entries,
+  onAdd,
+}: {
+  entries: PeriodEntry[];
+  onAdd: () => void;
+}) {
+  const today = isoDate(new Date());
+  const summary = summarizeCycle(entries, today);
+  // Calendar window: avgCycle days starting from latest start.
+  const latest = summary.latestStart!;
+  const cal: { dayNum: number; iso: string; cls: string }[] = [];
+  for (let i = 0; i < summary.avgCycle; i++) {
+    const d = new Date(latest + 'T00:00:00');
+    d.setDate(d.getDate() + i);
+    const iso = isoDate(d);
+    let cls = '';
+    // Active period: within avgPeriod days of any logged startDate
+    const isOn = entries.some((e) => {
+      const dayDelta = daysBetween(e.startDate, iso);
+      const lenDays = e.endDate
+        ? daysBetween(e.startDate, e.endDate) + 1
+        : summary.avgPeriod;
+      return dayDelta >= 0 && dayDelta < lenDays;
+    });
+    if (isOn) cls = 'on';
+    if (iso === today) cls = 'today';
+    if (iso === summary.predictedNext) cls = cls === 'today' ? 'today' : 'predict';
+    cal.push({ dayNum: i + 1, iso, cls });
+  }
+
+  const stateLabel =
+    summary.currentDay <= summary.avgPeriod
+      ? `经期第 ${summary.currentDay} 天`
+      : summary.daysToNext <= 0
+        ? `应来 · 超过 ${-summary.daysToNext} 天`
+        : `周期第 ${summary.currentDay} 天`;
+  const nextLabel =
+    summary.daysToNext >= 0
+      ? `距下次约 ${summary.daysToNext} 天`
+      : `已超 ${-summary.daysToNext} 天`;
+
+  return (
+    <div className="wis-hcard">
+      <div className="wis-hcard-head">
+        <span
+          className="wis-hcard-ic"
+          style={{ background: 'var(--amber-100)', color: 'var(--amber-text)' }}
+        >
+          <Droplet size={16} strokeWidth={1.7} />
+        </span>
+        <span className="wis-hcard-label">经期</span>
+        <span className="wis-hcard-aside">周期 {summary.avgCycle} 天</span>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="icon-btn"
+          style={{ marginLeft: 6 }}
+          aria-label="记一笔"
+          title="记一笔"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+      <div className="wis-period">
+        <div className="wis-period-badge">
+          <span className="wis-period-day">{summary.currentDay}</span>
+          <span className="wis-period-lab">第 N 天</span>
+        </div>
+        <div className="wis-period-main">
+          <div className="wis-period-state">{stateLabel}</div>
+          <div className="wis-period-sub">
+            最近开始 {summary.latestStart} ·{' '}
+            <b style={{ color: 'var(--amber-text)' }}>{nextLabel}</b>
+          </div>
+        </div>
+      </div>
+      <div className="wis-period-cal">
+        {cal.map((c) => (
+          <div key={c.iso} className={`wis-cal-dot ${c.cls}`.trim()}>
+            {c.dayNum}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PeriodSheet({
+  entries,
+  onClose,
+}: {
+  entries: PeriodEntry[];
+  onClose: () => void;
+}) {
+  const today = isoDate(new Date());
+  const [draftDate, setDraftDate] = useState(today);
+  const [busy, setBusy] = useState(false);
+
+  async function handleAdd() {
+    setBusy(true);
+    try {
+      await addPeriodStart(draftDate);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('删除这一条？')) return;
+    await deletePeriodEntry(id);
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 60,
+        background: 'rgba(60,30,50,0.25)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 480,
+          background: 'rgba(255,247,250,0.96)',
+          borderTopLeftRadius: 22,
+          borderTopRightRadius: 22,
+          padding: '18px 18px 22px',
+          maxHeight: '80vh',
+          overflowY: 'auto',
+          fontFamily: "-apple-system,'PingFang SC',sans-serif",
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 14,
+          }}
+        >
+          <span
+            style={{
+              fontFamily: "'Cormorant Garamond', serif",
+              fontStyle: 'italic',
+              fontWeight: 500,
+              fontSize: 18,
+              color: '#9a5a76',
+            }}
+          >
+            经期记录
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="icon-btn"
+            aria-label="关掉"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            padding: '12px 14px',
+            borderRadius: 14,
+            background: 'rgba(255,236,232,0.6)',
+            border: '1px solid rgba(232,161,75,0.25)',
+          }}
+        >
+          <span style={{ fontSize: 13, color: '#9a5a76', fontWeight: 500 }}>
+            开始日
+          </span>
+          <input
+            type="date"
+            value={draftDate}
+            max={today}
+            onChange={(e) => setDraftDate(e.target.value)}
+            style={{
+              flex: 1,
+              fontSize: 14,
+              padding: '6px 10px',
+              border: '1px solid rgba(232,161,75,0.35)',
+              borderRadius: 10,
+              background: '#fff',
+              fontFamily: 'inherit',
+              outline: 'none',
+              color: '#643040',
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => void handleAdd()}
+            disabled={busy}
+            style={{
+              border: 0,
+              borderRadius: 10,
+              background: '#E8A14B',
+              color: '#fff',
+              fontSize: 13,
+              fontWeight: 500,
+              padding: '7px 14px',
+              cursor: busy ? 'wait' : 'pointer',
+            }}
+          >
+            {busy ? '记…' : '记下'}
+          </button>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <div
+            style={{
+              fontSize: 11,
+              color: 'rgba(154,90,118,0.7)',
+              letterSpacing: '0.1em',
+              marginBottom: 8,
+              padding: '0 4px',
+            }}
+          >
+            历史 ({entries.length})
+          </div>
+          {entries.length === 0 ? (
+            <div
+              style={{
+                padding: '20px 12px',
+                textAlign: 'center',
+                fontSize: 12,
+                color: 'rgba(154,90,118,0.55)',
+                fontStyle: 'italic',
+              }}
+            >
+              还没有记录。
+            </div>
+          ) : (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {[...entries]
+                .sort((a, b) => b.startDate.localeCompare(a.startDate))
+                .map((e) => (
+                  <li
+                    key={e.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '10px 12px',
+                      borderRadius: 12,
+                      background: 'rgba(255,247,250,0.65)',
+                      border: '1px solid rgba(232,161,75,0.15)',
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span style={{ fontSize: 13, color: '#643040', flex: 1 }}>
+                      {e.startDate}
+                      {e.endDate && (
+                        <span
+                          style={{
+                            color: 'rgba(100,48,64,0.6)',
+                            marginLeft: 6,
+                            fontSize: 11,
+                          }}
+                        >
+                          → {e.endDate}
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(e.id)}
+                      className="icon-btn danger"
+                      aria-label="删除"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

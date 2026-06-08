@@ -9,6 +9,7 @@ import type {
   MemoryFact,
   Message,
   Persona,
+  PeriodEntry,
   WritingStyle,
 } from '../types';
 
@@ -27,6 +28,7 @@ class LisseDB extends Dexie {
   books!: EntityTable<Book, 'id'>;
   bills!: EntityTable<Bill, 'id'>;
   bookmarks!: EntityTable<Bookmark, 'id'>;
+  periodEntries!: EntityTable<PeriodEntry, 'id'>;
   kv!: EntityTable<KVRow, 'key'>;
 
   constructor() {
@@ -137,6 +139,20 @@ class LisseDB extends Dexie {
       books: 'id, title, createdAt, updatedAt, conversationId',
       bills: 'id, date, category, createdAt',
       bookmarks: 'id, bookId, position, createdAt, [bookId+position]',
+      kv: 'key',
+    });
+
+    this.version(10).stores({
+      endpoints: 'id, name, format, createdAt',
+      conversations: 'id, updatedAt, createdAt, source, personaId, styleId, bookId, room, [room+personaId]',
+      messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+      personas: 'id, name, builtin, createdAt',
+      memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+      writingStyles: 'id, name, builtin, createdAt',
+      books: 'id, title, createdAt, updatedAt, conversationId',
+      bills: 'id, date, category, createdAt',
+      bookmarks: 'id, bookId, position, createdAt, [bookId+position]',
+      periodEntries: 'id, startDate, createdAt',
       kv: 'key',
     });
 
