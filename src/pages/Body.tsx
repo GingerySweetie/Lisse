@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
 import { Footprints, Bed, Droplet, Scale } from 'lucide-react';
+import StepCounter from '../lib/native/step-counter';
 
 /**
  * Body / 健康 — preview implementation following the Lavender DS health
@@ -44,8 +46,43 @@ const DEMO = {
 export default function BodyPage() {
   const navigate = useNavigate();
   const [filled, setFilled] = useState(true);
-  const data = filled ? DEMO : null;
   const [weightDraft, setWeightDraft] = useState('');
+  const [liveSteps, setLiveSteps] = useState<number | null>(null);
+
+  // Subscribe to the native step counter when running on Android. On
+  // web the plugin is a no-op shim — we stay on the demo number.
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') return;
+    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        await StepCounter.start();
+        const initial = await StepCounter.getSteps();
+        if (!cancelled) setLiveSteps(initial.steps);
+        const listener = await StepCounter.addListener('stepUpdate', (data) => {
+          if (!cancelled) setLiveSteps(data.steps);
+        });
+        cleanup = () => {
+          void listener.remove();
+          void StepCounter.stop();
+        };
+      } catch {
+        // Permission denied / no sensor — silently fall back to demo.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, []);
+
+  // Merge live step count into the demo skeleton when available.
+  const data = filled
+    ? liveSteps !== null
+      ? { ...DEMO, steps: { ...DEMO.steps, today: liveSteps } }
+      : DEMO
+    : null;
 
   return (
     <div
