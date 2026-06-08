@@ -76,6 +76,20 @@ export function extractToc(content: string, _format: 'txt' | 'md'): TocEntry[] {
   return virtualChapters(content);
 }
 
+/** Strip residual markdown emphasis / code markers from extracted
+ *  chapter titles. EPUB→md conversion leaves `**bold**` / `*em*` /
+ *  backticks around what should be plain text. */
+function cleanTitle(s: string): string {
+  return s
+    .replace(/\*\*([\s\S]+?)\*\*/g, '$1')
+    .replace(/(^|[^\*])\*([^\s\*][^\*]*?)\*(?!\*)/g, '$1$2')
+    .replace(/__([\s\S]+?)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^[\s\*_~`#>\-—–]+/, '')
+    .replace(/[\s\*_~`]+$/, '')
+    .trim();
+}
+
 function findMarkdownHeadings(content: string): TocEntry[] {
   const out: TocEntry[] = [];
   const lines = content.split('\n');
@@ -84,7 +98,7 @@ function findMarkdownHeadings(content: string): TocEntry[] {
     const m = line.match(/^(#{1,6})\s+(.+?)\s*$/);
     if (m) {
       out.push({
-        title: m[2].trim(),
+        title: cleanTitle(m[2]),
         position: offset,
         level: m[1].length,
       });
@@ -96,22 +110,24 @@ function findMarkdownHeadings(content: string): TocEntry[] {
 
 function findChineseChapters(content: string): TocEntry[] {
   const out: TocEntry[] = [];
-  // Match line-start "第X章/节/回/卷/部/篇" + optional title text.
-  // Also catch "序" / "序章" / "楔子" / "尾声" / "终章" as one-offs.
+  // 多字符头优先（部分 > 部, 章 > 节）—— 否则"第一部分"会被切成
+  // "第一部" + 尾部 " 分 …"。 序 必须是 序章/序言/序幕/序曲 等复合
+  // 形态，单独的 序 会误伤"序列主义 / 序章句"之类的正文起行。
   const re = new RegExp(
     String.raw`^[\t 　]*(` +
-      String.raw`(?:第\s*[一二三四五六七八九十百千零〇0-9０-９]+\s*[章节回卷部篇])` +
-      String.raw`|(?:序章?|楔子|引子|尾声|终章|后记|前言|结语)` +
+      String.raw`(?:第\s*[一二三四五六七八九十百千零〇0-9０-９]+\s*` +
+      String.raw`(?:部分|章|节|回|卷|部|篇))` +
+      String.raw`|(?:序[章言幕曲]|楔子|引子|尾声|终章|开篇|终篇|后记|前言|结语)` +
       String.raw`)([^\n]*)$`,
     'gm',
   );
   let m: RegExpExecArray | null;
   while ((m = re.exec(content)) !== null) {
     const head = m[1].trim();
-    const tail = m[2].trim();
+    const tail = cleanTitle(m[2]);
     const title = tail ? `${head}　${tail}` : head;
     const level =
-      /[部篇卷]/.test(head) ? 1 : /[章]/.test(head) ? 2 : 3;
+      /部分|[部篇卷]/.test(head) ? 1 : /[章]/.test(head) ? 2 : 3;
     out.push({ title, position: m.index, level });
   }
   return out;
@@ -127,7 +143,7 @@ function findEnglishChapters(content: string): TocEntry[] {
   while ((m = re.exec(content)) !== null) {
     const kind = m[1];
     const num = m[2];
-    const tail = (m[3] ?? '').trim();
+    const tail = cleanTitle(m[3] ?? '');
     const title = tail ? `${kind} ${num}: ${tail}` : `${kind} ${num}`;
     const level = /^(Part|PART|Book|BOOK)$/.test(kind) ? 1 : 2;
     out.push({ title, position: m.index, level });
@@ -152,7 +168,7 @@ function findHorizontalRuleChapters(content: string): TocEntry[] {
     // Look at first non-empty line within first 200 chars of the chunk.
     const window = content.slice(pos, pos + 200);
     for (const raw of window.split('\n')) {
-      const line = raw.replace(/^#+\s*/, '').trim();
+      const line = cleanTitle(raw);
       if (line.length > 0 && line.length < 80) {
         title = line;
         break;
@@ -169,7 +185,7 @@ function findSetextHeadings(content: string): TocEntry[] {
   for (let i = 0; i < lines.length - 1; i++) {
     const line = lines[i];
     const next = lines[i + 1];
-    const text = line.trim();
+    const text = cleanTitle(line);
     if (text.length > 0 && text.length < 80) {
       if (/^={3,}\s*$/.test(next)) {
         out.push({ title: text, position: offset, level: 1 });
@@ -190,7 +206,7 @@ function findNumberedSections(content: string): TocEntry[] {
   let m: RegExpExecArray | null;
   while ((m = re.exec(content)) !== null) {
     const num = m[1];
-    const title = `${num} ${m[2].trim()}`;
+    const title = `${num} ${cleanTitle(m[2])}`;
     const level = Math.min(6, num.split('.').length);
     out.push({ title, position: m.index, level });
   }
