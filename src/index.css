@@ -1279,23 +1279,6 @@
   position: relative;
   z-index: 12;
 }
-.wis-chat-title {
-  font-family: 'Noto Serif SC', Georgia, serif;
-  font-size: 15px;
-  color: hsla(268, 30%, 32%, 0.85);
-  letter-spacing: 0.1em;
-  font-weight: 400;
-  flex: 1;
-  text-align: center;
-  padding-right: 56px;
-}
-.wis-chat-subline {
-  text-align: center;
-  font-size: 10px;
-  color: hsla(268, 16%, 55%, 0.55);
-  letter-spacing: 0.04em;
-  margin-top: 1px;
-}
 
 .wis-date-sep {
   display: flex;
