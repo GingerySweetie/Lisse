@@ -10,6 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/app": "8.1.0",
+    "@capacitor/core": "8.4.0",
+    "@capacitor/splash-screen": "8.0.1",
     "@tailwindcss/vite": "^4.2.4",
     "dexie": "^4.4.2",
     "dexie-react-hooks": "^4.4.0",
@@ -27,6 +30,8 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@capacitor/android": "8.4.0",
+    "@capacitor/cli": "8.4.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",
