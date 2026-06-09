@@ -248,6 +248,43 @@ function Typing({
   );
 }
 
+function RoastPopup({
+  lili,
+  rhema,
+  onClose,
+}: {
+  lili?: string;
+  rhema?: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="st-popup-mask" onClick={onClose}>
+      <div className="st-popup-card" onClick={(e) => e.stopPropagation()}>
+        <div className="st-popup-label">TODAY · ROAST</div>
+        <div className="st-popup-roast">
+          <div className="st-roast-item lili">
+            <div className="st-roast-who">
+              <span className="st-roast-dot" />
+              <span className="st-roast-name">理理酱</span>
+            </div>
+            <div className="st-roast-text lili-text">{lili ?? '……'}</div>
+          </div>
+          <div className="st-roast-item rhema">
+            <div className="st-roast-who">
+              <span className="st-roast-dot" />
+              <span className="st-roast-name">Rhema</span>
+            </div>
+            <div className="st-roast-text rhema-text">{rhema ?? '……'}</div>
+          </div>
+        </div>
+        <button type="button" className="st-popup-close" onClick={onClose}>
+          知道了
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RoastSection({
   lili,
   rhema,
@@ -329,6 +366,7 @@ export default function ScreenTimePage() {
   const [liliText, setLiliText] = useState<string | undefined>();
   const [rhemaText, setRhemaText] = useState<string | undefined>();
   const [generating, setGenerating] = useState(false);
+  const [popupOpen, setPopupOpen] = useState(false);
   const [tab, setTab] = useState<'daily' | 'weekly'>('daily');
 
   async function refresh() {
@@ -347,9 +385,13 @@ export default function ScreenTimePage() {
     // re-opens within the same bucket don't burn tokens.
     setGenerating(true);
     try {
-      const { lili, rhema } = await generatePageRoasts(u);
+      const { lili, rhema, fromCache } = await generatePageRoasts(u);
       setLiliText(lili);
       setRhemaText(rhema);
+      // Fresh generation (not cache) → pop up so she sees it the moment
+      // it lands. Cache hits stay quiet so re-opening within an hour
+      // bucket doesn't keep nagging.
+      if (!fromCache) setPopupOpen(true);
     } finally {
       setGenerating(false);
     }
@@ -525,6 +567,13 @@ export default function ScreenTimePage() {
           <RoastSection lili={liliText} rhema={rhemaText} generating={generating} />
         </div>
       </div>
+      {popupOpen && (
+        <RoastPopup
+          lili={liliText}
+          rhema={rhemaText}
+          onClose={() => setPopupOpen(false)}
+        />
+      )}
     </div>
   );
 }
