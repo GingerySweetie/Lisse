@@ -156,6 +156,17 @@ if "kotlin-gradle-plugin" not in src:
 PY
 fi
 
+# 3c. Bump minSdkVersion to 26: Health Connect (androidx.health.connect:
+#     connect-client:1.1.0) declares minSdk 26 in its manifest, so the
+#     app must be at least 26 or the manifest merger fails. Android 8.0
+#     covers > 99% of in-use devices.
+VARS_GRADLE="$ANDROID_DIR/variables.gradle"
+if [ -f "$VARS_GRADLE" ]; then
+  echo "[postsync] bumping minSdkVersion to 26 for Health Connect"
+  sed -i.bak -E 's/(minSdkVersion *= *)[0-9]+/\126/' "$VARS_GRADLE"
+  rm -f "$VARS_GRADLE.bak"
+fi
+
 # 4. Install the stable debug keystore so successive APK installs are
 #    upgrades (data preserved) rather than fresh installs (IndexedDB
 #    wipe).
