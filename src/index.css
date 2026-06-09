@@ -1268,7 +1268,7 @@
 }
 
 .wis-chat-header {
-  padding: 13px 16px 13px 56px;
+  padding: 13px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
