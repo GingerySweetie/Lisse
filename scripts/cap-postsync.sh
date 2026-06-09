@@ -81,6 +81,23 @@ if ! grep -q 'android.permission.PACKAGE_USAGE_STATS' "$MANIFEST"; then
     "$MANIFEST"
   rm -f "$MANIFEST.bak"
 fi
+if ! grep -q 'android.permission.QUERY_ALL_PACKAGES' "$MANIFEST"; then
+  echo "[postsync] adding QUERY_ALL_PACKAGES permission"
+  # Android 11+ blocks getApplicationInfo for arbitrary packages without
+  # this. Otherwise app names in /screen-time fall back to bare package
+  # ids ("com.android.chrome" instead of "Chrome"). Side-loaded APK so
+  # Play Store restriction doesn't apply.
+  if ! grep -q 'xmlns:tools=' "$MANIFEST"; then
+    sed -i.bak \
+      's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' \
+      "$MANIFEST"
+    rm -f "$MANIFEST.bak"
+  fi
+  sed -i.bak \
+    's|<application|<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />\n    <application|' \
+    "$MANIFEST"
+  rm -f "$MANIFEST.bak"
+fi
 
 # Inject Health Connect <queries> + share intent-filter +
 # BillSnifferService registration via Python.
