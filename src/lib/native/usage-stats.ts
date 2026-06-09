@@ -30,13 +30,29 @@ export interface UnlockSummary {
 
 export interface UsageStatsPlugin {
   hasPermission(): Promise<{ granted: boolean }>;
+  /** Open the system Settings → "使用情况访问" page. */
+  requestPermission(): Promise<void>;
+  /** Backward-compat alias for requestPermission. */
   openSettings(): Promise<void>;
+
+  /** Per-app foreground time over an arbitrary window. */
+  getUsageStats(args: {
+    startTime: number;
+    endTime: number;
+  }): Promise<{ usage: AppUsage[] }>;
+  /** Keyguard-unlock count over an arbitrary window. */
+  getUnlockCount(args: {
+    startTime: number;
+    endTime: number;
+  }): Promise<{ count: number; firstAt: number | null }>;
+
+  /** Convenience: today's per-app foreground time since local midnight. */
   getTodayUsage(): Promise<{ usage: AppUsage[] }>;
-  /** Total foreground ms per day, last 7 days (oldest → newest). */
+  /** Convenience: total foreground ms per day, last 7 days (oldest → newest). */
   getWeekUsage(): Promise<{ days: DayUsage[] }>;
-  /** Today's foreground distribution in 24 hourly buckets (ms each). */
+  /** Convenience: today's foreground distribution in 24 hourly buckets (ms each). */
   getHourlyDistribution(): Promise<{ hours: number[] }>;
-  /** Today's keyguard unlock count + first-unlock time. */
+  /** Convenience: today's keyguard unlock count + first-unlock "HH:MM". */
   getUnlocks(): Promise<UnlockSummary>;
 }
 
