@@ -24,6 +24,13 @@ fi
 echo "[postsync] copying overlay sources"
 cp -r "$OVERLAY_DIR/app/src/main/java/." "$ANDROID_DIR/app/src/main/java/"
 
+# 1b. Copy overlay res/ — custom adaptive icon (wisteria mark) and
+#     splash drawable replace Capacitor's stock assets.
+if [ -d "$OVERLAY_DIR/app/src/main/res" ]; then
+  echo "[postsync] copying overlay res (icons, splash)"
+  cp -r "$OVERLAY_DIR/app/src/main/res/." "$ANDROID_DIR/app/src/main/res/"
+fi
+
 # 2. Patch AndroidManifest.xml — add ACTIVITY_RECOGNITION permission
 #    if it isn't already present.
 MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"

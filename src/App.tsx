@@ -1,21 +1,26 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
-import ChatPage from './pages/Chat';
-import SettingsPage from './pages/Settings';
-import PersonasPage from './pages/Personas';
-import ImportExportPage from './pages/ImportExport';
-import MemoryPage from './pages/Memory';
-import StylesPage from './pages/Styles';
-import BooksPage from './pages/Books';
-import ReadPage from './pages/Read';
 import HomePage from './pages/Home';
-import BedroomPickerPage from './pages/Bedroom';
-import BedroomChatPage from './pages/BedroomChat';
-import BillingPage from './pages/Billing';
-import BodyPage from './pages/Body';
+
+// Route-level lazy splitting. HomePage stays eager because it's the
+// landing page; everything else loads on first navigation so the cold
+// start bundle stays small (matters for APK launch + service-worker
+// precache size).
+const ChatPage = lazy(() => import('./pages/Chat'));
+const SettingsPage = lazy(() => import('./pages/Settings'));
+const PersonasPage = lazy(() => import('./pages/Personas'));
+const ImportExportPage = lazy(() => import('./pages/ImportExport'));
+const MemoryPage = lazy(() => import('./pages/Memory'));
+const StylesPage = lazy(() => import('./pages/Styles'));
+const BooksPage = lazy(() => import('./pages/Books'));
+const ReadPage = lazy(() => import('./pages/Read'));
+const BedroomPickerPage = lazy(() => import('./pages/Bedroom'));
+const BedroomChatPage = lazy(() => import('./pages/BedroomChat'));
+const BillingPage = lazy(() => import('./pages/Billing'));
+const BodyPage = lazy(() => import('./pages/Body'));
 
 export default function App() {
   // Capture window-level errors + unhandled promise rejections so async
@@ -50,33 +55,35 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route index element={<Navigate to="/home" replace />} />
-          <Route path="/home" element={<HomePage />} />
-          <Route path="/bedroom" element={<BedroomPickerPage />} />
-          <Route path="/bedroom/:personaId" element={<BedroomChatPage />} />
-          <Route path="/billing" element={<BillingPage />} />
-          <Route path="/body" element={<BodyPage />} />
-          <Route path="/chat" element={<ChatPage />} />
-          <Route path="/chat/:conversationId" element={<ChatPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/personas" element={<PersonasPage />} />
-          <Route path="/styles" element={<StylesPage />} />
-          <Route path="/books" element={<BooksPage />} />
-          <Route
-            path="/read/:bookId"
-            element={
-              <ErrorBoundary label="读书 /read/:bookId">
-                <ReadPage />
-              </ErrorBoundary>
-            }
-          />
-          <Route path="/memory" element={<MemoryPage />} />
-          <Route path="/data" element={<ImportExportPage />} />
-          <Route path="*" element={<Navigate to="/home" replace />} />
-        </Route>
-      </Routes>
+      <Suspense fallback={<RouteSpinner />}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<Navigate to="/home" replace />} />
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/bedroom" element={<BedroomPickerPage />} />
+            <Route path="/bedroom/:personaId" element={<BedroomChatPage />} />
+            <Route path="/billing" element={<BillingPage />} />
+            <Route path="/body" element={<BodyPage />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/chat/:conversationId" element={<ChatPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/personas" element={<PersonasPage />} />
+            <Route path="/styles" element={<StylesPage />} />
+            <Route path="/books" element={<BooksPage />} />
+            <Route
+              path="/read/:bookId"
+              element={
+                <ErrorBoundary label="读书 /read/:bookId">
+                  <ReadPage />
+                </ErrorBoundary>
+              }
+            />
+            <Route path="/memory" element={<MemoryPage />} />
+            <Route path="/data" element={<ImportExportPage />} />
+            <Route path="*" element={<Navigate to="/home" replace />} />
+          </Route>
+        </Routes>
+      </Suspense>
       <UpdateBanner />
       {globalError && (
         <div
@@ -141,5 +148,26 @@ export default function App() {
         </div>
       )}
     </BrowserRouter>
+  );
+}
+
+function RouteSpinner() {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'rgba(120,100,155,0.4)',
+        fontSize: 12,
+        letterSpacing: '0.1em',
+        fontFamily: "'Noto Sans SC', sans-serif",
+        pointerEvents: 'none',
+      }}
+    >
+      ·
+    </div>
   );
 }

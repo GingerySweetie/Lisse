@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Footprints, Bed, Droplet, Plus, Scale, Trash2, X } from 'lucide-react';
 import { db } from '../db';
 import StepCounter from '../lib/native/step-counter';
+import { schedulePeriodReminders } from '../lib/native/notifications';
 import {
   addPeriodStart,
   daysBetween,
@@ -673,6 +674,14 @@ function PeriodSheet({
     setBusy(true);
     try {
       await addPeriodStart(draftDate);
+      // Re-schedule notifications: cancels previous reminders and queues
+      // new ones based on the updated prediction. No-op on web.
+      const all = await db.periodEntries.toArray();
+      const s = summarizeCycle(all);
+      await schedulePeriodReminders({
+        predictedNext: s.predictedNext,
+        avgCycle: s.avgCycle,
+      });
     } finally {
       setBusy(false);
     }
