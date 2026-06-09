@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Post-sync overlay: after `npx cap sync android` regenerates the
-# native scaffold, inject our custom Java + Kotlin plugins, our
+# native scaffold, inject our custom Kotlin + Java plugins, our
 # MainActivity (registering the plugins), manifest permissions +
-# intent filters, gradle Kotlin support, Health Connect dep, and a
-# stable debug keystore so successive APK installs upgrade in place.
+# intent filters, gradle Kotlin support, and a stable debug keystore
+# so successive APK installs upgrade in place.
 #
 # Lives outside the gitignored /android/ tree so the source of truth
 # survives CI runs. Idempotent — re-running this on an already
@@ -18,11 +18,17 @@ if [ ! -d "$ANDROID_DIR" ]; then
   exit 1
 fi
 
-# 1. Copy overlay Java + Kotlin sources into the generated app module.
-#    This overwrites the boilerplate MainActivity.java that Capacitor 8
-#    generates (the boilerplate doesn't register our plugins) and
-#    drops our plugin sources alongside it.
+# 1. Copy overlay sources (Kotlin + Java) into the generated app module.
+#    Overwrites the boilerplate MainActivity that Capacitor 8 generates
+#    (the boilerplate doesn't register our plugins). Capacitor 8 may
+#    generate MainActivity.java; we replace it with the Kotlin version.
 echo "[postsync] copying overlay sources"
+# Wipe any pre-existing MainActivity from Capacitor scaffolding so a
+# stray .java doesn't clash with our .kt.
+rm -f "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.java" \
+      "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.kt" \
+      "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/"*.java \
+      "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/"*.kt 2>/dev/null || true
 cp -r "$OVERLAY_DIR/app/src/main/java/." "$ANDROID_DIR/app/src/main/java/"
 
 # 1b. Copy overlay res/ — custom adaptive icon (wisteria mark) and
@@ -33,17 +39,25 @@ if [ -d "$OVERLAY_DIR/app/src/main/res" ]; then
   # @capacitor/splash-screen ships a stock drawable/splash.png. Our
   # overlay provides splash.xml with the same resource name → gradle's
   # resource merger fails with "Duplicate resources". Drop the PNG so
-  # our XML wins. Same for ic_launcher PNGs in mipmap-*: keep them as
-  # legacy fallback so Android < 26 still has an icon.
+  # our XML wins.
   find "$ANDROID_DIR/app/src/main/res" -type f -name 'splash.png' -delete || true
 fi
 
 # 2. Patch AndroidManifest.xml:
-#    - ACTIVITY_RECOGNITION (step counter)
-#    - health.READ_SLEEP (Health Connect sleep read)
+#    - ACTIVITY_RECOGNITION (step counter sensor)
+#    - PACKAGE_USAGE_STATS (special access, granted via Settings)
+#    - QUERY_ALL_PACKAGES (so app labels resolve on Android 11+)
 #    - Share intent filter on MainActivity for SEND + SEND_MULTIPLE
-#    - Health Connect privacy policy queries entry
+#    - BillSnifferService registration
 MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
+ensure_tools_ns() {
+  if ! grep -q 'xmlns:tools=' "$MANIFEST"; then
+    sed -i.bak \
+      's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' \
+      "$MANIFEST"
+    rm -f "$MANIFEST.bak"
+  fi
+}
 if ! grep -q 'android.permission.ACTIVITY_RECOGNITION' "$MANIFEST"; then
   echo "[postsync] adding ACTIVITY_RECOGNITION permission"
   sed -i.bak \
@@ -51,31 +65,9 @@ if ! grep -q 'android.permission.ACTIVITY_RECOGNITION' "$MANIFEST"; then
     "$MANIFEST"
   rm -f "$MANIFEST.bak"
 fi
-if ! grep -q 'android.permission.health.READ_SLEEP' "$MANIFEST"; then
-  echo "[postsync] adding Health Connect READ_SLEEP permission"
-  sed -i.bak \
-    's|<application|<uses-permission android:name="android.permission.health.READ_SLEEP" />\n    <application|' \
-    "$MANIFEST"
-  rm -f "$MANIFEST.bak"
-fi
-if ! grep -q 'android.permission.health.READ_STEPS' "$MANIFEST"; then
-  echo "[postsync] adding Health Connect READ_STEPS permission"
-  sed -i.bak \
-    's|<application|<uses-permission android:name="android.permission.health.READ_STEPS" />\n    <application|' \
-    "$MANIFEST"
-  rm -f "$MANIFEST.bak"
-fi
 if ! grep -q 'android.permission.PACKAGE_USAGE_STATS' "$MANIFEST"; then
   echo "[postsync] adding PACKAGE_USAGE_STATS permission"
-  # tools:ignore is needed because this is a special access permission
-  # that lint flags as protected; the user grants it via Settings, not
-  # at install time.
-  if ! grep -q 'xmlns:tools=' "$MANIFEST"; then
-    sed -i.bak \
-      's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' \
-      "$MANIFEST"
-    rm -f "$MANIFEST.bak"
-  fi
+  ensure_tools_ns
   sed -i.bak \
     's|<application|<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />\n    <application|' \
     "$MANIFEST"
@@ -83,43 +75,19 @@ if ! grep -q 'android.permission.PACKAGE_USAGE_STATS' "$MANIFEST"; then
 fi
 if ! grep -q 'android.permission.QUERY_ALL_PACKAGES' "$MANIFEST"; then
   echo "[postsync] adding QUERY_ALL_PACKAGES permission"
-  # Android 11+ blocks getApplicationInfo for arbitrary packages without
-  # this. Otherwise app names in /screen-time fall back to bare package
-  # ids ("com.android.chrome" instead of "Chrome"). Side-loaded APK so
-  # Play Store restriction doesn't apply.
-  if ! grep -q 'xmlns:tools=' "$MANIFEST"; then
-    sed -i.bak \
-      's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' \
-      "$MANIFEST"
-    rm -f "$MANIFEST.bak"
-  fi
+  ensure_tools_ns
   sed -i.bak \
     's|<application|<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />\n    <application|' \
     "$MANIFEST"
   rm -f "$MANIFEST.bak"
 fi
 
-# Inject Health Connect <queries> + share intent-filter +
-# BillSnifferService registration via Python.
+# Inject share intent-filter + BillSnifferService registration via Python.
 python3 - "$MANIFEST" << 'PY'
 import sys, re
 p = sys.argv[1]
 src = open(p).read()
 
-# Health Connect package queries — required so the SDK can discover the
-# HC service on the device.
-hc_queries = """    <queries>
-        <package android:name="com.google.android.apps.healthdata" />
-        <intent>
-            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
-        </intent>
-    </queries>
-"""
-if "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" not in src:
-    # Insert before <application>.
-    src = re.sub(r'(\s*<application\b)', '\n' + hc_queries + r'\1', src, count=1)
-
-# Share intent-filter inside MainActivity's <activity> block.
 share_filter = """            <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
@@ -131,7 +99,6 @@ share_filter = """            <intent-filter>
             </intent-filter>
 """
 if "android.intent.action.SEND" not in src:
-    # Insert before the closing </activity> of MainActivity.
     src = re.sub(
         r'(<activity\b[^>]*MainActivity[^>]*>)(.*?)(</activity>)',
         lambda m: m.group(1) + m.group(2) + share_filter + m.group(3),
@@ -140,7 +107,6 @@ if "android.intent.action.SEND" not in src:
         flags=re.DOTALL,
     )
 
-# BillSnifferService registration — must live inside <application>.
 sniffer_service = """        <service
             android:name="com.gingery.wisteria.plugins.BillSnifferService"
             android:label="Wisteria 账单识别"
@@ -152,13 +118,12 @@ sniffer_service = """        <service
         </service>
 """
 if "BillSnifferService" not in src:
-    # Insert before </application>.
     src = re.sub(r'(\s*</application>)', '\n' + sniffer_service + r'\1', src, count=1)
 
 open(p, 'w').write(src)
 PY
 
-# 3. Configure Kotlin support + Health Connect dep in app/build.gradle.
+# 3. Configure Kotlin support in app/build.gradle.
 APP_GRADLE="$ANDROID_DIR/app/build.gradle"
 if [ -f "$APP_GRADLE" ]; then
   python3 - "$APP_GRADLE" << 'PY'
@@ -166,7 +131,6 @@ import sys, re
 p = sys.argv[1]
 src = open(p).read()
 
-# Apply kotlin-android plugin.
 if "kotlin-android" not in src:
     src = re.sub(
         r"(apply plugin: 'com\.android\.application')",
@@ -175,17 +139,14 @@ if "kotlin-android" not in src:
         count=1,
     )
 
-# Add Kotlin stdlib + Health Connect deps.
-hc_block = """    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.24'
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-    implementation 'androidx.health.connect:connect-client:1.1.0'
+# Kotlin stdlib + localbroadcastmanager (used by BillSnifferPlugin).
+kotlin_block = """    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.24'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
 """
-if "androidx.health.connect:connect-client" not in src:
-    # Inject inside the dependencies { } block — find the opening brace.
+if "kotlin-stdlib" not in src:
     src = re.sub(
         r"(dependencies\s*\{\s*\n)",
-        r"\1" + hc_block,
+        r"\1" + kotlin_block,
         src,
         count=1,
     )
@@ -210,17 +171,6 @@ if "kotlin-gradle-plugin" not in src:
     )
     open(p, 'w').write(src)
 PY
-fi
-
-# 3c. Bump minSdkVersion to 26: Health Connect (androidx.health.connect:
-#     connect-client:1.1.0) declares minSdk 26 in its manifest, so the
-#     app must be at least 26 or the manifest merger fails. Android 8.0
-#     covers > 99% of in-use devices.
-VARS_GRADLE="$ANDROID_DIR/variables.gradle"
-if [ -f "$VARS_GRADLE" ]; then
-  echo "[postsync] bumping minSdkVersion to 26 for Health Connect"
-  sed -i.bak -E 's/(minSdkVersion *= *)[0-9]+/\126/' "$VARS_GRADLE"
-  rm -f "$VARS_GRADLE.bak"
 fi
 
 # 4. Install the stable debug keystore so successive APK installs are
@@ -254,13 +204,13 @@ fi
 
 # 5. Sanity check — fail loud if a plugin or MainActivity didn't land.
 EXPECTED=(
-  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.java"
-  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/StepCounterPlugin.java"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.kt"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/StepCounterPlugin.kt"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/UsageStatsPlugin.kt"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/SleepEstimatePlugin.kt"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/ShareIntentPlugin.java"
-  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/SleepPlugin.kt"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/BillSnifferPlugin.java"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/BillSnifferService.java"
-  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/UsageStatsPlugin.java"
 )
 for f in "${EXPECTED[@]}"; do
   if [ ! -f "$f" ]; then
@@ -268,14 +218,14 @@ for f in "${EXPECTED[@]}"; do
     exit 1
   fi
 done
-for marker in 'registerPlugin(StepCounterPlugin.class)' \
-              'registerPlugin(SleepPlugin.class)' \
-              'registerPlugin(ShareIntentPlugin.class)' \
-              'registerPlugin(BillSnifferPlugin.class)' \
-              'registerPlugin(UsageStatsPlugin.class)'; do
+for marker in 'registerPlugin(StepCounterPlugin' \
+              'registerPlugin(SleepEstimatePlugin' \
+              'registerPlugin(ShareIntentPlugin' \
+              'registerPlugin(BillSnifferPlugin' \
+              'registerPlugin(UsageStatsPlugin'; do
   if ! grep -q "$marker" \
-      "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.java"; then
-    echo "[postsync] ERROR: MainActivity.java doesn't $marker" >&2
+      "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.kt"; then
+    echo "[postsync] ERROR: MainActivity.kt doesn't $marker" >&2
     exit 1
   fi
 done

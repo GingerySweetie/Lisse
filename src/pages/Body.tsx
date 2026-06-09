@@ -48,7 +48,7 @@ function mergeWeight(entries: WeightEntry[]): typeof DEMO.weight {
   };
 }
 
-/** Build a sleep.* shape from a Health Connect session. We only know
+/** Build a sleep.* shape from the native sleep estimate. We only know
  *  total start/end; without sleep stages we approximate "深睡" as 45%
  *  of total and render a single non-deep segment. Good enough for the
  *  card; sleep stages can come later. */
@@ -128,40 +128,53 @@ export default function BodyPage() {
     [],
   );
 
-  // Pull sleep + today's steps from Health Connect. Both data points
-  // refresh whenever the page becomes visible — handles the "I closed
-  // the app, walked more, came back" case without any background service.
-  // Mi Health / Samsung Health / Pixel all write into HC so the numbers
-  // match whatever their UI shows.
+  // Steps via the native TYPE_STEP_COUNTER sensor. The plugin handles
+  // the daily baseline + day-rollover so getSteps() already returns
+  // today's count; the stepUpdate event fires it live as she walks.
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') return;
+    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        await StepCounter.start();
+        const initial = await StepCounter.getSteps();
+        if (!cancelled) setLiveSteps(initial.steps);
+        const listener = await StepCounter.addListener('stepUpdate', (data) => {
+          if (!cancelled) setLiveSteps(data.steps);
+        });
+        cleanup = () => {
+          void listener.remove();
+          void StepCounter.stop();
+        };
+      } catch {
+        // Permission denied / no sensor — leave demo number.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, []);
+
+  // Sleep via UsageEvents screen-on/off span estimate (native plugin
+  // SleepEstimatePlugin). Permission is the same Usage Access switch
+  // ScreenTime uses; one grant covers both.
   useEffect(() => {
     if (Capacitor.getPlatform() !== 'android') return;
     let cancelled = false;
     async function refresh() {
       try {
-        const avail = await Sleep.isAvailable();
-        if (!avail.available) return;
         const perm = await Sleep.hasPermission();
         if (!perm.granted) {
           if (!cancelled) setSleepNeedsAuth(true);
           return;
         }
         if (!cancelled) setSleepNeedsAuth(false);
-        const [sleepRes, stepsRes] = await Promise.allSettled([
-          Sleep.getLastSleep(),
-          Sleep.getTodaySteps(),
-        ]);
-        if (
-          sleepRes.status === 'fulfilled' &&
-          sleepRes.value.session &&
-          !cancelled
-        ) {
-          setLiveSleep(sleepRes.value.session);
-        }
-        if (stepsRes.status === 'fulfilled' && !cancelled) {
-          setLiveSteps(stepsRes.value.steps);
-        }
+        const r = await Sleep.getLastSleep();
+        if (!cancelled && r.session) setLiveSleep(r.session);
       } catch {
-        // Silently fall back to demo.
+        // ignore
       }
     }
     void refresh();
@@ -177,52 +190,16 @@ export default function BodyPage() {
     };
   }, []);
 
-  // Raw on-device step sensor as a fallback when Health Connect isn't
-  // permitted yet. The cumulative-since-boot semantic is less useful
-  // than HC's "today" aggregate, but better than nothing.
-  useEffect(() => {
-    if (Capacitor.getPlatform() !== 'android') return;
-    if (!sleepNeedsAuth) return; // HC is providing steps; don't fight over it.
-    let cleanup: (() => void) | undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        await StepCounter.start();
-        const initial = await StepCounter.getSteps();
-        if (!cancelled && initial.steps > 0) setLiveSteps(initial.steps);
-        const listener = await StepCounter.addListener('stepUpdate', (data) => {
-          if (!cancelled) setLiveSteps(data.steps);
-        });
-        cleanup = () => {
-          void listener.remove();
-          void StepCounter.stop();
-        };
-      } catch {
-        // Permission denied / no sensor.
-      }
-    })();
-    return () => {
-      cancelled = true;
-      cleanup?.();
-    };
-  }, [sleepNeedsAuth]);
-
   async function handleConnectSleep() {
     try {
       await Sleep.requestPermission();
+      // The user comes back from system Settings; the focus listener
+      // above will re-poll on its own, but try once eagerly too.
       const perm = await Sleep.hasPermission();
       if (perm.granted) {
         setSleepNeedsAuth(false);
-        const [sleepRes, stepsRes] = await Promise.allSettled([
-          Sleep.getLastSleep(),
-          Sleep.getTodaySteps(),
-        ]);
-        if (sleepRes.status === 'fulfilled' && sleepRes.value.session) {
-          setLiveSleep(sleepRes.value.session);
-        }
-        if (stepsRes.status === 'fulfilled') {
-          setLiveSteps(stepsRes.value.steps);
-        }
+        const r = await Sleep.getLastSleep();
+        if (r.session) setLiveSleep(r.session);
       }
     } catch {
       // ignore
@@ -535,7 +512,7 @@ function SleepCard({
               textDecoration: 'underline',
             }}
           >
-            接 Health Connect
+            开启用量访问
           </button>
         ) : (
           <span className="wis-hcard-aside">

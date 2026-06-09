@@ -190,11 +190,15 @@
 /* Markdown content styling */
 .prose-msg {
   line-height: 1.7;
-  /* Long unbreakable strings (URLs, technical IDs, struct signatures
-     like Rheomorpha.level=7::user.intimacy.query.activated) must wrap
-     instead of busting the bubble width and causing horizontal scroll. */
+  /* keep-all means the browser only wraps at spaces / punctuation —
+   * never between a Latin word and an adjacent CJK character. Without
+   * this, "Rhema酱" would break between "Rhema" and "酱" because the
+   * boundary looks like a word edge to the default break algorithm.
+   * overflow-wrap: anywhere is the safety net for unbreakable strings
+   * (URLs, struct signatures like Rheomorpha.level=7::user...) — they
+   * still wrap as a last resort instead of busting the bubble width. */
   overflow-wrap: anywhere;
-  word-break: break-word;
+  word-break: keep-all;
 }
 .prose-msg p {
   margin: 0.5em 0;

@@ -350,55 +350,54 @@ export default function BedroomChatPage() {
           flexShrink: 0,
         }}
       >
-        <button
-          onClick={() => navigate('/bedroom')}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: t.tm,
-            padding: 4,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 12,
-            fontFamily: "'Crimson Pro','Noto Serif SC',serif",
-            fontStyle: 'italic',
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M10 3L5 8L10 13"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          卧室
-        </button>
-        <div style={{ textAlign: 'center' }}>
-          <div
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <button
+            onClick={() => navigate('/bedroom')}
             style={{
-              fontSize: 15,
-              fontStyle: 'italic',
-              letterSpacing: 3,
-              color: t.text,
-              fontWeight: 400,
-            }}
-          >
-            {personaName}
-          </div>
-          <div
-            style={{
-              fontSize: 10.5,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
               color: t.tm,
-              marginTop: 1,
-              fontFamily: "-apple-system,'PingFang SC',sans-serif",
-              fontWeight: 300,
+              padding: 4,
+              display: 'flex',
+              alignItems: 'center',
+              flexShrink: 0,
             }}
+            aria-label="返回"
           >
-            {t.name}
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M10 3L5 8L10 13"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <div style={{ minWidth: 0, lineHeight: 1.1 }}>
+            <div
+              style={{
+                fontSize: 15,
+                fontStyle: 'italic',
+                letterSpacing: 3,
+                color: t.text,
+                fontWeight: 400,
+              }}
+            >
+              {personaName}
+            </div>
+            <div
+              style={{
+                fontSize: 10.5,
+                color: t.tm,
+                marginTop: 2,
+                fontFamily: "-apple-system,'PingFang SC',sans-serif",
+                fontWeight: 300,
+              }}
+            >
+              {t.name}
+            </div>
           </div>
         </div>
         <div style={{ position: 'relative', width: 80, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
