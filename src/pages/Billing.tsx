@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Capacitor } from '@capacitor/core';
 import { db } from '../db';
 import { newId } from '../lib/id';
+import BillSniffer from '../lib/native/bill-sniffer';
 import type {
   Bill,
   BillCategory,
@@ -201,6 +203,36 @@ export default function BillingPage() {
     k: BillKind;
   }>({ a: '', i: '', c: '餐饮', k: 'expense' });
 
+  // Bill-sniffer banner: on Android, prompt to enable the notification
+  // listener so 支付宝 / 微信支付 通知 auto-feed the bills table. Hidden on web.
+  const [snifferEnabled, setSnifferEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await BillSniffer.isEnabled();
+        if (!cancelled) setSnifferEnabled(r.enabled);
+      } catch {
+        // ignore
+      }
+    })();
+    // Re-poll when the page regains focus — the user comes back from the
+    // system settings page after toggling the switch.
+    function refocus() {
+      void BillSniffer.isEnabled()
+        .then((r) => {
+          if (!cancelled) setSnifferEnabled(r.enabled);
+        })
+        .catch(() => {});
+    }
+    window.addEventListener('focus', refocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refocus);
+    };
+  }, []);
+
   // Group by date string
   const grouped: Record<string, Bill[]> = {};
   (recs ?? []).forEach((r) => {
@@ -306,6 +338,45 @@ export default function BillingPage() {
         </div>
         <div style={{ width: 48 }} />
       </div>
+
+      {snifferEnabled === false && (
+        <div
+          style={{
+            margin: '8px 16px 0',
+            padding: '10px 14px',
+            background: 'rgba(232,196,104,0.15)',
+            border: '1px solid rgba(232,196,104,0.3)',
+            borderRadius: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 12,
+            color: '#6b4f1d',
+            lineHeight: 1.5,
+          }}
+        >
+          <span style={{ flex: 1 }}>
+            打开「通知使用权 → Wisteria」之后，
+            支付宝 / 微信付款会自动入账。
+          </span>
+          <button
+            type="button"
+            onClick={() => void BillSniffer.openSettings().catch(() => {})}
+            style={{
+              flexShrink: 0,
+              background: '#b08344',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              padding: '6px 12px',
+              fontSize: 12,
+              cursor: 'pointer',
+            }}
+          >
+            去开启
+          </button>
+        </div>
+      )}
 
       {/* Month label */}
       <div

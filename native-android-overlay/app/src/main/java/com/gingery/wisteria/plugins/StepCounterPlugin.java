@@ -1,5 +1,6 @@
 package com.gingery.wisteria.plugins;
 
+import android.Manifest;
 import android.content.Context;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -7,10 +8,13 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 
 /**
  * Bridges Android's Sensor.TYPE_STEP_COUNTER to the JS side.
@@ -18,14 +22,21 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * The system sensor reports total steps since the device booted. Survives
  * app restarts (until reboot). We expose:
  *   - getSteps() — immediate snapshot of currentSteps
- *   - start()    — register the listener
+ *   - start()    — register the listener (requests ACTIVITY_RECOGNITION
+ *                  permission first if not granted; required on API 29+
+ *                  or the sensor silently returns 0 forever)
  *   - stop()     — unregister
  *   - emits "stepUpdate" event on every sensor delta.
- *
- * Requires the ACTIVITY_RECOGNITION runtime permission. The system
- * prompts on first sensor access.
  */
-@CapacitorPlugin(name = "StepCounter")
+@CapacitorPlugin(
+    name = "StepCounter",
+    permissions = {
+        @Permission(
+            alias = "activity",
+            strings = { Manifest.permission.ACTIVITY_RECOGNITION }
+        )
+    }
+)
 public class StepCounterPlugin extends Plugin implements SensorEventListener {
     private SensorManager sensorManager;
     private Sensor stepSensor;
@@ -48,10 +59,28 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
 
     @PluginMethod
     public void start(PluginCall call) {
+        if (getPermissionState("activity") != PermissionState.GRANTED) {
+            requestPermissionForAlias("activity", call, "permissionCallback");
+            return;
+        }
+        registerSensor();
+        call.resolve();
+    }
+
+    @PermissionCallback
+    private void permissionCallback(PluginCall call) {
+        if (getPermissionState("activity") == PermissionState.GRANTED) {
+            registerSensor();
+            call.resolve();
+        } else {
+            call.reject("ACTIVITY_RECOGNITION 没批准，步数读不到");
+        }
+    }
+
+    private void registerSensor() {
         if (sensorManager != null && stepSensor != null) {
             sensorManager.registerListener(this, stepSensor, SensorManager.SENSOR_DELAY_UI);
         }
-        call.resolve();
     }
 
     @PluginMethod
