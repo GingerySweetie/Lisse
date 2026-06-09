@@ -13,6 +13,7 @@ import {
 import { availableTools } from '../lib/tools';
 import { runToolLoop } from '../lib/tools/loop';
 import TentaclePanel from '../components/TentaclePanel';
+import BedroomDecor, { decorVariantForTheme } from '../components/BedroomDecor';
 import type { Conversation, Message, ToolCallRecord } from '../types';
 
 /**
@@ -102,6 +103,7 @@ export default function BedroomChatPage() {
   }, [pid]);
 
   const t: BedroomTheme = getBedroomTheme(conv?.bedroomTheme, pid);
+  const decorVariant = decorVariantForTheme(conv?.bedroomTheme);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tentacleOpen, setTentacleOpen] = useState(false);
 
@@ -293,18 +295,34 @@ export default function BedroomChatPage() {
     setLoading(false);
   }
 
+  // First-time ceremony: if the user just entered this persona's bedroom
+  // and hasn't picked a lighting yet (no theme stored AND no messages),
+  // show the Step 2 color picker before the chat. After picking, the
+  // theme persists on the conversation and the picker never re-appears.
+  const needsColorPick =
+    conv !== null &&
+    conv.bedroomTheme === undefined &&
+    (storedMessages?.length ?? 0) === 0;
+
+  if (needsColorPick) {
+    return <BedroomColorPicker personaName={personaName} onPick={(id) => void setTheme(id)} />;
+  }
+
   return (
     <div
       style={{
         width: '100%',
         height: '100%',
-        background: t.bg,
+        background: decorVariant ? 'transparent' : t.bg,
         color: t.text,
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
+        overflow: 'hidden',
       }}
     >
+      {decorVariant && <BedroomDecor variant={decorVariant} />}
+
       {/* Subtle film grain */}
       <div
         style={{
@@ -507,6 +525,7 @@ export default function BedroomChatPage() {
           overflowY: 'auto',
           padding: '24px 20px 80px',
           position: 'relative',
+          zIndex: 5,
         }}
       >
         <div style={{ maxWidth: 520, margin: '0 auto' }}>
@@ -680,8 +699,12 @@ export default function BedroomChatPage() {
         style={{
           flexShrink: 0,
           padding: '8px 14px 18px',
-          background: `linear-gradient(to top,${t.bg}f0 65%,transparent)`,
+          background: decorVariant
+            ? 'transparent'
+            : `linear-gradient(to top,${t.bg}f0 65%,transparent)`,
           backdropFilter: 'blur(12px)',
+          position: 'relative',
+          zIndex: 5,
         }}
       >
         <div
@@ -753,6 +776,134 @@ export default function BedroomChatPage() {
       {tentacleOpen && (
         <TentaclePanel theme={t} onClose={() => setTentacleOpen(false)} />
       )}
+    </div>
+  );
+}
+
+/** Step 2 of the bedroom ceremony — pick a lighting. Shown the first time
+ *  the user enters a persona's bedroom (no theme, no messages yet). Once
+ *  she picks, the theme persists on the conversation and this never
+ *  re-appears for that room. */
+function BedroomColorPicker({
+  personaName,
+  onPick,
+}: {
+  personaName: string;
+  onPick: (themeId: string) => void;
+}) {
+  const isRhema = personaName === 'Rhema';
+  return (
+    <div
+      style={{
+        width: '100%',
+        minHeight: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        background:
+          'linear-gradient(180deg, #f3eef8 0%, #ece4f3 30%, #f0e9f5 60%, #f5f1fa 100%)',
+        fontFamily: "'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif",
+      }}
+    >
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '28px',
+          animation: 'wisteriaFadeUp 0.5s ease both',
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 300,
+            fontSize: '13px',
+            color: 'rgba(130,110,165,0.4)',
+            letterSpacing: '0.03em',
+          }}
+        >
+          选一种光。
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            marginBottom: '4px',
+          }}
+        >
+          <div
+            style={{
+              width: '7px',
+              height: '7px',
+              borderRadius: '50%',
+              background: isRhema ? 'rgba(180,80,80,0.6)' : 'rgba(160,140,200,0.6)',
+            }}
+          />
+          <span
+            style={{
+              fontFamily: isRhema
+                ? "'Cormorant Garamond', serif"
+                : "'Noto Sans SC', sans-serif",
+              fontSize: '13px',
+              fontWeight: 300,
+              color: 'rgba(100,80,135,0.45)',
+              letterSpacing: '0.06em',
+            }}
+          >
+            {personaName}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '32px' }}>
+          {[
+            { id: 'pomegranate', label: '石榴', swatch: '#4a1e28' },
+            { id: 'midnight', label: '千夜', swatch: '#1e1535' },
+          ].map((c) => (
+            <button
+              key={c.id}
+              onClick={() => onPick(c.id)}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '10px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px',
+              }}
+            >
+              <div
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '50%',
+                  background: c.swatch,
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.12)',
+                }}
+              />
+              <span
+                style={{
+                  fontWeight: 300,
+                  fontSize: '11px',
+                  color: 'rgba(130,110,165,0.4)',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {c.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <style>{`
+        @keyframes wisteriaFadeUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

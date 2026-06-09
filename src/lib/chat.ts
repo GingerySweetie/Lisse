@@ -439,12 +439,6 @@ async function streamAssistant(args: {
   if (persona && groupOthers && groupOthers.length > 0) {
     systemParts.push(groupAwarenessSnippet(persona, groupOthers));
   }
-  // Style prompt comes after persona+memory: it shapes register/format
-  // without redefining identity. Empty style prompts (e.g. 默认) are
-  // skipped so they don't pollute the system message.
-  if (style && style.prompt.trim()) {
-    systemParts.push(`# 写作风格\n${style.prompt.trim()}`);
-  }
   if (systemParts.length > 0) {
     turns.push({ role: 'system', content: systemParts.join('\n\n---\n\n') });
   }
@@ -476,6 +470,22 @@ async function streamAssistant(args: {
         content: m.content,
         attachments: m.attachments,
       });
+    }
+  }
+
+  // Style: appended to the most recent user turn (highest recency = highest
+  // attention). Persisted message content stays clean — only the outgoing
+  // turn carries the addendum. Empty style prompts (e.g. 默认) are skipped.
+  if (style && style.prompt.trim()) {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].role === 'user') {
+        const base = turns[i].content ?? '';
+        turns[i] = {
+          ...turns[i],
+          content: `${base}\n\n# 写作风格\n${style.prompt.trim()}`,
+        };
+        break;
+      }
     }
   }
 

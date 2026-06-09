@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Wisteria mark for adaptive icon foreground.
+  Canvas 108x108dp; safe zone is the centered 72x72 area.
+  Single hanging cluster from top-center, lavender → deep purple gradient.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Stem -->
+    <path
+        android:pathData="M54,18 C53,28 52,38 53,50 C54,58 53,66 54,76"
+        android:strokeColor="#7d6b7d"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Side branch left -->
+    <path
+        android:pathData="M53,36 C47,38 42,36 38,34"
+        android:strokeColor="#7d6b7d"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Side branch right -->
+    <path
+        android:pathData="M54,48 C60,50 66,48 70,46"
+        android:strokeColor="#7d6b7d"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Leaves (oval-ish via path) -->
+    <path
+        android:pathData="M34,32 m-6,-3 a6,3 0 1,0 12,0 a6,3 0 1,0 -12,0"
+        android:fillColor="#8faa7e"
+        android:fillAlpha="0.78" />
+    <path
+        android:pathData="M72,44 m-6,-3 a6,3 0 1,0 12,0 a6,3 0 1,0 -12,0"
+        android:fillColor="#8faa7e"
+        android:fillAlpha="0.78" />
+
+    <!-- Cluster petals: top → bottom, lighter → deeper -->
+    <path android:pathData="M44,42 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" android:fillColor="#e2cdec" android:fillAlpha="0.75" />
+    <path android:pathData="M52,42 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" android:fillColor="#dbc1e8" android:fillAlpha="0.78" />
+    <path android:pathData="M60,46 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" android:fillColor="#d4b5e0" android:fillAlpha="0.8" />
+    <path android:pathData="M46,50 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" android:fillColor="#cba8db" android:fillAlpha="0.82" />
+    <path android:pathData="M55,52 m-4.5,0 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0" android:fillColor="#c49ed8" android:fillAlpha="0.85" />
+    <path android:pathData="M44,58 m-4.0,0 a4.0,4.0 0 1,0 8,0 a4.0,4.0 0 1,0 -8,0" android:fillColor="#b890d0" android:fillAlpha="0.86" />
+    <path android:pathData="M52,60 m-4.0,0 a4.0,4.0 0 1,0 8,0 a4.0,4.0 0 1,0 -8,0" android:fillColor="#b08ace" android:fillAlpha="0.88" />
+    <path android:pathData="M60,62 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" android:fillColor="#a97cc6" android:fillAlpha="0.9" />
+    <path android:pathData="M48,68 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" android:fillColor="#9d6ebd" android:fillAlpha="0.9" />
+    <path android:pathData="M56,70 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" android:fillColor="#9060b5" android:fillAlpha="0.9" />
+    <path android:pathData="M50,76 m-3.0,0 a3.0,3.0 0 1,0 6,0 a3.0,3.0 0 1,0 -6,0" android:fillColor="#8555ad" android:fillAlpha="0.9" />
+    <path android:pathData="M55,82 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0" android:fillColor="#7a4aa5" android:fillAlpha="0.9" />
+    <path android:pathData="M52,88 m-2.0,0 a2.0,2.0 0 1,0 4,0 a2.0,2.0 0 1,0 -4,0" android:fillColor="#6f3f9d" android:fillAlpha="0.85" />
+
+</vector>

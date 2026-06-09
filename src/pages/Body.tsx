@@ -5,6 +5,8 @@ import { Capacitor } from '@capacitor/core';
 import { Footprints, Bed, Droplet, Plus, Scale, Trash2, X } from 'lucide-react';
 import { db } from '../db';
 import StepCounter from '../lib/native/step-counter';
+import Sleep, { type SleepSession } from '../lib/native/sleep';
+import { schedulePeriodReminders } from '../lib/native/notifications';
 import {
   addPeriodStart,
   daysBetween,
@@ -25,6 +27,35 @@ import type { PeriodEntry } from '../types';
  * Real persistence + Google Fit / 手环 / 手动日志 inputs land later
  * when there's an actual source feeding numbers in.
  */
+
+/** Build a sleep.* shape from a Health Connect session. We only know
+ *  total start/end; without sleep stages we approximate "深睡" as 45%
+ *  of total and render a single non-deep segment. Good enough for the
+ *  card; sleep stages can come later. */
+function mergeSleep(s: SleepSession): typeof DEMO.sleep {
+  const start = new Date(s.startTime);
+  const end = new Date(s.endTime);
+  const fmt = (d: Date) =>
+    `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const totalMin = Math.max(0, s.durationMinutes);
+  const totalH = Math.floor(totalMin / 60);
+  const totalM = totalMin % 60;
+  const deepMin = Math.round(totalMin * 0.45);
+  const deepH = Math.floor(deepMin / 60);
+  const deepM = deepMin % 60;
+  const windowH = Math.max(8.5, totalMin / 60 + 0.5);
+  return {
+    startHHMM: fmt(start),
+    endHHMM: fmt(end),
+    totalH,
+    totalM,
+    deepH,
+    deepM,
+    deltaMinVsYesterday: 0,
+    segs: [{ o: 0, d: totalMin / 60, deep: false }],
+    windowH,
+  };
+}
 
 const DEMO = {
   steps: { today: 6420, goal: 8000, week: [5200, 7100, 6800, 9200, 4300, 8800, 6420] },
@@ -58,6 +89,8 @@ export default function BodyPage() {
   const [filled, setFilled] = useState(true);
   const [weightDraft, setWeightDraft] = useState('');
   const [liveSteps, setLiveSteps] = useState<number | null>(null);
+  const [liveSleep, setLiveSleep] = useState<SleepSession | null>(null);
+  const [sleepNeedsAuth, setSleepNeedsAuth] = useState(false);
   const [periodSheet, setPeriodSheet] = useState(false);
 
   // Real period entries — when the user has logged at least one cycle,
@@ -97,11 +130,54 @@ export default function BodyPage() {
     };
   }, []);
 
-  // Merge live step count into the demo skeleton when available.
+  // Read last night's sleep from Health Connect on mount. On non-Android
+  // or when permission is denied this stays null and the demo data shows.
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const avail = await Sleep.isAvailable();
+        if (!avail.available) return;
+        const perm = await Sleep.hasPermission();
+        if (!perm.granted) {
+          if (!cancelled) setSleepNeedsAuth(true);
+          return;
+        }
+        const res = await Sleep.getLastSleep();
+        if (!cancelled && res.session) setLiveSleep(res.session);
+      } catch {
+        // Silently fall back to demo.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleConnectSleep() {
+    try {
+      await Sleep.requestPermission();
+      // The user might come back having granted or not; re-check + read.
+      const perm = await Sleep.hasPermission();
+      if (perm.granted) {
+        setSleepNeedsAuth(false);
+        const res = await Sleep.getLastSleep();
+        if (res.session) setLiveSleep(res.session);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Merge live data into the demo skeleton.
   const data = filled
-    ? liveSteps !== null
-      ? { ...DEMO, steps: { ...DEMO.steps, today: liveSteps } }
-      : DEMO
+    ? {
+        ...DEMO,
+        steps:
+          liveSteps !== null ? { ...DEMO.steps, today: liveSteps } : DEMO.steps,
+        sleep: liveSleep ? mergeSleep(liveSleep) : DEMO.sleep,
+      }
     : null;
 
   return (
@@ -214,7 +290,11 @@ export default function BodyPage() {
         {data ? (
           <div className="wis-health-cards">
             <StepsCard data={data.steps} />
-            <SleepCard data={data.sleep} />
+            <SleepCard
+              data={data.sleep}
+              needsAuth={sleepNeedsAuth}
+              onConnect={handleConnectSleep}
+            />
             {hasRealPeriod ? (
               <RealPeriodCard
                 entries={periodEntries ?? []}
@@ -284,7 +364,15 @@ function StepsCard({ data }: { data: typeof DEMO.steps }) {
   );
 }
 
-function SleepCard({ data }: { data: typeof DEMO.sleep }) {
+function SleepCard({
+  data,
+  needsAuth,
+  onConnect,
+}: {
+  data: typeof DEMO.sleep;
+  needsAuth?: boolean;
+  onConnect?: () => void;
+}) {
   return (
     <div className="wis-hcard">
       <div className="wis-hcard-head">
@@ -292,9 +380,26 @@ function SleepCard({ data }: { data: typeof DEMO.sleep }) {
           <Bed size={16} strokeWidth={1.7} />
         </span>
         <span className="wis-hcard-label">睡眠</span>
-        <span className="wis-hcard-aside">
-          {data.startHHMM} — {data.endHHMM}
-        </span>
+        {needsAuth ? (
+          <button
+            type="button"
+            onClick={onConnect}
+            className="wis-hcard-aside"
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--lav-600)',
+              textDecoration: 'underline',
+            }}
+          >
+            接 Health Connect
+          </button>
+        ) : (
+          <span className="wis-hcard-aside">
+            {data.startHHMM} — {data.endHHMM}
+          </span>
+        )}
       </div>
       <div className="wis-sleep-bars">
         <div className="wis-sleep-track">
@@ -673,6 +778,14 @@ function PeriodSheet({
     setBusy(true);
     try {
       await addPeriodStart(draftDate);
+      // Re-schedule notifications: cancels previous reminders and queues
+      // new ones based on the updated prediction. No-op on web.
+      const all = await db.periodEntries.toArray();
+      const s = summarizeCycle(all);
+      await schedulePeriodReminders({
+        predictedNext: s.predictedNext,
+        avgCycle: s.avgCycle,
+      });
     } finally {
       setBusy(false);
     }

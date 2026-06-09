@@ -1,78 +1,65 @@
 import { useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db';
-import { getBedroomTheme } from '../lib/bedroom-themes';
 
 /**
- * Bedroom picker — choose 理理酱 or Rhema before entering their thread.
- * Each persona's bedroom is a singleton conversation with room='bedroom'.
+ * Bedroom picker — Step 1 of the 3-step bedroom ceremony:
+ *   Step 1 (here)    : pick person  → navigate to /bedroom/:personaId
+ *   Step 2 (in chat) : pick color   → first-time-entry overlay in BedroomChat
+ *   Step 3 (in chat) : chat         → the actual thread with decoration layer
  *
- * The card itself is neutral 紫雾 by default; if the user has set a
- * bedroomTheme on a given persona's room, that card adopts the theme so
- * she can tell at a glance which room is currently which color.
+ * No card chrome here on purpose — the picker is just text, dots, and a hair-thin
+ * divider, to keep the "灯没开" hush of the entryway.
  */
 
 interface RoomOption {
   personaId: string;
   name: string;
-  /** Short tagline shown under the name. */
-  tag: string;
+  desc: string;
+  sub: string;
+  dot: string;
+  /** Cormorant italic for Rhema's Latin name; sans for 理理酱. */
+  serif: boolean;
 }
 
 const ROOMS: RoomOption[] = [
   {
     personaId: 'persona_ririchan',
     name: '理理酱',
-    tag: '触觉先行 · 身体里说话',
+    desc: '触觉先行',
+    sub: '身体里说话',
+    dot: 'rgba(160,140,200,0.6)',
+    serif: false,
   },
   {
     personaId: 'persona_rhema',
     name: 'Rhema',
-    tag: '语言先行 · 句子裹住你',
+    desc: '语言先行',
+    sub: '句子裹住你',
+    dot: 'rgba(180,80,80,0.6)',
+    serif: true,
   },
 ];
 
 export default function BedroomPickerPage() {
   const navigate = useNavigate();
 
-  const bedroomConvs = useLiveQuery(
-    () => db.conversations.where('room').equals('bedroom').toArray(),
-    [],
-    [],
-  );
-  const msgCounts = useLiveQuery(async () => {
-    if (!bedroomConvs || bedroomConvs.length === 0) return {};
-    const counts: Record<string, number> = {};
-    for (const c of bedroomConvs) {
-      if (!c.personaId) continue;
-      counts[c.personaId] = await db.messages
-        .where({ conversationId: c.id })
-        .count();
-    }
-    return counts;
-  }, [bedroomConvs]);
-
-  const themeByPersona: Record<string, string | undefined> = {};
-  for (const c of bedroomConvs ?? []) {
-    if (c.personaId) themeByPersona[c.personaId] = c.bedroomTheme;
-  }
-
   return (
     <div
       style={{
         width: '100%',
         minHeight: '100%',
-        position: 'relative',
-        fontFamily: "-apple-system,'PingFang SC',sans-serif",
-        padding: '14px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        background:
+          'linear-gradient(180deg, #f3eef8 0%, #ece4f3 30%, #f0e9f5 60%, #f5f1fa 100%)',
+        fontFamily: "'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif",
       }}
     >
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 28,
+          padding: '14px 18px 10px',
+          borderBottom: '1px solid rgba(160,140,190,0.06)',
         }}
       >
         <button
@@ -81,142 +68,121 @@ export default function BedroomPickerPage() {
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            color: '#8a7090',
-            padding: 4,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 12,
-            fontFamily: "'Crimson Pro','Noto Serif SC',serif",
-            fontStyle: 'italic',
+            color: 'rgba(120,100,155,0.4)',
+            fontSize: '15px',
+            padding: '4px 8px 4px 0',
           }}
+          aria-label="返回玄関"
         >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M10 3L5 8L10 13"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          玄関
+          ←
         </button>
         <div
           style={{
-            fontSize: 15,
-            color: '#4a3550',
-            fontWeight: 500,
-            letterSpacing: 3,
-            fontFamily: "'Crimson Pro','Noto Serif SC',serif",
-            fontStyle: 'italic',
-          }}
-        >
-          卧 室
-        </div>
-        <div style={{ width: 48 }} />
-      </div>
-
-      <div style={{ paddingTop: 8, paddingBottom: 8 }}>
-        <p
-          style={{
-            fontSize: 12,
-            color: '#a090a8',
-            fontWeight: 300,
+            flex: 1,
+            fontWeight: 400,
+            fontSize: '14px',
+            letterSpacing: '0.12em',
+            color: 'rgba(90,70,120,0.5)',
             textAlign: 'center',
-            marginBottom: 24,
-            letterSpacing: 1,
-            fontStyle: 'italic',
           }}
         >
-          灯没开。要去谁那边？
-        </p>
+          卧　室
+        </div>
+        <div style={{ width: 24 }} />
       </div>
 
       <div
         style={{
+          flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          gap: 16,
-          paddingBottom: 40,
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
-        {ROOMS.map((r) => {
-          const count = msgCounts?.[r.personaId] ?? 0;
-          const theme = getBedroomTheme(themeByPersona[r.personaId], r.personaId);
-          return (
+        <div
+          style={{
+            fontWeight: 300,
+            fontSize: '13px',
+            color: 'rgba(130,110,165,0.4)',
+            marginBottom: '28px',
+            letterSpacing: '0.03em',
+          }}
+        >
+          灯没开。要去谁那边？
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: '1px',
+            width: '100%',
+            padding: '0 20px',
+          }}
+        >
+          {ROOMS.map((p, i) => (
             <button
-              key={r.personaId}
-              onClick={() => navigate(`/bedroom/${r.personaId}`)}
+              key={p.personaId}
+              onClick={() => navigate(`/bedroom/${p.personaId}`)}
               style={{
-                background: `linear-gradient(145deg, ${theme.bg} 0%, ${theme.sl} 60%, ${theme.bg} 100%)`,
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 24,
-                padding: '28px 24px',
-                cursor: 'pointer',
-                textAlign: 'left',
-                minHeight: 140,
+                flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'space-between',
-                position: 'relative',
-                overflow: 'hidden',
-                boxShadow: '0 4px 20px rgba(40,20,50,0.18)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '14px',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '24px 8px',
+                borderRight: i === 0 ? '1px solid rgba(160,140,190,0.08)' : 'none',
               }}
             >
               <div
                 style={{
-                  position: 'absolute',
-                  top: 18,
-                  right: 22,
-                  width: 10,
-                  height: 10,
+                  width: '10px',
+                  height: '10px',
                   borderRadius: '50%',
-                  background: theme.ac,
-                  opacity: 0.7,
-                  boxShadow: `0 0 12px ${theme.ac}`,
+                  background: p.dot,
                 }}
               />
-              <div>
-                <div
-                  style={{
-                    fontSize: 26,
-                    letterSpacing: 4,
-                    color: theme.text,
-                    fontWeight: 400,
-                  }}
-                >
-                  {r.name}
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: theme.text,
-                    opacity: 0.55,
-                    marginTop: 6,
-                    fontWeight: 300,
-                  }}
-                >
-                  {r.tag}
-                </div>
+              <div
+                style={{
+                  fontFamily: p.serif
+                    ? "'Cormorant Garamond', serif"
+                    : "'Noto Sans SC', sans-serif",
+                  fontWeight: p.serif ? 400 : 500,
+                  fontSize: p.serif ? '22px' : '20px',
+                  letterSpacing: p.serif ? '0.12em' : '0.08em',
+                  color: 'rgba(80,60,110,0.6)',
+                }}
+              >
+                {p.name}
               </div>
               <div
                 style={{
-                  marginTop: 22,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  fontSize: 11,
-                  color: theme.tm,
                   fontWeight: 300,
+                  fontSize: '11px',
+                  color: 'rgba(140,120,170,0.4)',
+                  textAlign: 'center',
+                  lineHeight: 1.6,
                 }}
               >
-                <span>{count > 0 ? `${count} 条留言` : '还是空的'}</span>
-                <span style={{ letterSpacing: 2 }}>进 →</span>
+                {p.desc}
+                <br />
+                {p.sub}
               </div>
+              <div
+                style={{
+                  width: '28px',
+                  height: '1px',
+                  marginTop: '4px',
+                  background:
+                    'linear-gradient(90deg, transparent, rgba(160,140,190,0.15), transparent)',
+                }}
+              />
             </button>
-          );
-        })}
+          ))}
+        </div>
       </div>
     </div>
   );
