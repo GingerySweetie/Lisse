@@ -14,6 +14,15 @@ export interface CapturedBill {
   timestamp: number;
 }
 
+export interface DebugLogEntry {
+  /** Notification timestamp (ms). */
+  ts: number;
+  /** "alipay" | "wechat". */
+  source: string;
+  /** Combined notification body (title + bigText + text + subText + info). */
+  body: string;
+}
+
 export interface BillSnifferPlugin {
   /** True if the user has granted notification-listener access to us. */
   isEnabled(): Promise<{ enabled: boolean }>;
@@ -21,6 +30,9 @@ export interface BillSnifferPlugin {
   openSettings(): Promise<void>;
   /** Drain bills captured while no JS listener was attached. */
   getPendingBills(): Promise<{ bills: CapturedBill[] }>;
+  /** Debug: ring buffer of the last ~20 raw notifications observed from
+   *  the target apps, regardless of whether they parsed into a bill. */
+  getDebugLog(): Promise<{ entries: DebugLogEntry[] }>;
   addListener(
     event: 'billCaptured',
     cb: (bill: CapturedBill) => void,

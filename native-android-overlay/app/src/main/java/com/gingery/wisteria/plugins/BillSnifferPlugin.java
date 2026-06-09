@@ -97,4 +97,22 @@ public class BillSnifferPlugin extends Plugin {
         r.put("bills", arr);
         call.resolve(r);
     }
+
+    /** Debug: returns the ring buffer of recent target-app notifications
+     *  the service observed (raw body text + ts + source). Lets the user
+     *  see whether their payment notification actually fired the listener
+     *  and what the body looked like — useful when filters miss. */
+    @PluginMethod
+    public void getDebugLog(PluginCall call) {
+        try {
+            android.content.SharedPreferences sp =
+                getContext().getSharedPreferences("bill_sniffer", android.content.Context.MODE_PRIVATE);
+            String raw = sp.getString("debug_log", "[]");
+            JSObject r = new JSObject();
+            r.put("entries", new com.getcapacitor.JSArray(raw));
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject("读取日志失败：" + e.getMessage());
+        }
+    }
 }

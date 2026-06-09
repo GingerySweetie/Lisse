@@ -206,6 +206,7 @@ export default function BillingPage() {
   // Bill-sniffer banner: on Android, prompt to enable the notification
   // listener so 支付宝 / 微信支付 通知 auto-feed the bills table. Hidden on web.
   const [snifferEnabled, setSnifferEnabled] = useState<boolean | null>(null);
+  const [debugOpen, setDebugOpen] = useState(false);
   useEffect(() => {
     if (Capacitor.getPlatform() !== 'android') return;
     let cancelled = false;
@@ -377,6 +378,33 @@ export default function BillingPage() {
           </button>
         </div>
       )}
+
+      {snifferEnabled === true && (
+        <div
+          style={{
+            margin: '8px 16px 0',
+            textAlign: 'right',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setDebugOpen(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'rgba(120,100,155,0.5)',
+              fontSize: 11,
+              cursor: 'pointer',
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            通知日志（诊断用）
+          </button>
+        </div>
+      )}
+
+      {debugOpen && <DebugLogSheet onClose={() => setDebugOpen(false)} />}
 
       {/* Month label */}
       <div
@@ -800,6 +828,98 @@ function SummaryStat({
       <span style={{ fontSize: 15, color, fontWeight: 500 }}>
         {sign}¥{display}
       </span>
+    </div>
+  );
+}
+
+
+function DebugLogSheet({ onClose }: { onClose: () => void }) {
+  const [entries, setEntries] = useState<
+    Array<{ ts: number; source: string; body: string }>
+  >([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    void BillSniffer.getDebugLog()
+      .then((r) => setEntries(r.entries))
+      .catch(() => setEntries([]))
+      .finally(() => setLoading(false));
+  }, []);
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 60,
+        background: "rgba(40,30,55,0.4)",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 600,
+          maxHeight: "80vh",
+          background: "#fff",
+          borderRadius: "16px 16px 0 0",
+          padding: "16px 18px 24px",
+          overflowY: "auto",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 8,
+          }}
+        >
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#4a3550", margin: 0 }}>
+            通知日志（最近 20 条）
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: "none", border: "none", color: "#8a7090", fontSize: 13, cursor: "pointer" }}
+          >
+            关
+          </button>
+        </div>
+        <p style={{ fontSize: 11, color: "#8a7090", margin: "0 0 12px", lineHeight: 1.6 }}>
+          这里列出 服务监听到的所有 支付宝 / 微信 通知。若你刚付完款这里没新条目，
+          说明系统根本没把通知发给 Wisteria（可能是 MIUI 通知锁屏 / 没勾通知使用权 / 支付宝关了系统通知）。
+        </p>
+        {loading ? (
+          <div style={{ fontSize: 12, color: "#a090a8" }}>读取中……</div>
+        ) : entries.length === 0 ? (
+          <div style={{ fontSize: 12, color: "#a090a8" }}>暂无记录。</div>
+        ) : (
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {[...entries].reverse().map((e, i) => (
+              <li
+                key={i}
+                style={{
+                  marginBottom: 10,
+                  padding: 10,
+                  background: "rgba(160,140,200,0.06)",
+                  borderRadius: 8,
+                  fontSize: 11,
+                  lineHeight: 1.6,
+                  color: "#4a3550",
+                }}
+              >
+                <div style={{ fontSize: 10, color: "#8a7090", marginBottom: 4 }}>
+                  {new Date(e.ts).toLocaleString()} · {e.source}
+                </div>
+                <div style={{ wordBreak: "break-all", fontFamily: "monospace" }}>{e.body}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
