@@ -35,11 +35,14 @@ interface JsonRpcResponse<T = unknown> {
 }
 
 export class McpSession {
+  public server: McpServer;
   private sessionId: string | null = null;
   private nextId = 1;
   private initialized = false;
 
-  constructor(public server: McpServer) {}
+  constructor(server: McpServer) {
+    this.server = server;
+  }
 
   private headers(): Record<string, string> {
     const h: Record<string, string> = {
