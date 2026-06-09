@@ -384,6 +384,79 @@ export default function BodyPage() {
         ) : (
           <EmptyHealth />
         )}
+
+        <button
+          type="button"
+          onClick={() => navigate('/screen-time')}
+          style={{
+            marginTop: 20,
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '14px 18px',
+            background:
+              'linear-gradient(135deg, rgba(212,229,238,0.85), rgba(191,213,228,0.85))',
+            border: '1px solid rgba(31,58,74,0.08)',
+            borderRadius: 16,
+            cursor: 'pointer',
+            fontFamily: "'Noto Sans SC', sans-serif",
+            color: 'rgba(31,58,74,0.85)',
+            boxShadow: '0 1px 6px rgba(31,58,74,0.06)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: 'rgba(255,255,255,0.55)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'rgba(31,58,74,0.7)',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <rect
+                  x="5"
+                  y="3"
+                  width="14"
+                  height="18"
+                  rx="2"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                />
+                <circle cx="12" cy="18" r="0.8" fill="currentColor" />
+              </svg>
+            </span>
+            <div style={{ textAlign: 'left' }}>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 500,
+                  letterSpacing: 1,
+                }}
+              >
+                屏幕使用时间
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'rgba(31,58,74,0.55)',
+                  marginTop: 2,
+                  fontStyle: 'italic',
+                  fontFamily: "'Cormorant Garamond', serif",
+                }}
+              >
+                今天用了多久 / 谁占的时间最多
+              </div>
+            </div>
+          </div>
+          <span style={{ color: 'rgba(31,58,74,0.4)', fontSize: 14 }}>→</span>
+        </button>
       </div>
 
       {periodSheet && (
