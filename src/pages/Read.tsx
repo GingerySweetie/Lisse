@@ -289,7 +289,7 @@ export default function ReadPage() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <header className="flex items-center gap-2 border-b border-lavender-100/70 bg-white/40 px-3 py-2 pl-14 backdrop-blur-md md:px-6 md:pl-6">
+      <header className="flex items-center gap-2 border-b border-lavender-100/70 bg-white/40 px-3 py-2 backdrop-blur-md md:px-6">
         <Link
           to="/books"
           className="hidden items-center gap-1 rounded-lg px-2 py-1 text-sm text-ink-500 transition hover:bg-lavender-50 md:inline-flex"
