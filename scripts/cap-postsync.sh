@@ -59,8 +59,8 @@ if ! grep -q 'android.permission.health.READ_SLEEP' "$MANIFEST"; then
   rm -f "$MANIFEST.bak"
 fi
 
-# Inject Health Connect <queries> + share intent-filter via Python — sed
-# would be brittle for multi-line XML insertions.
+# Inject Health Connect <queries> + share intent-filter +
+# BillSnifferService registration via Python.
 python3 - "$MANIFEST" << 'PY'
 import sys, re
 p = sys.argv[1]
@@ -100,6 +100,21 @@ if "android.intent.action.SEND" not in src:
         flags=re.DOTALL,
     )
 
+# BillSnifferService registration — must live inside <application>.
+sniffer_service = """        <service
+            android:name="com.gingery.wisteria.plugins.BillSnifferService"
+            android:label="Wisteria 账单识别"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+"""
+if "BillSnifferService" not in src:
+    # Insert before </application>.
+    src = re.sub(r'(\s*</application>)', '\n' + sniffer_service + r'\1', src, count=1)
+
 open(p, 'w').write(src)
 PY
 
@@ -124,6 +139,7 @@ if "kotlin-android" not in src:
 hc_block = """    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.24'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
     implementation 'androidx.health.connect:connect-client:1.1.0'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
 """
 if "androidx.health.connect:connect-client" not in src:
     # Inject inside the dependencies { } block — find the opening brace.
@@ -202,6 +218,8 @@ EXPECTED=(
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/StepCounterPlugin.java"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/ShareIntentPlugin.java"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/SleepPlugin.kt"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/BillSnifferPlugin.java"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/BillSnifferService.java"
 )
 for f in "${EXPECTED[@]}"; do
   if [ ! -f "$f" ]; then
@@ -211,7 +229,8 @@ for f in "${EXPECTED[@]}"; do
 done
 for marker in 'registerPlugin(StepCounterPlugin.class)' \
               'registerPlugin(SleepPlugin.class)' \
-              'registerPlugin(ShareIntentPlugin.class)'; do
+              'registerPlugin(ShareIntentPlugin.class)' \
+              'registerPlugin(BillSnifferPlugin.class)'; do
   if ! grep -q "$marker" \
       "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.java"; then
     echo "[postsync] ERROR: MainActivity.java doesn't $marker" >&2

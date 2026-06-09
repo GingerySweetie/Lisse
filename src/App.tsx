@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
 import ShareReceiver from './components/ShareReceiver';
+import BillReceiver from './components/BillReceiver';
 import HomePage from './pages/Home';
 
 // Route-level lazy splitting. HomePage stays eager because it's the
@@ -57,6 +58,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ShareReceiver />
+      <BillReceiver />
       <Suspense fallback={<RouteSpinner />}>
         <Routes>
           <Route element={<Layout />}>
