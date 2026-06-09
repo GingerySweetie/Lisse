@@ -17,6 +17,7 @@ const PersonasPage = lazy(() => import('./pages/Personas'));
 const ImportExportPage = lazy(() => import('./pages/ImportExport'));
 const MemoryPage = lazy(() => import('./pages/Memory'));
 const StylesPage = lazy(() => import('./pages/Styles'));
+const McpPage = lazy(() => import('./pages/Mcp'));
 const BooksPage = lazy(() => import('./pages/Books'));
 const ReadPage = lazy(() => import('./pages/Read'));
 const BedroomPickerPage = lazy(() => import('./pages/Bedroom'));
@@ -73,6 +74,7 @@ export default function App() {
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/personas" element={<PersonasPage />} />
             <Route path="/styles" element={<StylesPage />} />
+            <Route path="/mcp" element={<McpPage />} />
             <Route path="/books" element={<BooksPage />} />
             <Route
               path="/read/:bookId"

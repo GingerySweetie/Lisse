@@ -273,6 +273,39 @@ export interface PeriodEntry {
   createdAt: number;
 }
 
+/** A discovered MCP tool (cached on the server row for offline + faster
+ *  tool registration). Mirrors the spec's tools/list response item. */
+export interface McpToolDef {
+  name: string;
+  description?: string;
+  /** JSON Schema for the tool's arguments. */
+  inputSchema: Record<string, unknown>;
+}
+
+/**
+ * Model Context Protocol server registration. The chat layer uses the
+ * Streamable HTTP transport — a single URL endpoint that accepts JSON-RPC
+ * over POST and optionally streams responses via SSE.
+ */
+export interface McpServer {
+  id: string;
+  /** User-facing name; also used as the namespace prefix for tool names. */
+  name: string;
+  /** Endpoint URL of the MCP server. */
+  url: string;
+  /** Optional Authorization header value (e.g. "Bearer xxx"). */
+  authHeader?: string;
+  /** Disabled servers are skipped during tool discovery. */
+  enabled: boolean;
+  /** Cached tools/list result so chat can register without a network round
+   *  trip on every send. Refreshed on demand from the management page. */
+  cachedTools?: McpToolDef[];
+  /** When the cache was last filled. */
+  cachedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Single weight reading. Body page shows latest kg, sparkline of recent
  *  history, and ΔvsLastWeek. */
 export interface WeightEntry {
