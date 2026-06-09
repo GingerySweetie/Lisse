@@ -83,7 +83,10 @@ interface Structure {
 
 function buildStructure(): Structure {
   const srcX = 40 + Math.random() * 20;
-  const srcY = 6;
+  // Beam y-coordinate, in viewport %. Shifted down so the hanging
+  // structure starts BELOW the chat header (~52px tall ≈ 7% on a
+  // phone) rather than getting muted behind it.
+  const srcY = 11;
   const threads: Thread[] = [];
   for (let i = 0; i < 24; i++) {
     const r1 = Math.random();
@@ -541,12 +544,12 @@ export default function BedroomDecor({ variant }: { variant: BedroomDecorVariant
             pointerEvents: 'none',
           }}
         >
-          <line x1="3%" y1="5%" x2="97%" y2="5%" stroke={t.beam} strokeWidth="0.5" />
+          <line x1="3%" y1="10%" x2="97%" y2="10%" stroke={t.beam} strokeWidth="0.5" />
           {struct.threads.map((th, i) => (
             <line
               key={i}
               x1={`${th.x}%`}
-              y1="5%"
+              y1="10%"
               x2={`${th.x}%`}
               y2={`${th.endY}%`}
               stroke={t.threadC}
