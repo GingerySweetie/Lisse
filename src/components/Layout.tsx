@@ -1,17 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import ErrorBoundary from './ErrorBoundary';
-import { Menu } from 'lucide-react';
 import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
-  // Track visibility transitions so ambient-status inference has fresh
-  // timestamps to look at. Bootstraps once on mount, then listens for
-  // every show/hide of the tab/PWA.
   useEffect(() => {
     bootstrapBehavior();
     function onVis() {
@@ -24,6 +20,43 @@ export default function Layout() {
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('pagehide', onVis);
       window.removeEventListener('pageshow', onVis);
+    };
+  }, []);
+
+  // Edge-swipe to open sidebar — replaces the hamburger button.
+  // Touch must start within EDGE_PX of the left screen edge and travel
+  // right by SWIPE_PX. Vertical drift must stay smaller than the horizontal
+  // distance so vertical scroll gestures don't trip the sidebar.
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const EDGE_PX = 24;
+    const SWIPE_PX = 60;
+    function onStart(e: TouchEvent) {
+      const t = e.touches[0];
+      if (!t) return;
+      if (t.clientX <= EDGE_PX) {
+        swipeRef.current = { x: t.clientX, y: t.clientY };
+      } else {
+        swipeRef.current = null;
+      }
+    }
+    function onEnd(e: TouchEvent) {
+      const start = swipeRef.current;
+      swipeRef.current = null;
+      if (!start) return;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const dx = t.clientX - start.x;
+      const dy = Math.abs(t.clientY - start.y);
+      if (dx >= SWIPE_PX && dy < dx) {
+        setSidebarOpen(true);
+      }
+    }
+    window.addEventListener('touchstart', onStart, { passive: true });
+    window.addEventListener('touchend', onEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onStart);
+      window.removeEventListener('touchend', onEnd);
     };
   }, []);
 
@@ -52,16 +85,15 @@ export default function Layout() {
 
       {/* Main */}
       <main className="relative flex h-full w-full flex-1 flex-col">
+        {/* Invisible left-edge tap zone — keyboard / mouse users get a
+            way to open the sidebar even though the hamburger button is
+            gone. Hidden on md+ where the sidebar is permanent. */}
         <button
           type="button"
           onClick={() => setSidebarOpen(true)}
-          className="absolute left-3 top-3 z-20 rounded-full bg-white/70 p-2 text-ink-700 shadow-[0_1px_2px_rgba(124,105,160,0.1)] ring-1 ring-lavender-100 backdrop-blur transition hover:bg-white md:hidden"
           aria-label="打开侧边栏"
-        >
-          <Menu size={20} />
-        </button>
-        {/* key=pathname so a crash on /read/:id doesn't poison
-            the same boundary instance on /home etc. */}
+          className="absolute left-0 top-0 z-20 h-14 w-7 cursor-default opacity-0 md:hidden"
+        />
         <ErrorBoundary key={location.pathname} label={location.pathname}>
           <Outlet />
         </ErrorBoundary>

@@ -5,6 +5,8 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.SleepSessionRecord
+import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.getcapacitor.JSObject
@@ -18,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -39,6 +42,7 @@ class SleepPlugin : Plugin() {
 
     private val PERMISSIONS = setOf(
         HealthPermission.getReadPermission(SleepSessionRecord::class),
+        HealthPermission.getReadPermission(StepsRecord::class),
     )
 
     private fun client(): HealthConnectClient? {
@@ -93,6 +97,39 @@ class SleepPlugin : Plugin() {
             call.resolve()
         } catch (e: Exception) {
             call.reject("无法打开 Health Connect 权限页：${e.message}")
+        }
+    }
+
+    /** Aggregate today's steps via Health Connect's COUNT_TOTAL metric.
+     *  Mi Health / Samsung Health / Fitbit etc. all write into HC, so this
+     *  matches whatever number their UI shows, and refreshes on every
+     *  call — no background service required. */
+    @PluginMethod
+    fun getTodaySteps(call: PluginCall) {
+        val c = client()
+        if (c == null) {
+            call.reject("Health Connect 不可用")
+            return
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val zone = ZoneId.systemDefault()
+                val startOfDay = LocalDate.now(zone).atStartOfDay(zone).toInstant()
+                val now = Instant.now()
+                val req = AggregateRequest(
+                    metrics = setOf(StepsRecord.COUNT_TOTAL),
+                    timeRangeFilter = TimeRangeFilter.between(startOfDay, now),
+                )
+                val resp = c.aggregate(req)
+                val total = resp[StepsRecord.COUNT_TOTAL] ?: 0L
+                val ret = JSObject()
+                ret.put("steps", total)
+                withContext(Dispatchers.Main) { call.resolve(ret) }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    call.reject("读取步数失败：${e.message}")
+                }
+            }
         }
     }
 

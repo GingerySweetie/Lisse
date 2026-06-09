@@ -58,6 +58,13 @@ if ! grep -q 'android.permission.health.READ_SLEEP' "$MANIFEST"; then
     "$MANIFEST"
   rm -f "$MANIFEST.bak"
 fi
+if ! grep -q 'android.permission.health.READ_STEPS' "$MANIFEST"; then
+  echo "[postsync] adding Health Connect READ_STEPS permission"
+  sed -i.bak \
+    's|<application|<uses-permission android:name="android.permission.health.READ_STEPS" />\n    <application|' \
+    "$MANIFEST"
+  rm -f "$MANIFEST.bak"
+fi
 
 # Inject Health Connect <queries> + share intent-filter +
 # BillSnifferService registration via Python.

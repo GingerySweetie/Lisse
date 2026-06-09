@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Image as ImageIcon, Square, X } from 'lucide-react';
+import { Image as ImageIcon, Send, Square, X } from 'lucide-react';
 import type { Attachment } from '../types';
 import {
   attachmentDataUrl,
@@ -7,7 +7,6 @@ import {
   formatBytes,
 } from '../lib/attachments';
 import { recordTyping } from '../lib/behavior';
-import StateChips from './StateChips';
 
 interface Props {
   onSend: (text: string, attachments: Attachment[]) => void;
@@ -16,7 +15,27 @@ interface Props {
   disabled?: boolean;
   placeholder?: string;
   supportsImages?: boolean;
+  /** Kept for API compatibility; the new layout no longer renders behavior
+   *  state chips above the composer (see wis-tags-row mood tags instead). */
   showStateChips?: boolean;
+}
+
+/** Mood tags rendered above the composer. Tapping toggles the prefix
+ *  「{tag}」 at the start of the textarea — read by the model as a soft
+ *  hint about the register of the reply. */
+const MOOD_TAGS = ['想了想', '碎碎念', '做梦', '撒娇'] as const;
+type MoodTag = (typeof MOOD_TAGS)[number];
+
+function buildPrefix(active: MoodTag[]): string {
+  if (active.length === 0) return '';
+  return active.map((t) => `「${t}」`).join('') + ' ';
+}
+
+function stripPrefix(text: string, tags: MoodTag[]): string {
+  let body = text;
+  const prefix = buildPrefix(tags);
+  if (prefix && body.startsWith(prefix)) body = body.slice(prefix.length);
+  return body;
 }
 
 export default function ChatInput({
@@ -24,17 +43,16 @@ export default function ChatInput({
   onAbort,
   busy = false,
   disabled = false,
-  placeholder = '说点什么……',
+  placeholder = '写点什么……',
   supportsImages = true,
-  showStateChips = true,
 }: Props) {
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [activeTags, setActiveTags] = useState<MoodTag[]>([]);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Track typing cadence for behavioral inference.
   const typingStartRef = useRef<number | null>(null);
   const typedCharsRef = useRef<number>(0);
 
@@ -45,10 +63,24 @@ export default function ChatInput({
     ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
   }, [value]);
 
+  function toggleTag(t: MoodTag) {
+    setActiveTags((prev) => {
+      const next = prev.includes(t)
+        ? prev.filter((x) => x !== t)
+        : [...prev, t];
+      // Re-write the textarea to reflect the new prefix without losing the
+      // body the user has typed past it.
+      const body = stripPrefix(value, prev);
+      setValue(buildPrefix(next) + body);
+      return next;
+    });
+    // Restore focus so the keyboard stays up.
+    queueMicrotask(() => taRef.current?.focus());
+  }
+
   function submit() {
     const text = value.trim();
     if ((!text && attachments.length === 0) || busy || disabled) return;
-    // Flush typing telemetry into the local moving average.
     if (typingStartRef.current && typedCharsRef.current > 0) {
       recordTyping(typedCharsRef.current, Date.now() - typingStartRef.current);
     }
@@ -57,6 +89,7 @@ export default function ChatInput({
     onSend(text, attachments);
     setValue('');
     setAttachments([]);
+    setActiveTags([]);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -125,12 +158,10 @@ export default function ChatInput({
   const canSend = !disabled && !busy && (value.trim() || attachments.length > 0);
 
   return (
-    <div className="px-1 pb-3 pt-2 md:px-4">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
-        {showStateChips && <StateChips />}
-
+    <div className="wis-composer-wrap">
+      <div className="mx-auto w-full max-w-3xl">
         {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="mb-2 flex flex-wrap gap-2">
             {attachments.map((a) => (
               <AttachmentChip
                 key={a.id}
@@ -141,7 +172,20 @@ export default function ChatInput({
           </div>
         )}
 
-        <div className="composer flex items-end gap-1.5">
+        <div className="wis-tags-row">
+          {MOOD_TAGS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => toggleTag(t)}
+              className={`wis-tag${activeTags.includes(t) ? ' is-on' : ''}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <div className="wis-composer-row">
           {supportsImages && (
             <>
               <input
@@ -159,11 +203,16 @@ export default function ChatInput({
                 type="button"
                 onClick={() => fileRef.current?.click()}
                 disabled={disabled || uploading}
-                className="composer-tool self-end"
+                className="wis-send-btn"
+                style={{
+                  background: 'hsla(270, 22%, 92%, 0.35)',
+                  borderColor: 'hsla(270, 22%, 75%, 0.25)',
+                  color: 'hsla(268, 22%, 50%, 0.55)',
+                }}
                 aria-label="附图片"
                 title="附图片"
               >
-                <ImageIcon size={16} strokeWidth={1.5} />
+                <ImageIcon size={14} strokeWidth={1.6} />
               </button>
             </>
           )}
@@ -176,30 +225,26 @@ export default function ChatInput({
             placeholder={disabled ? '请先去设置里配一个 endpoint 喵' : placeholder}
             disabled={disabled}
             rows={1}
-            className="composer-input"
+            className="wis-composer-field"
           />
           {busy ? (
             <button
               type="button"
               onClick={onAbort}
-              className="send-btn self-end"
-              style={{
-                background: 'rgba(196,88,88,0.18)',
-                color: '#C45858',
-              }}
+              className="wis-send-btn is-stop"
               aria-label="停止"
             >
-              <Square size={14} fill="currentColor" />
+              <Square size={13} fill="currentColor" />
             </button>
           ) : (
             <button
               type="button"
               onClick={submit}
               disabled={!canSend}
-              className={`send-btn self-end ${canSend ? 'is-ready' : ''}`}
+              className="wis-send-btn"
               aria-label="发送"
             >
-              <ArrowUp size={16} strokeWidth={1.7} />
+              <Send size={13} strokeWidth={1.7} />
             </button>
           )}
         </div>

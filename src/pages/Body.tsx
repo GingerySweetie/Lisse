@@ -14,7 +14,8 @@ import {
   isoDate,
   summarizeCycle,
 } from '../lib/period';
-import type { PeriodEntry } from '../types';
+import { addWeight } from '../lib/weight';
+import type { PeriodEntry, WeightEntry } from '../types';
 
 /**
  * Body / 健康 — preview implementation following the Lavender DS health
@@ -27,6 +28,25 @@ import type { PeriodEntry } from '../types';
  * Real persistence + Google Fit / 手环 / 手动日志 inputs land later
  * when there's an actual source feeding numbers in.
  */
+
+/** Build a weight.* shape from persisted entries. Latest entry is the
+ *  current; the last 7 (oldest→newest) become the sparkline. Delta vs
+ *  last week = current - the reading from ~7 days ago, or first reading
+ *  if there aren't 7 days of history yet. */
+function mergeWeight(entries: WeightEntry[]): typeof DEMO.weight {
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  const recent = sorted.slice(-7);
+  const current = recent[recent.length - 1].kg;
+  const baseline =
+    sorted.length >= 8
+      ? sorted[sorted.length - 8].kg
+      : sorted[0].kg;
+  return {
+    current,
+    history: recent.map((e) => e.kg),
+    deltaKgVsLastWeek: +(current - baseline).toFixed(1),
+  };
+}
 
 /** Build a sleep.* shape from a Health Connect session. We only know
  *  total start/end; without sleep stages we approximate "深睡" as 45%
@@ -102,40 +122,21 @@ export default function BodyPage() {
   );
   const hasRealPeriod = (periodEntries ?? []).length > 0;
 
-  // Subscribe to the native step counter when running on Android. On
-  // web the plugin is a no-op shim — we stay on the demo number.
-  useEffect(() => {
-    if (Capacitor.getPlatform() !== 'android') return;
-    let cleanup: (() => void) | undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        await StepCounter.start();
-        const initial = await StepCounter.getSteps();
-        if (!cancelled) setLiveSteps(initial.steps);
-        const listener = await StepCounter.addListener('stepUpdate', (data) => {
-          if (!cancelled) setLiveSteps(data.steps);
-        });
-        cleanup = () => {
-          void listener.remove();
-          void StepCounter.stop();
-        };
-      } catch {
-        // Permission denied / no sensor — silently fall back to demo.
-      }
-    })();
-    return () => {
-      cancelled = true;
-      cleanup?.();
-    };
-  }, []);
+  const weightEntries = useLiveQuery(
+    () => db.weightEntries.orderBy('date').toArray(),
+    [],
+    [],
+  );
 
-  // Read last night's sleep from Health Connect on mount. On non-Android
-  // or when permission is denied this stays null and the demo data shows.
+  // Pull sleep + today's steps from Health Connect. Both data points
+  // refresh whenever the page becomes visible — handles the "I closed
+  // the app, walked more, came back" case without any background service.
+  // Mi Health / Samsung Health / Pixel all write into HC so the numbers
+  // match whatever their UI shows.
   useEffect(() => {
     if (Capacitor.getPlatform() !== 'android') return;
     let cancelled = false;
-    (async () => {
+    async function refresh() {
       try {
         const avail = await Sleep.isAvailable();
         if (!avail.available) return;
@@ -144,26 +145,84 @@ export default function BodyPage() {
           if (!cancelled) setSleepNeedsAuth(true);
           return;
         }
-        const res = await Sleep.getLastSleep();
-        if (!cancelled && res.session) setLiveSleep(res.session);
+        if (!cancelled) setSleepNeedsAuth(false);
+        const [sleepRes, stepsRes] = await Promise.allSettled([
+          Sleep.getLastSleep(),
+          Sleep.getTodaySteps(),
+        ]);
+        if (
+          sleepRes.status === 'fulfilled' &&
+          sleepRes.value.session &&
+          !cancelled
+        ) {
+          setLiveSleep(sleepRes.value.session);
+        }
+        if (stepsRes.status === 'fulfilled' && !cancelled) {
+          setLiveSteps(stepsRes.value.steps);
+        }
       } catch {
         // Silently fall back to demo.
+      }
+    }
+    void refresh();
+    function onVis() {
+      if (document.visibilityState === 'visible') void refresh();
+    }
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onVis);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onVis);
+    };
+  }, []);
+
+  // Raw on-device step sensor as a fallback when Health Connect isn't
+  // permitted yet. The cumulative-since-boot semantic is less useful
+  // than HC's "today" aggregate, but better than nothing.
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') return;
+    if (!sleepNeedsAuth) return; // HC is providing steps; don't fight over it.
+    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        await StepCounter.start();
+        const initial = await StepCounter.getSteps();
+        if (!cancelled && initial.steps > 0) setLiveSteps(initial.steps);
+        const listener = await StepCounter.addListener('stepUpdate', (data) => {
+          if (!cancelled) setLiveSteps(data.steps);
+        });
+        cleanup = () => {
+          void listener.remove();
+          void StepCounter.stop();
+        };
+      } catch {
+        // Permission denied / no sensor.
       }
     })();
     return () => {
       cancelled = true;
+      cleanup?.();
     };
-  }, []);
+  }, [sleepNeedsAuth]);
 
   async function handleConnectSleep() {
     try {
       await Sleep.requestPermission();
-      // The user might come back having granted or not; re-check + read.
       const perm = await Sleep.hasPermission();
       if (perm.granted) {
         setSleepNeedsAuth(false);
-        const res = await Sleep.getLastSleep();
-        if (res.session) setLiveSleep(res.session);
+        const [sleepRes, stepsRes] = await Promise.allSettled([
+          Sleep.getLastSleep(),
+          Sleep.getTodaySteps(),
+        ]);
+        if (sleepRes.status === 'fulfilled' && sleepRes.value.session) {
+          setLiveSleep(sleepRes.value.session);
+        }
+        if (stepsRes.status === 'fulfilled') {
+          setLiveSteps(stepsRes.value.steps);
+        }
       }
     } catch {
       // ignore
@@ -307,9 +366,19 @@ export default function BodyPage() {
               />
             )}
             <WeightCard
-              data={data.weight}
+              data={
+                (weightEntries ?? []).length > 0
+                  ? mergeWeight(weightEntries ?? [])
+                  : data.weight
+              }
               draft={weightDraft}
               onDraftChange={setWeightDraft}
+              onSave={async () => {
+                const v = parseFloat(weightDraft);
+                if (!isFinite(v) || v <= 0 || v > 500) return;
+                await addWeight(v);
+                setWeightDraft('');
+              }}
             />
           </div>
         ) : (
@@ -524,10 +593,12 @@ function WeightCard({
   data,
   draft,
   onDraftChange,
+  onSave,
 }: {
   data: typeof DEMO.weight;
   draft: string;
   onDraftChange: (v: string) => void;
+  onSave: () => void | Promise<void>;
 }) {
   return (
     <div className="wis-hcard">
@@ -559,10 +630,7 @@ function WeightCard({
         <button
           type="button"
           className="wis-mini-btn"
-          onClick={() => {
-            /* persistence wires up when health-data table lands */
-            onDraftChange('');
-          }}
+          onClick={() => void onSave()}
         >
           记录
         </button>

@@ -1,6 +1,7 @@
 import type { ToolDef } from '../../api/types';
 import type { Persona } from '../../types';
 import { memoryTools } from './memory';
+import { mcpTools } from '../mcp/tools';
 
 /**
  * Tool registry. Each Tool pairs an API-level definition (name +
@@ -8,8 +9,8 @@ import { memoryTools } from './memory';
  * the model emits a tool_use). Adapters in src/api/{openai,anthropic}
  * translate the ToolDef shape to each provider's format.
  *
- * Future: HTTP/SSE-based MCP tools can plug in here once the PWA gets
- * a server-side bridge.
+ * Built-ins: memory (remember / recall).
+ * External:  MCP servers registered on /mcp page (streamable HTTP).
  */
 
 export interface ToolContext {
@@ -30,6 +31,7 @@ export interface Tool {
 export async function availableTools(ctx: ToolContext): Promise<Tool[]> {
   const out: Tool[] = [];
   for (const t of await memoryTools(ctx)) out.push(t);
+  for (const t of await mcpTools(ctx)) out.push(t);
   return out;
 }
 
