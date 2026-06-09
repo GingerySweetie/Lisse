@@ -16,12 +16,28 @@ export interface AppUsage {
   iconPng?: string;
 }
 
+export interface DayUsage {
+  /** YYYY-MM-DD (device local). */
+  date: string;
+  totalMs: number;
+}
+
+export interface UnlockSummary {
+  count: number;
+  /** "HH:MM" first unlock time today, or null if none. */
+  firstAt: string | null;
+}
+
 export interface UsageStatsPlugin {
   hasPermission(): Promise<{ granted: boolean }>;
-  /** Launch system Settings → Usage access. User flips Wisteria's switch. */
   openSettings(): Promise<void>;
-  /** Today's foreground time per app since local midnight. */
   getTodayUsage(): Promise<{ usage: AppUsage[] }>;
+  /** Total foreground ms per day, last 7 days (oldest → newest). */
+  getWeekUsage(): Promise<{ days: DayUsage[] }>;
+  /** Today's foreground distribution in 24 hourly buckets (ms each). */
+  getHourlyDistribution(): Promise<{ hours: number[] }>;
+  /** Today's keyguard unlock count + first-unlock time. */
+  getUnlocks(): Promise<UnlockSummary>;
 }
 
 const UsageStats = registerPlugin<UsageStatsPlugin>('UsageStats');

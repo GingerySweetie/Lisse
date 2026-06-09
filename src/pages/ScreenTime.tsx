@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
-import UsageStats, { type AppUsage } from '../lib/native/usage-stats';
+import UsageStats, {
+  type AppUsage,
+  type DayUsage,
+  type UnlockSummary,
+} from '../lib/native/usage-stats';
+import { friendlyAppName } from '../lib/app-names';
 import {
   fetchUsage,
   formatCompact,
@@ -323,38 +328,42 @@ function RoastSection({
 function buildAppRanking(usage: AppUsage[], totalMs: number): AppRow[] {
   if (totalMs <= 0) return [];
   return usage.slice(0, 6).map((u, i) => ({
-    name: u.appName,
+    name: friendlyAppName(u.packageName, u.appName),
     time: formatCompact(u.foregroundMs),
     pct: u.foregroundMs / totalMs,
     top: i === 0,
   }));
 }
 
-function buildWeekBars(todayHours: number): Bar[] {
-  // We don't (yet) query 7 days of UsageStats; everything except today is
-  // an honest 0. The "today" column still renders with its real height
-  // because val matches todayHours.
-  const days = ['一', '二', '三', '四', '五', '六', '日'];
-  const todayIdx = ((new Date().getDay() + 6) % 7); // Mon=0
-  return days.map((d, i) => ({
-    day: d,
-    val: i === todayIdx ? todayHours : 0,
-    today: i === todayIdx,
-  }));
+const DAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
+
+function buildWeekBars(days: DayUsage[]): Bar[] {
+  // days is oldest → newest, length 7. Last entry is today.
+  return days.map((d, i) => {
+    const date = new Date(d.date + 'T00:00:00');
+    const dayOfWeek = (date.getDay() + 6) % 7; // Mon=0
+    return {
+      day: DAY_NAMES[dayOfWeek] ?? '',
+      val: d.totalMs / 3_600_000,
+      today: i === days.length - 1,
+    };
+  });
 }
 
-function buildDist24(usage: AppUsage[]): number[] {
-  // Without UsageEvents we can't reconstruct the full hourly histogram;
-  // approximate by anchoring each app's foreground time to its
-  // lastTimeUsed hour. Cheap, but the shape gives a sense of when she
-  // was using the phone today.
-  const buckets = new Array<number>(24).fill(0);
-  for (const u of usage) {
-    if (!u.lastTimeUsed) continue;
-    const h = new Date(u.lastTimeUsed).getHours();
-    buckets[h] += u.foregroundMs;
-  }
-  return buckets;
+/** Format ms vs yesterday's total into the comparison line shown under
+ *  the big total. Negative deltas = "减少 N", positive = "增加 N". */
+function buildComparison(days: DayUsage[]): string {
+  if (days.length < 2) return '今天还行';
+  const today = days[days.length - 1].totalMs;
+  const yesterday = days[days.length - 2].totalMs;
+  const deltaMs = today - yesterday;
+  if (yesterday === 0) return '今天还行';
+  const absMin = Math.round(Math.abs(deltaMs) / 60_000);
+  if (absMin < 10) return '和昨天差不多';
+  const h = Math.floor(absMin / 60);
+  const m = absMin % 60;
+  const dur = h > 0 ? `${h} 小时${m > 0 ? ` ${m} 分` : ''}` : `${m} 分`;
+  return deltaMs < 0 ? `较前一日减少 ${dur}` : `较前一日增加 ${dur}`;
 }
 
 /* ═══════ Main ═══════ */
@@ -363,11 +372,15 @@ export default function ScreenTimePage() {
   const navigate = useNavigate();
   const [granted, setGranted] = useState<boolean | null>(null);
   const [usage, setUsage] = useState<AppUsage[]>([]);
+  const [weekDays, setWeekDays] = useState<DayUsage[]>([]);
+  const [hourBuckets, setHourBuckets] = useState<number[]>(
+    () => new Array<number>(24).fill(0),
+  );
+  const [unlocks, setUnlocks] = useState<UnlockSummary>({ count: 0, firstAt: null });
   const [liliText, setLiliText] = useState<string | undefined>();
   const [rhemaText, setRhemaText] = useState<string | undefined>();
   const [generating, setGenerating] = useState(false);
   const [popupOpen, setPopupOpen] = useState(false);
-  const [tab, setTab] = useState<'daily' | 'weekly'>('daily');
 
   async function refresh() {
     if (Capacitor.getPlatform() !== 'android') {
@@ -377,28 +390,30 @@ export default function ScreenTimePage() {
     const perm = await UsageStats.hasPermission();
     setGranted(perm.granted);
     if (!perm.granted) return;
-    const u = await fetchUsage();
-    setUsage(u);
 
-    // Both personas look at the same live usage snapshot and roast in
-    // their own voices. Cached per "hour bucket" of total screen time so
-    // re-opens within the same bucket don't burn tokens.
+    // Pull everything in parallel — they're independent native queries
+    // and we don't want the page to feel sequential.
+    const [u, week, dist, unl] = await Promise.all([
+      fetchUsage(),
+      UsageStats.getWeekUsage().catch(() => ({ days: [] as DayUsage[] })),
+      UsageStats.getHourlyDistribution().catch(() => ({ hours: new Array(24).fill(0) })),
+      UsageStats.getUnlocks().catch(() => ({ count: 0, firstAt: null })),
+    ]);
+    setUsage(u);
+    setWeekDays(week.days);
+    setHourBuckets(dist.hours);
+    setUnlocks(unl);
+
     setGenerating(true);
     try {
       const { lili, rhema, fromCache } = await generatePageRoasts(u);
       setLiliText(lili);
       setRhemaText(rhema);
-      // Fresh generation (not cache) → pop up so she sees it the moment
-      // it lands. Cache hits stay quiet so re-opening within an hour
-      // bucket doesn't keep nagging.
       if (!fromCache) setPopupOpen(true);
     } finally {
       setGenerating(false);
     }
 
-    // Side path: if any non-reader app crossed the 1h threshold, push a
-    // separate heads-up notification in 理理酱's voice. De-duped per
-    // app per day.
     const target = await pickRoastTarget(u);
     if (target) {
       await recordAndNotifyRoast(target, u);
@@ -421,15 +436,23 @@ export default function ScreenTimePage() {
 
   const totalMs = usage.reduce((a, b) => a + b.foregroundMs, 0);
   const { h: totalH, m: totalM } = formatHM(totalMs);
-  const totalHoursFloat = totalMs / 3_600_000;
 
-  const weekBars = buildWeekBars(totalHoursFloat);
-  const dist24 = buildDist24(usage);
-  const apps = buildAppRanking(usage, totalMs);
-
-  // Unlocks / typing aren't queryable through UsageStatsManager (need
-  // accessibility / IME stats). Show "—" rather than fake.
-  const unlocks = { count: 0, first: null as string | null, cmp: '暂未统计' };
+  // Prefer the week-aggregate's "today" total because it sums across
+  // every package (not just the apps surfaced in getTodayUsage). If week
+  // data isn't loaded yet, fall back to the per-app sum.
+  const todayMsFromWeek = weekDays[weekDays.length - 1]?.totalMs ?? 0;
+  const weekBars = buildWeekBars(weekDays);
+  const comparison = buildComparison(weekDays);
+  const dist24 = hourBuckets;
+  const apps = buildAppRanking(usage, totalMs || todayMsFromWeek);
+  const unlocksData = {
+    count: unlocks.count,
+    first: unlocks.firstAt,
+    // No yesterday baseline yet — could compute once we cache day totals.
+    cmp: unlocks.firstAt ? '今天的解锁记录' : '暂无解锁数据',
+  };
+  // Typing requires an IME-level hook (accessibility service). Surfacing
+  // 暂未统计 instead of inventing numbers.
   const typing = { today: 0, avg: 0 };
 
   if (granted === false) {
@@ -510,22 +533,7 @@ export default function ScreenTimePage() {
           <span className="st-header-title">身体</span>
         </div>
 
-        <div className="st-tabs">
-          <button
-            className={'st-tab' + (tab === 'daily' ? ' active' : '')}
-            onClick={() => setTab('daily')}
-          >
-            每日
-          </button>
-          <button
-            className={'st-tab' + (tab === 'weekly' ? ' active' : '')}
-            onClick={() => setTab('weekly')}
-          >
-            每周
-          </button>
-        </div>
-
-        <div key={tab} className="st-fade-enter">
+        <div className="st-fade-enter">
           <div className="st-total">
             <div className="st-total-num">
               {totalH}
@@ -533,9 +541,7 @@ export default function ScreenTimePage() {
               {totalM}
               <span>分钟</span>
             </div>
-            <div className="st-total-cmp">
-              {totalH >= 8 ? '比起昨天又多了' : '今天还行'}
-            </div>
+            <div className="st-total-cmp">{comparison}</div>
           </div>
 
           <BarChart bars={weekBars} />
@@ -555,12 +561,12 @@ export default function ScreenTimePage() {
 
           <div className="st-div" />
 
-          <Unlocks data={unlocks} />
+          <Unlocks data={unlocksData} />
 
           <div className="st-div" />
 
           <div className="st-section-title">打字</div>
-          <Typing data={typing} isWeekly={tab === 'weekly'} />
+          <Typing data={typing} isWeekly={false} />
 
           <div className="st-div" />
 
