@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
+import ShareReceiver from './components/ShareReceiver';
 import HomePage from './pages/Home';
 
 // Route-level lazy splitting. HomePage stays eager because it's the
@@ -55,6 +56,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <ShareReceiver />
       <Suspense fallback={<RouteSpinner />}>
         <Routes>
           <Route element={<Layout />}>
