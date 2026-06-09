@@ -19,11 +19,20 @@ export default function StylesPage() {
   const [prompt, setPrompt] = useState('');
   const [dirty, setDirty] = useState(false);
 
-  // Pick which style the panel shows: prefer the global default; else first.
+  // Pick which style the panel shows on first load: prefer the global
+  // default; else first. Only runs while activeId is still null — once
+  // we've picked (or handleNew set a new id, or handleDelete moved us),
+  // don't preempt. Otherwise a just-created style whose useLiveQuery
+  // refetch hasn't landed yet would look "missing" to this effect and
+  // get yanked back to the default, hiding the New button's effect.
   useEffect(() => {
     if (!styles || styles.length === 0) return;
-    if (activeId && styles.some((s) => s.id === activeId)) return;
-    const fallback = settings?.defaultStyleId ?? styles[0].id;
+    if (activeId !== null) return;
+    const defaultId = settings?.defaultStyleId;
+    const fallback =
+      defaultId && styles.some((s) => s.id === defaultId)
+        ? defaultId
+        : styles[0].id;
     setActiveId(fallback);
   }, [styles, settings, activeId]);
 
