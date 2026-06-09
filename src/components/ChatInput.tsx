@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Square, X } from 'lucide-react';
+import { Image as ImageIcon, Send, Square, X } from 'lucide-react';
 import type { Attachment } from '../types';
 import {
   attachmentDataUrl,
@@ -48,6 +48,7 @@ export default function ChatInput({
 }: Props) {
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [activeTags, setActiveTags] = useState<MoodTag[]>([]);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -118,15 +119,20 @@ export default function ChatInput({
     if (!files) return;
     const list = Array.from(files);
     if (list.length === 0) return;
-    const out: Attachment[] = [];
-    for (const f of list) {
-      try {
-        out.push(await fileToAttachment(f));
-      } catch {
-        /* skip */
+    setUploading(true);
+    try {
+      const out: Attachment[] = [];
+      for (const f of list) {
+        try {
+          out.push(await fileToAttachment(f));
+        } catch {
+          /* skip */
+        }
       }
+      setAttachments((prev) => [...prev, ...out]);
+    } finally {
+      setUploading(false);
     }
-    setAttachments((prev) => [...prev, ...out]);
   }
 
   function removeAttachment(id: string) {
@@ -180,21 +186,35 @@ export default function ChatInput({
         </div>
 
         <div className="wis-composer-row">
-          {/* Image upload — pasted/dropped images still get attached
-              (handlePaste), but per the wisterialight mockup there's
-              no visible attach button in the composer row. */}
           {supportsImages && (
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                void handleFiles(e.target.files);
-                e.target.value = '';
-              }}
-            />
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void handleFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={disabled || uploading}
+                className="wis-send-btn"
+                style={{
+                  background: 'hsla(270, 22%, 92%, 0.35)',
+                  borderColor: 'hsla(270, 22%, 75%, 0.25)',
+                  color: 'hsla(268, 22%, 50%, 0.55)',
+                }}
+                aria-label="附图片"
+                title="附图片"
+              >
+                <ImageIcon size={14} strokeWidth={1.6} />
+              </button>
+            </>
           )}
           <textarea
             ref={taRef}
