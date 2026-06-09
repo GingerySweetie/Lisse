@@ -30,6 +30,12 @@ cp -r "$OVERLAY_DIR/app/src/main/java/." "$ANDROID_DIR/app/src/main/java/"
 if [ -d "$OVERLAY_DIR/app/src/main/res" ]; then
   echo "[postsync] copying overlay res (icons, splash)"
   cp -r "$OVERLAY_DIR/app/src/main/res/." "$ANDROID_DIR/app/src/main/res/"
+  # @capacitor/splash-screen ships a stock drawable/splash.png. Our
+  # overlay provides splash.xml with the same resource name → gradle's
+  # resource merger fails with "Duplicate resources". Drop the PNG so
+  # our XML wins. Same for ic_launcher PNGs in mipmap-*: keep them as
+  # legacy fallback so Android < 26 still has an icon.
+  find "$ANDROID_DIR/app/src/main/res" -type f -name 'splash.png' -delete || true
 fi
 
 # 2. Patch AndroidManifest.xml:
