@@ -7,6 +7,7 @@ import com.gingery.wisteria.plugins.BillSnifferPlugin;
 import com.gingery.wisteria.plugins.ShareIntentPlugin;
 import com.gingery.wisteria.plugins.SleepPlugin;
 import com.gingery.wisteria.plugins.StepCounterPlugin;
+import com.gingery.wisteria.plugins.UsageStatsPlugin;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -15,6 +16,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SleepPlugin.class);
         registerPlugin(ShareIntentPlugin.class);
         registerPlugin(BillSnifferPlugin.class);
+        registerPlugin(UsageStatsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 

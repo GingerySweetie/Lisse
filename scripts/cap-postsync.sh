@@ -65,6 +65,22 @@ if ! grep -q 'android.permission.health.READ_STEPS' "$MANIFEST"; then
     "$MANIFEST"
   rm -f "$MANIFEST.bak"
 fi
+if ! grep -q 'android.permission.PACKAGE_USAGE_STATS' "$MANIFEST"; then
+  echo "[postsync] adding PACKAGE_USAGE_STATS permission"
+  # tools:ignore is needed because this is a special access permission
+  # that lint flags as protected; the user grants it via Settings, not
+  # at install time.
+  if ! grep -q 'xmlns:tools=' "$MANIFEST"; then
+    sed -i.bak \
+      's|<manifest |<manifest xmlns:tools="http://schemas.android.com/tools" |' \
+      "$MANIFEST"
+    rm -f "$MANIFEST.bak"
+  fi
+  sed -i.bak \
+    's|<application|<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />\n    <application|' \
+    "$MANIFEST"
+  rm -f "$MANIFEST.bak"
+fi
 
 # Inject Health Connect <queries> + share intent-filter +
 # BillSnifferService registration via Python.
@@ -227,6 +243,7 @@ EXPECTED=(
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/SleepPlugin.kt"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/BillSnifferPlugin.java"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/BillSnifferService.java"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/UsageStatsPlugin.java"
 )
 for f in "${EXPECTED[@]}"; do
   if [ ! -f "$f" ]; then
@@ -237,7 +254,8 @@ done
 for marker in 'registerPlugin(StepCounterPlugin.class)' \
               'registerPlugin(SleepPlugin.class)' \
               'registerPlugin(ShareIntentPlugin.class)' \
-              'registerPlugin(BillSnifferPlugin.class)'; do
+              'registerPlugin(BillSnifferPlugin.class)' \
+              'registerPlugin(UsageStatsPlugin.class)'; do
   if ! grep -q "$marker" \
       "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.java"; then
     echo "[postsync] ERROR: MainActivity.java doesn't $marker" >&2
