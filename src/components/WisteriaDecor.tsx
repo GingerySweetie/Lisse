@@ -153,6 +153,22 @@ export function LeafButton({ onClick }: { onClick: () => void }) {
           strokeWidth="0.4"
           strokeLinecap="round"
         />
+        <path
+          d="M22 50 Q 30 58 22 66 Q 14 74 22 82 Q 30 90 22 98 Q 14 106 22 114 Q 28 118 22 124"
+          stroke="hsla(264, 36%, 54%, 0.35)"
+          strokeWidth="0.9"
+          strokeLinecap="round"
+          style={{ animation: 'strandSway 10s ease-in-out infinite alternate' }}
+        />
+        {[66, 82, 98, 114].map((y, i) => (
+          <circle
+            key={i}
+            cx={22}
+            cy={y}
+            r={1.4 - i * 0.15}
+            fill={`hsla(268, 42%, 62%, ${0.32 - i * 0.04})`}
+          />
+        ))}
       </svg>
     </button>
   );
