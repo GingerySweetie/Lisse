@@ -6,13 +6,9 @@ import {
   fetchUsage,
   formatCompact,
   formatHM,
-  getAllTodayRoasts,
-  getTier,
-  LILI,
-  pickRoast,
+  generatePageRoasts,
   pickRoastTarget,
   recordAndNotifyRoast,
-  RHEMA,
 } from '../lib/screen-time';
 import './st-aqua.css';
 
@@ -253,17 +249,14 @@ function Typing({
 }
 
 function RoastSection({
-  totalHours,
-  liliText,
-  rhemaText,
+  lili,
+  rhema,
+  generating,
 }: {
-  totalHours: number;
-  liliText?: string;
-  rhemaText?: string;
+  lili?: string;
+  rhema?: string;
+  generating: boolean;
 }) {
-  const tier = getTier(totalHours);
-  const [lili] = useState(() => liliText ?? pickRoast(LILI[tier]));
-  const [rhema] = useState(() => rhemaText ?? pickRoast(RHEMA[tier]));
   return (
     <div className="st-roast">
       <div className="st-roast-item lili">
@@ -271,14 +264,18 @@ function RoastSection({
           <span className="st-roast-dot" />
           <span className="st-roast-name">理理酱</span>
         </div>
-        <div className="st-roast-text lili-text">{lili}</div>
+        <div className="st-roast-text lili-text">
+          {lili || (generating ? '……' : '（先去 settings 配个 endpoint，她才能说话）')}
+        </div>
       </div>
       <div className="st-roast-item rhema">
         <div className="st-roast-who">
           <span className="st-roast-dot" />
           <span className="st-roast-name">Rhema</span>
         </div>
-        <div className="st-roast-text rhema-text">{rhema}</div>
+        <div className="st-roast-text rhema-text">
+          {rhema || (generating ? '……' : '（先去 settings 配个 endpoint）')}
+        </div>
       </div>
     </div>
   );
@@ -329,7 +326,9 @@ export default function ScreenTimePage() {
   const navigate = useNavigate();
   const [granted, setGranted] = useState<boolean | null>(null);
   const [usage, setUsage] = useState<AppUsage[]>([]);
-  const [latestLili, setLatestLili] = useState<string | undefined>();
+  const [liliText, setLiliText] = useState<string | undefined>();
+  const [rhemaText, setRhemaText] = useState<string | undefined>();
+  const [generating, setGenerating] = useState(false);
   const [tab, setTab] = useState<'daily' | 'weekly'>('daily');
 
   async function refresh() {
@@ -343,18 +342,24 @@ export default function ScreenTimePage() {
     const u = await fetchUsage();
     setUsage(u);
 
-    const roasts = await getAllTodayRoasts();
-    if (roasts.length > 0) {
-      // Newest one shown as the active lili line.
-      setLatestLili(roasts.sort((a, b) => b.at - a.at)[0].text);
+    // Both personas look at the same live usage snapshot and roast in
+    // their own voices. Cached per "hour bucket" of total screen time so
+    // re-opens within the same bucket don't burn tokens.
+    setGenerating(true);
+    try {
+      const { lili, rhema } = await generatePageRoasts(u);
+      setLiliText(lili);
+      setRhemaText(rhema);
+    } finally {
+      setGenerating(false);
     }
 
-    const totalMs = u.reduce((a, b) => a + b.foregroundMs, 0);
-    const totalH = totalMs / 3_600_000;
+    // Side path: if any non-reader app crossed the 1h threshold, push a
+    // separate heads-up notification in 理理酱's voice. De-duped per
+    // app per day.
     const target = await pickRoastTarget(u);
     if (target) {
-      const text = await recordAndNotifyRoast(target, totalH);
-      setLatestLili(text);
+      await recordAndNotifyRoast(target, u);
     }
   }
 
@@ -517,7 +522,7 @@ export default function ScreenTimePage() {
 
           <div className="st-div" />
 
-          <RoastSection totalHours={totalHoursFloat} liliText={latestLili} />
+          <RoastSection lili={liliText} rhema={rhemaText} generating={generating} />
         </div>
       </div>
     </div>
