@@ -14,7 +14,8 @@ import {
   isoDate,
   summarizeCycle,
 } from '../lib/period';
-import type { PeriodEntry } from '../types';
+import { addWeight } from '../lib/weight';
+import type { PeriodEntry, WeightEntry } from '../types';
 
 /**
  * Body / 健康 — preview implementation following the Lavender DS health
@@ -27,6 +28,25 @@ import type { PeriodEntry } from '../types';
  * Real persistence + Google Fit / 手环 / 手动日志 inputs land later
  * when there's an actual source feeding numbers in.
  */
+
+/** Build a weight.* shape from persisted entries. Latest entry is the
+ *  current; the last 7 (oldest→newest) become the sparkline. Delta vs
+ *  last week = current - the reading from ~7 days ago, or first reading
+ *  if there aren't 7 days of history yet. */
+function mergeWeight(entries: WeightEntry[]): typeof DEMO.weight {
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  const recent = sorted.slice(-7);
+  const current = recent[recent.length - 1].kg;
+  const baseline =
+    sorted.length >= 8
+      ? sorted[sorted.length - 8].kg
+      : sorted[0].kg;
+  return {
+    current,
+    history: recent.map((e) => e.kg),
+    deltaKgVsLastWeek: +(current - baseline).toFixed(1),
+  };
+}
 
 /** Build a sleep.* shape from a Health Connect session. We only know
  *  total start/end; without sleep stages we approximate "深睡" as 45%
@@ -101,6 +121,12 @@ export default function BodyPage() {
     [],
   );
   const hasRealPeriod = (periodEntries ?? []).length > 0;
+
+  const weightEntries = useLiveQuery(
+    () => db.weightEntries.orderBy('date').toArray(),
+    [],
+    [],
+  );
 
   // Subscribe to the native step counter when running on Android. On
   // web the plugin is a no-op shim — we stay on the demo number.
@@ -307,9 +333,19 @@ export default function BodyPage() {
               />
             )}
             <WeightCard
-              data={data.weight}
+              data={
+                (weightEntries ?? []).length > 0
+                  ? mergeWeight(weightEntries ?? [])
+                  : data.weight
+              }
               draft={weightDraft}
               onDraftChange={setWeightDraft}
+              onSave={async () => {
+                const v = parseFloat(weightDraft);
+                if (!isFinite(v) || v <= 0 || v > 500) return;
+                await addWeight(v);
+                setWeightDraft('');
+              }}
             />
           </div>
         ) : (
@@ -524,10 +560,12 @@ function WeightCard({
   data,
   draft,
   onDraftChange,
+  onSave,
 }: {
   data: typeof DEMO.weight;
   draft: string;
   onDraftChange: (v: string) => void;
+  onSave: () => void | Promise<void>;
 }) {
   return (
     <div className="wis-hcard">
@@ -559,10 +597,7 @@ function WeightCard({
         <button
           type="button"
           className="wis-mini-btn"
-          onClick={() => {
-            /* persistence wires up when health-data table lands */
-            onDraftChange('');
-          }}
+          onClick={() => void onSave()}
         >
           记录
         </button>

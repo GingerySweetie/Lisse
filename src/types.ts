@@ -273,6 +273,18 @@ export interface PeriodEntry {
   createdAt: number;
 }
 
+/** Single weight reading. Body page shows latest kg, sparkline of recent
+ *  history, and ΔvsLastWeek. */
+export interface WeightEntry {
+  id: string;
+  /** YYYY-MM-DD (local). */
+  date: string;
+  /** Kilograms. */
+  kg: number;
+  notes?: string;
+  createdAt: number;
+}
+
 /**
  * Expense / billing record. Storage for the 账单 room — separate from
  * conversations so it can have its own schema and listing semantics.
