@@ -151,7 +151,7 @@ export default function MessageBubble({
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeHighlight]}
                 >
-                  {text}
+                  {mergeShortParagraphs(text)}
                 </ReactMarkdown>
               ) : isStreaming ? (
                 <span className="stream-cursor" />
@@ -505,4 +505,32 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+/** Merge short consecutive paragraphs into flowing prose.
+ *  Keeps real paragraph breaks (before/after headings, lists, code blocks,
+ *  or when a paragraph is long enough to be intentional). */
+function mergeShortParagraphs(raw: string): string {
+  // Don't touch code blocks
+  const parts = raw.split(/(```[\s\S]*?```)/);
+  return parts.map((part, i) => {
+    if (i % 2 === 1) return part; // code block, keep as-is
+    // Split on double-newline (paragraph boundary)
+    const paragraphs = part.split(/\n\n+/);
+    const merged: string[] = [];
+    let buffer: string[] = [];
+    for (const p of paragraphs) {
+      const trimmed = p.trim();
+      const isSpecial = /^#{1,6}\s|^[-*+]\s|^\d+\.\s|^>/.test(trimmed);
+      const isShort = trimmed.length < 80;
+      if (!isSpecial && isShort) {
+        buffer.push(trimmed);
+      } else {
+        if (buffer.length) { merged.push(buffer.join(' ')); buffer = []; }
+        merged.push(trimmed);
+      }
+    }
+    if (buffer.length) merged.push(buffer.join(' '));
+    return merged.join('\n\n');
+  }).join('');
 }
