@@ -157,9 +157,11 @@ class StepCounterPlugin : Plugin(), SensorEventListener {
                     .putInt(KEY_CARRY_STEPS, 0)
                     .apply()
             }
-            // Mid-day reboot: counter restarted from 0. Bank what we had
-            // already counted today and keep adding on top of it.
-            cumulative + 1f < storedBaseline -> {
+            // Mid-day reboot: counter restarted from 0. Compare against the
+            // last value we saw (not the baseline — after one reboot the
+            // baseline is already 0 and would never flag a second one).
+            // Bank what we had already counted today and keep adding on top.
+            cumulative + 1f < lastSeen -> {
                 carry = prefs.getInt(KEY_LAST_TODAY_STEPS, 0)
                 baseline = 0f
                 prefs.edit()
