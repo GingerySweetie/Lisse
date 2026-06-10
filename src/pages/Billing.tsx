@@ -383,9 +383,26 @@ export default function BillingPage() {
         <div
           style={{
             margin: '8px 16px 0',
-            textAlign: 'right',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 12,
+            fontSize: 11,
           }}
         >
+          <button
+            type="button"
+            onClick={() => navigate('/bill-sources')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'rgba(120,100,155,0.5)',
+              cursor: 'pointer',
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            来源设置
+          </button>
           <button
             type="button"
             onClick={() => setDebugOpen(true)}
@@ -393,7 +410,6 @@ export default function BillingPage() {
               background: 'none',
               border: 'none',
               color: 'rgba(120,100,155,0.5)',
-              fontSize: 11,
               cursor: 'pointer',
               padding: 0,
               textDecoration: 'underline',

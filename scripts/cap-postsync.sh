@@ -120,6 +120,25 @@ sniffer_service = """        <service
 if "BillSnifferService" not in src:
     src = re.sub(r'(\s*</application>)', '\n' + sniffer_service + r'\1', src, count=1)
 
+# PaymentAccessibilityService registration. The service is declared so it
+# can be bound, but it stays inert until the user (a) turns on the in-app
+# toggle and (b) flips the system-level accessibility switch. Default OFF.
+access_service = """        <service
+            android:name="com.gingery.wisteria.plugins.PaymentAccessibilityService"
+            android:label="Wisteria 支付识别"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/payment_accessibility_config" />
+        </service>
+"""
+if "PaymentAccessibilityService" not in src:
+    src = re.sub(r'(\s*</application>)', '\n' + access_service + r'\1', src, count=1)
+
 open(p, 'w').write(src)
 PY
 
@@ -211,6 +230,9 @@ EXPECTED=(
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/ShareIntentPlugin.java"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/BillSnifferPlugin.java"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/BillSnifferService.java"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/AccessibilityCapturePlugin.kt"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/PaymentAccessibilityService.kt"
+  "$ANDROID_DIR/app/src/main/res/xml/payment_accessibility_config.xml"
 )
 for f in "${EXPECTED[@]}"; do
   if [ ! -f "$f" ]; then
@@ -222,7 +244,8 @@ for marker in 'registerPlugin(StepCounterPlugin' \
               'registerPlugin(SleepEstimatePlugin' \
               'registerPlugin(ShareIntentPlugin' \
               'registerPlugin(BillSnifferPlugin' \
-              'registerPlugin(UsageStatsPlugin'; do
+              'registerPlugin(UsageStatsPlugin' \
+              'registerPlugin(AccessibilityCapturePlugin'; do
   if ! grep -q "$marker" \
       "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.kt"; then
     echo "[postsync] ERROR: MainActivity.kt doesn't $marker" >&2

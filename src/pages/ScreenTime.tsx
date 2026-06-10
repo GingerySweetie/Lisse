@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { Capacitor } from '@capacitor/core';
+import { db } from '../db';
 import UsageStats, {
   type AppUsage,
   type DayUsage,
@@ -377,6 +379,33 @@ export default function ScreenTimePage() {
     () => new Array<number>(24).fill(0),
   );
   const [unlocks, setUnlocks] = useState<UnlockSummary>({ count: 0, firstAt: null });
+  // Typing: sum of user message content lengths in db.messages.
+  // Today = sum where createdAt ≥ today 00:00. Avg = last 7 days / 7.
+  // Lives in dexie; useLiveQuery re-runs when she sends a new message.
+  const typing = useLiveQuery(
+    async () => {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const weekStart = new Date(todayStart);
+      weekStart.setDate(weekStart.getDate() - 7);
+      const weekMsgs = await db.messages
+        .where('createdAt')
+        .above(weekStart.getTime())
+        .filter((m) => m.role === 'user')
+        .toArray();
+      const todayMs = todayStart.getTime();
+      let todayChars = 0;
+      let weekChars = 0;
+      for (const m of weekMsgs) {
+        const len = m.content?.length ?? 0;
+        weekChars += len;
+        if (m.createdAt >= todayMs) todayChars += len;
+      }
+      return { today: todayChars, avg: Math.round(weekChars / 7) };
+    },
+    [],
+    { today: 0, avg: 0 },
+  );
   const [liliText, setLiliText] = useState<string | undefined>();
   const [rhemaText, setRhemaText] = useState<string | undefined>();
   const [generating, setGenerating] = useState(false);
@@ -451,10 +480,6 @@ export default function ScreenTimePage() {
     // No yesterday baseline yet — could compute once we cache day totals.
     cmp: unlocks.firstAt ? '今天的解锁记录' : '暂无解锁数据',
   };
-  // Typing requires an IME-level hook (accessibility service). Surfacing
-  // 暂未统计 instead of inventing numbers.
-  const typing = { today: 0, avg: 0 };
-
   if (granted === false) {
     return (
       <div className="st">

@@ -373,6 +373,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   maxHistoryTurns: null,
   toolsEnabled: false,
   autoApplyUpdate: true,
+  billSrcAlipayWechat: true,
+  billSrcBankNotification: true,
+  billSrcScreenAccessibility: false,
 };
 
 export async function getSettings(): Promise<AppSettings> {

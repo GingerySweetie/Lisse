@@ -10,14 +10,19 @@ import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
 export interface CapturedBill {
   amount: number;
   merchant: string;
-  source: 'alipay' | 'wechat';
+  source: 'alipay' | 'wechat' | 'bank';
+  /** Direction: "expense" (default) or "income" (转入/退款/到账). */
+  kind: 'expense' | 'income';
   timestamp: number;
 }
 
 export interface DebugLogEntry {
   /** Notification timestamp (ms). */
   ts: number;
-  /** "alipay" | "wechat". */
+  /** Always present: the raw Android package name (e.g. "com.cmbchina..."). */
+  pkg?: string;
+  /** Resolved source label ("alipay" | "wechat" | "bank") or, for unknown
+   *  packages, the raw package name as a fallback. */
   source: string;
   /** Combined notification body (title + bigText + text + subText + info). */
   body: string;
