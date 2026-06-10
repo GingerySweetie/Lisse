@@ -22,9 +22,13 @@ import java.util.TimeZone
  * SleepEstimatePlugin — option A from the spec.
  *
  * No native sleep API on Android. We derive an estimate from screen
- * lock/unlock events: the longest continuous non-interactive span
- * starting after 18:00 yesterday and ending before 14:00 today is
- * taken as last night's sleep. Doesn't distinguish deep / light.
+ * lock/unlock events: non-interactive spans overnight are stitched into
+ * blocks (gaps ≤ 30 min count as brief awakenings, and get subtracted
+ * from the duration rather than ending the night), and the longest
+ * block starting after 18:00 yesterday and ending before 14:00 today is
+ * taken as last night's sleep. It's still "didn't touch the phone", not
+ * sleep — no deep/light stages, and reading on another device looks
+ * like sleeping. The UI labels it 熄屏推算 accordingly.
  *
  * Event types used (added in API 28):
  *   SCREEN_NON_INTERACTIVE = 16  → start of a sleep candidate span
@@ -129,15 +133,32 @@ class SleepEstimatePlugin : Plugin() {
             if (now > off) spans.add(Span(off, now))
         }
 
+        // Merge spans separated by brief wake-ups (≤ 30 min). A 3am
+        // glance at the phone used to split the night in two and only the
+        // longer half survived, under-reporting by hours vs any band or
+        // watch. The awake gaps are subtracted from the block's duration.
+        class Block(var off: Long, var on: Long, var awakeMs: Long)
+        val blocks = mutableListOf<Block>()
+        for (s in spans.sortedBy { it.off }) {
+            val last = blocks.lastOrNull()
+            if (last != null && s.off >= last.on && s.off - last.on <= MERGE_GAP_MS) {
+                last.awakeMs += s.off - last.on
+                if (s.on > last.on) last.on = s.on
+            } else {
+                blocks.add(Block(s.off, s.on, 0L))
+            }
+        }
+        fun netMs(b: Block): Long = (b.on - b.off) - b.awakeMs
+
         // Pick the best sleep candidate:
-        //   - duration ≥ 3h
+        //   - net duration ≥ 3h
         //   - starts after 18:00 yesterday (relaxed) and before 06:00 today
         //   - ends after 03:00 today
-        // Among matches, take the LONGEST. Fall back to any longest span
+        // Among matches, take the LONGEST. Fall back to any longest block
         // ≥ 3h if no window match.
-        val sleepWindowOk = spans.filter { isWithinSleepWindow(it.off, it.on) && it.ms >= MIN_SLEEP_MS }
-        val best = sleepWindowOk.maxByOrNull { it.ms }
-            ?: spans.filter { it.ms >= MIN_SLEEP_MS }.maxByOrNull { it.ms }
+        val sleepWindowOk = blocks.filter { isWithinSleepWindow(it.off, it.on) && netMs(it) >= MIN_SLEEP_MS }
+        val best = sleepWindowOk.maxByOrNull { netMs(it) }
+            ?: blocks.filter { netMs(it) >= MIN_SLEEP_MS }.maxByOrNull { netMs(it) }
 
         val ret = JSObject()
         if (best == null) {
@@ -150,7 +171,7 @@ class SleepEstimatePlugin : Plugin() {
                 .apply { timeZone = TimeZone.getDefault() }
             val startIso = isoFmt.format(Date(best.off))
             val endIso = isoFmt.format(Date(best.on))
-            val minutes = best.ms / 60_000L
+            val minutes = netMs(best) / 60_000L
             ret.put("startTime", startIso)
             ret.put("endTime", endIso)
             ret.put("durationMinutes", minutes)
@@ -202,5 +223,8 @@ class SleepEstimatePlugin : Plugin() {
         private const val KEYGUARD_HIDDEN = 18
         private const val H = 60L * 60L * 1000L
         private const val MIN_SLEEP_MS = 3L * H
+        // Screen-on gaps up to this long inside the night count as a brief
+        // awakening, not the end of sleep.
+        private const val MERGE_GAP_MS = 30L * 60L * 1000L
     }
 }

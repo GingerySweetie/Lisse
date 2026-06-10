@@ -48,11 +48,34 @@ function mergeWeight(entries: WeightEntry[]): typeof DEMO.weight {
   };
 }
 
-/** Build a sleep.* shape from the native sleep estimate. We only know
- *  total start/end; without sleep stages we approximate "深睡" as 45%
- *  of total and render a single non-deep segment. Good enough for the
- *  card; sleep stages can come later. */
-function mergeSleep(s: SleepSession): typeof DEMO.sleep {
+/** What the sleep card renders. Stage fields are nullable because the
+ *  native estimate is screen-off inference — it has no idea about deep
+ *  vs light sleep, and pretending otherwise (an earlier revision showed
+ *  "深睡" hardcoded at 45% of the total) just makes the card disagree
+ *  with every band/watch she compares it against. */
+interface SleepView {
+  startHHMM: string;
+  endHHMM: string;
+  totalH: number;
+  totalM: number;
+  /** null = source has no stage data; hides the 深睡 caption + legend. */
+  deepH: number | null;
+  deepM: number;
+  /** null = no yesterday baseline to compare against. */
+  deltaMinVsYesterday: number | null;
+  segs: { o: number; d: number; deep: boolean }[];
+  windowH: number;
+  /** True when the numbers are screen-off inference, not a real tracker. */
+  estimated?: boolean;
+  /** Timeline tick labels; defaults to the mockup's 23:00–07:00. */
+  scaleLabels?: string[];
+}
+
+/** Build the card shape from the native sleep estimate. Single flat
+ *  segment over the wall-clock span (durationMinutes excludes brief
+ *  night wakes, so it can be shorter than end−start), no stage claims,
+ *  and tick labels computed from the actual start time. */
+function mergeSleep(s: SleepSession): SleepView {
   const start = new Date(s.startTime);
   const end = new Date(s.endTime);
   const fmt = (d: Date) =>
@@ -60,20 +83,23 @@ function mergeSleep(s: SleepSession): typeof DEMO.sleep {
   const totalMin = Math.max(0, s.durationMinutes);
   const totalH = Math.floor(totalMin / 60);
   const totalM = totalMin % 60;
-  const deepMin = Math.round(totalMin * 0.45);
-  const deepH = Math.floor(deepMin / 60);
-  const deepM = deepMin % 60;
-  const windowH = Math.max(8.5, totalMin / 60 + 0.5);
+  const spanH = Math.max(0, (end.getTime() - start.getTime()) / 3_600_000);
+  const windowH = Math.max(8.5, spanH + 0.5);
+  const scaleLabels = Array.from({ length: 5 }, (_, i) =>
+    fmt(new Date(start.getTime() + (windowH * 3_600_000 * i) / 4)),
+  );
   return {
     startHHMM: fmt(start),
     endHHMM: fmt(end),
     totalH,
     totalM,
-    deepH,
-    deepM,
-    deltaMinVsYesterday: 0,
-    segs: [{ o: 0, d: totalMin / 60, deep: false }],
+    deepH: null,
+    deepM: 0,
+    deltaMinVsYesterday: null,
+    segs: [{ o: 0, d: spanH, deep: false }],
     windowH,
+    estimated: true,
+    scaleLabels,
   };
 }
 
@@ -488,7 +514,7 @@ function SleepCard({
   needsAuth,
   onConnect,
 }: {
-  data: typeof DEMO.sleep;
+  data: SleepView;
   needsAuth?: boolean;
   onConnect?: () => void;
 }) {
@@ -517,6 +543,7 @@ function SleepCard({
         ) : (
           <span className="wis-hcard-aside">
             {data.startHHMM} — {data.endHHMM}
+            {data.estimated && ' · 熄屏推算'}
           </span>
         )}
       </div>
@@ -543,11 +570,11 @@ function SleepCard({
           </svg>
         </div>
         <div className="wis-sleep-scale">
-          <span>23:00</span>
-          <span>01:00</span>
-          <span>03:00</span>
-          <span>05:00</span>
-          <span>07:00</span>
+          {(data.scaleLabels ?? ['23:00', '01:00', '03:00', '05:00', '07:00']).map(
+            (t, i) => (
+              <span key={i}>{t}</span>
+            ),
+          )}
         </div>
       </div>
       <div className="wis-sleep-tot">
@@ -558,21 +585,37 @@ function SleepCard({
           <span style={{ fontSize: 16, color: 'var(--text-3)' }}>分</span>
         </span>
         <span className="wis-sleep-cap">
-          深睡 {data.deepH} 时 {data.deepM} 分 · 较昨日{' '}
-          {data.deltaMinVsYesterday >= 0 ? '+' : ''}
-          {data.deltaMinVsYesterday} 分
+          {data.deepH != null
+            ? `深睡 ${data.deepH} 时 ${data.deepM} 分`
+            : '按整夜没碰手机的时段推算 · 不分深浅睡'}
+          {data.deltaMinVsYesterday != null && (
+            <>
+              {' '}
+              · 较昨日 {data.deltaMinVsYesterday >= 0 ? '+' : ''}
+              {data.deltaMinVsYesterday} 分
+            </>
+          )}
         </span>
       </div>
-      <div className="wis-legend">
-        <span>
-          <i style={{ background: 'var(--lav-600)' }} />
-          深睡
-        </span>
-        <span>
-          <i style={{ background: 'var(--lav-300)' }} />
-          浅睡
-        </span>
-      </div>
+      {data.deepH != null ? (
+        <div className="wis-legend">
+          <span>
+            <i style={{ background: 'var(--lav-600)' }} />
+            深睡
+          </span>
+          <span>
+            <i style={{ background: 'var(--lav-300)' }} />
+            浅睡
+          </span>
+        </div>
+      ) : (
+        <div className="wis-legend">
+          <span>
+            <i style={{ background: 'var(--lav-300)' }} />
+            熄屏时段（≤30 分钟的夜醒已并入）
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -5,7 +5,10 @@ import { registerPlugin, type PluginListenerHandle } from '@capacitor/core';
  *
  * The native plugin persists a baseline per calendar day so `getSteps()`
  * returns today's step count (not the boot-cumulative value the sensor
- * actually reports). The `stepUpdate` event also fires today's count.
+ * actually reports). The baseline anchors at the last reading seen on a
+ * previous day — the hardware counts while the app is closed, so steps
+ * walked before the app is first opened today still land in today's
+ * total. The `stepUpdate` event also fires today's count.
  *
  * Permission: ACTIVITY_RECOGNITION (Android 10+). Call start() once to
  * trigger the runtime prompt the first time.

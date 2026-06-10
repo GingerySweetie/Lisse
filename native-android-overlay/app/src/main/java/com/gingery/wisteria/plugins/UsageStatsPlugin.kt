@@ -34,9 +34,27 @@ import java.util.Locale
  *   getUnlockCount(start, end)        — KEYGUARD_HIDDEN events in window
  *   getTodayUsage()      — convenience: today 00:00 → now
  *   getWeekUsage()       — last 7 days, daily totals
- *   getHourlyDistribution() — today's per-hour ms (reconstructed from
- *                            UsageEvents MOVE_TO_FG/BG pairs)
+ *   getHourlyDistribution() — today's per-hour ms
  *   getUnlocks()         — today's keyguard unlock count + first-unlock HH:MM
+ *
+ * Accuracy: every usage query reconstructs foreground time from the raw
+ * UsageEvents stream — ACTIVITY_RESUMED opens a span, ACTIVITY_PAUSED /
+ * ACTIVITY_STOPPED closes it, screen-off / shutdown force-close everything
+ * — clipped to the asked window. The previous revision summed
+ * `totalTimeInForeground` straight off `queryUsageStats(INTERVAL_DAILY,…)`,
+ * which is wrong twice over: the API returns every daily bucket that
+ * *intersects* the range (same package shows up repeatedly → plain summing
+ * double-counts), and bucket boundaries are the system's, not local
+ * midnight (week totals landed on the wrong day). Both made our numbers
+ * drift far from 数字健康.
+ *
+ * The system only retains usage events for a few days, so windows whose
+ * events have been evicted fall back to queryAndAggregateUsageStats —
+ * still deduped per package, just coarser day attribution.
+ *
+ * Our own package is included everywhere: system screen time counts it,
+ * excluding ourselves made totals run low. (Roast logic exempts Wisteria
+ * separately via the JS READER_PACKAGES whitelist.)
  *
  * Permission: android.permission.PACKAGE_USAGE_STATS — special access,
  * declared in the manifest but granted via Settings, not at install time.
@@ -95,18 +113,12 @@ class UsageStatsPlugin : Plugin() {
             call.reject("endTime 必填")
             return
         }
-        val mgr = usageStatsManager() ?: run {
+        if (usageStatsManager() == null) {
             call.reject("UsageStatsManager 不可用")
             return
         }
-        val list = try {
-            mgr.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
-        } catch (e: Exception) {
-            call.reject("queryUsageStats 失败：${e.message}")
-            return
-        }
         val out = JSObject()
-        out.put("usage", buildAppUsageArray(list))
+        out.put("usage", buildAppUsageArray(usageForWindow(start, end)))
         call.resolve(out)
     }
 
@@ -154,25 +166,19 @@ class UsageStatsPlugin : Plugin() {
 
     @PluginMethod
     fun getTodayUsage(call: PluginCall) {
-        val mgr = usageStatsManager() ?: run {
+        if (usageStatsManager() == null) {
             call.reject("UsageStatsManager 不可用")
             return
         }
         val range = todayRange()
-        val list = try {
-            mgr.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, range[0], range[1])
-        } catch (e: Exception) {
-            call.reject("queryUsageStats 失败：${e.message}")
-            return
-        }
         val out = JSObject()
-        out.put("usage", buildAppUsageArray(list))
+        out.put("usage", buildAppUsageArray(usageForWindow(range[0], range[1])))
         call.resolve(out)
     }
 
     @PluginMethod
     fun getWeekUsage(call: PluginCall) {
-        val mgr = usageStatsManager() ?: run {
+        if (usageStatsManager() == null) {
             call.reject("UsageStatsManager 不可用")
             return
         }
@@ -182,37 +188,44 @@ class UsageStatsPlugin : Plugin() {
         c.set(Calendar.SECOND, 0)
         c.set(Calendar.MILLISECOND, 0)
         c.add(Calendar.DAY_OF_YEAR, -6)
-        val startWeek = c.timeInMillis
         val now = System.currentTimeMillis()
 
-        val totalByDate = HashMap<String, Long>()
-        val ownPkg = context.packageName
-        val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-
-        try {
-            val stats = mgr.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startWeek, now)
-            stats?.forEach { s ->
-                val pkg = s.packageName ?: return@forEach
-                if (pkg == ownPkg) return@forEach
-                val fg = s.totalTimeInForeground
-                if (fg <= 0) return@forEach
-                val date = fmt.format(Date(s.firstTimeStamp))
-                totalByDate[date] = (totalByDate[date] ?: 0L) + fg
-            }
-        } catch (e: Exception) {
-            call.reject("queryUsageStats 失败：${e.message}")
-            return
+        // Local-midnight boundaries: bounds[i]..bounds[i+1] = day i.
+        val bounds = LongArray(8)
+        val iter = c.clone() as Calendar
+        for (i in 0..7) {
+            bounds[i] = iter.timeInMillis
+            iter.add(Calendar.DAY_OF_YEAR, 1)
         }
 
+        // One event sweep over the whole week; spans crossing midnight get
+        // split across the day buckets they overlap.
+        val totals = LongArray(7)
+        for (s in collectForegroundSpans(bounds[0], now)) {
+            for (i in 0 until 7) {
+                val a = maxOf(s.start, bounds[i])
+                val b = minOf(s.end, bounds[i + 1])
+                if (b > a) totals[i] += b - a
+            }
+        }
+
+        val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val days = JSArray()
-        val iter = c.clone() as Calendar
         for (i in 0 until 7) {
-            val date = fmt.format(iter.time)
+            var total = totals[i]
+            if (total == 0L) {
+                // Events for that day already evicted (system keeps them
+                // only a few days) — fall back to the deduped aggregate.
+                val end = minOf(bounds[i + 1], now)
+                if (end > bounds[i]) {
+                    total = aggregatedStatsFallback(bounds[i], end)
+                        .values.sumOf { it.totalMs }
+                }
+            }
             val day = JSObject()
-            day.put("date", date)
-            day.put("totalMs", totalByDate[date] ?: 0L)
+            day.put("date", fmt.format(Date(bounds[i])))
+            day.put("totalMs", total)
             days.put(day)
-            iter.add(Calendar.DAY_OF_YEAR, 1)
         }
         val ret = JSObject()
         ret.put("days", days)
@@ -221,41 +234,15 @@ class UsageStatsPlugin : Plugin() {
 
     @PluginMethod
     fun getHourlyDistribution(call: PluginCall) {
-        val mgr = usageStatsManager() ?: run {
+        if (usageStatsManager() == null) {
             call.reject("UsageStatsManager 不可用")
             return
         }
         val range = todayRange()
-        val startOfDay = range[0]
         val buckets = LongArray(24)
-        val ownPkg = context.packageName
-
-        try {
-            val events = mgr.queryEvents(startOfDay, range[1])
-            val ev = UsageEvents.Event()
-            val foregroundSince = HashMap<String, Long>()
-            while (events.hasNextEvent()) {
-                events.getNextEvent(ev)
-                val pkg = ev.packageName ?: continue
-                if (pkg == ownPkg) continue
-                when (ev.eventType) {
-                    UsageEvents.Event.MOVE_TO_FOREGROUND -> {
-                        foregroundSince[pkg] = ev.timeStamp
-                    }
-                    UsageEvents.Event.MOVE_TO_BACKGROUND -> {
-                        foregroundSince.remove(pkg)?.let { start ->
-                            distributeSpan(buckets, start, ev.timeStamp, startOfDay)
-                        }
-                    }
-                }
-            }
-            val now = System.currentTimeMillis()
-            foregroundSince.values.forEach { distributeSpan(buckets, it, now, startOfDay) }
-        } catch (e: Exception) {
-            call.reject("queryEvents 失败：${e.message}")
-            return
+        for (s in collectForegroundSpans(range[0], range[1])) {
+            distributeSpan(buckets, s.start, s.end, range[0])
         }
-
         val hours = JSArray()
         buckets.forEach { hours.put(it) }
         val ret = JSObject()
@@ -299,6 +286,111 @@ class UsageStatsPlugin : Plugin() {
         call.resolve(ret)
     }
 
+    // ─── Foreground-span engine ───────────────────────────────────────
+
+    private class FgSpan(val pkg: String, val start: Long, val end: Long)
+
+    private class PkgAgg(var totalMs: Long = 0L, var lastEnd: Long = 0L)
+
+    /**
+     * Rebuild per-app foreground spans inside [rangeStart, rangeEnd] from
+     * the raw event stream. Events are scanned from a few hours before
+     * rangeStart so an app already open at the boundary (e.g. across
+     * midnight) still contributes its in-range share; spans are clipped
+     * to the window before being returned.
+     *
+     * Spans are keyed per activity, not per package: switching from
+     * activity A to activity B inside the same app fires A's PAUSED after
+     * B's RESUMED on some sequences, and a package-keyed map would close
+     * the whole app's span on A's exit.
+     */
+    private fun collectForegroundSpans(rangeStart: Long, rangeEnd: Long): List<FgSpan> {
+        val mgr = usageStatsManager() ?: return emptyList()
+        val clippedEnd = minOf(rangeEnd, System.currentTimeMillis())
+        if (clippedEnd <= rangeStart) return emptyList()
+        val events = try {
+            mgr.queryEvents(rangeStart - BOUNDARY_LOOKBACK_MS, clippedEnd)
+        } catch (_: Exception) {
+            return emptyList()
+        }
+
+        val open = HashMap<String, Long>() // "pkg|activityClass" → resumed-at
+        val raw = ArrayList<FgSpan>()
+
+        fun closeAll(t: Long) {
+            for ((key, since) in open) {
+                if (t > since) raw.add(FgSpan(key.substringBefore('|'), since, t))
+            }
+            open.clear()
+        }
+
+        val ev = UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(ev)
+            val pkg = ev.packageName ?: continue
+            val key = pkg + "|" + (ev.className ?: "")
+            when (ev.eventType) {
+                // MOVE_TO_FOREGROUND/BACKGROUND are the pre-API-29 names of
+                // ACTIVITY_RESUMED/PAUSED — same int values (1 / 2).
+                UsageEvents.Event.MOVE_TO_FOREGROUND ->
+                    if (!open.containsKey(key)) open[key] = ev.timeStamp
+                UsageEvents.Event.MOVE_TO_BACKGROUND, ACTIVITY_STOPPED ->
+                    open.remove(key)?.let { since ->
+                        if (ev.timeStamp > since) raw.add(FgSpan(pkg, since, ev.timeStamp))
+                    }
+                // Screen off / shutdown ends everyone's foreground time even
+                // when the OEM never delivers the PAUSED for it.
+                SCREEN_NON_INTERACTIVE, DEVICE_SHUTDOWN -> closeAll(ev.timeStamp)
+            }
+        }
+        closeAll(clippedEnd)
+
+        val out = ArrayList<FgSpan>(raw.size)
+        for (s in raw) {
+            val a = maxOf(s.start, rangeStart)
+            val b = minOf(s.end, clippedEnd)
+            if (b > a) out.add(FgSpan(s.pkg, a, b))
+        }
+        return out
+    }
+
+    private fun aggregateSpans(spans: List<FgSpan>): HashMap<String, PkgAgg> {
+        val byPkg = HashMap<String, PkgAgg>()
+        for (s in spans) {
+            val agg = byPkg.getOrPut(s.pkg) { PkgAgg() }
+            agg.totalMs += s.end - s.start
+            if (s.end > agg.lastEnd) agg.lastEnd = s.end
+        }
+        return byPkg
+    }
+
+    /** Dedup-safe fallback for windows whose events have been evicted.
+     *  queryAndAggregateUsageStats merges all intersecting buckets into a
+     *  single per-package entry, so unlike raw queryUsageStats it can't
+     *  double-count. Same totalTimeInForeground semantics as the span
+     *  engine (resumed time), keeping the two paths comparable. */
+    private fun aggregatedStatsFallback(start: Long, end: Long): Map<String, PkgAgg> {
+        val byPkg = HashMap<String, PkgAgg>()
+        val mgr = usageStatsManager() ?: return byPkg
+        val stats: Map<String, UsageStats> = try {
+            mgr.queryAndAggregateUsageStats(start, end) ?: return byPkg
+        } catch (_: Exception) {
+            return byPkg
+        }
+        for ((pkg, s) in stats) {
+            val fg = s.totalTimeInForeground
+            if (fg <= 0) continue
+            byPkg[pkg] = PkgAgg(fg, s.lastTimeUsed)
+        }
+        return byPkg
+    }
+
+    private fun usageForWindow(start: Long, end: Long): Map<String, PkgAgg> {
+        val byPkg = aggregateSpans(collectForegroundSpans(start, end))
+        if (byPkg.isNotEmpty()) return byPkg
+        return aggregatedStatsFallback(start, minOf(end, System.currentTimeMillis()))
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────
 
     private fun usageStatsManager(): UsageStatsManager? {
@@ -316,7 +408,7 @@ class UsageStatsPlugin : Plugin() {
 
     private fun distributeSpan(buckets: LongArray, startRaw: Long, end: Long, startOfDay: Long) {
         if (end <= startRaw || end <= startOfDay) return
-        var start = if (startRaw < startOfDay) startOfDay else startRaw
+        val start = if (startRaw < startOfDay) startOfDay else startRaw
         var cursor = start
         while (cursor < end) {
             val c = Calendar.getInstance().apply { timeInMillis = cursor }
@@ -332,20 +424,17 @@ class UsageStatsPlugin : Plugin() {
         }
     }
 
-    private fun buildAppUsageArray(stats: List<UsageStats>?): JSArray {
+    /** One row per package, biggest first. */
+    private fun buildAppUsageArray(byPkg: Map<String, PkgAgg>): JSArray {
         val arr = JSArray()
-        if (stats == null) return arr
         val pm = context.packageManager
-        val ownPkg = context.packageName
-        for (s in stats) {
-            val pkg = s.packageName ?: continue
-            if (pkg == ownPkg) continue
-            val fg = s.totalTimeInForeground
-            if (fg <= 0) continue
+        val entries = byPkg.entries.sortedByDescending { it.value.totalMs }
+        for ((pkg, agg) in entries) {
+            if (agg.totalMs <= 0) continue
             val o = JSObject()
             o.put("packageName", pkg)
-            o.put("foregroundMs", fg)
-            o.put("lastTimeUsed", s.lastTimeUsed)
+            o.put("foregroundMs", agg.totalMs)
+            o.put("lastTimeUsed", agg.lastEnd)
 
             var appName: String = pkg
             var iconBase64: String? = null
@@ -382,8 +471,15 @@ class UsageStatsPlugin : Plugin() {
     }
 
     companion object {
-        // KEYGUARD_HIDDEN was added in API 28. Use the literal to stay
-        // compatible with older compile targets.
+        // Event-type values kept as literals for older compileSdk:
+        // SCREEN_NON_INTERACTIVE=16, KEYGUARD_HIDDEN=18 (API 28);
+        // ACTIVITY_STOPPED=23, DEVICE_SHUTDOWN=26 (API 29).
         private const val KEYGUARD_HIDDEN = 18
+        private const val SCREEN_NON_INTERACTIVE = 16
+        private const val ACTIVITY_STOPPED = 23
+        private const val DEVICE_SHUTDOWN = 26
+        // How far before a window we scan events so apps already in the
+        // foreground at the boundary still get their in-range share.
+        private const val BOUNDARY_LOOKBACK_MS = 12L * 60L * 60L * 1000L
     }
 }

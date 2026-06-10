@@ -21,9 +21,11 @@ import './st-aqua.css';
 
 /**
  * 屏幕使用时间 — DOM and CSS classes mirror `staquaapp.jsx` + `staqua.css`
- * verbatim. Mockup data swapped for real UsageStatsManager numbers where
- * available; week bars / 24h dist / unlocks / typing are stubbed with
- * sensible-but-honest fallbacks when we can't compute them yet.
+ * verbatim. All numbers come from the native UsageStats plugin, which
+ * rebuilds foreground time from the raw event stream (deduped, bucketed
+ * at local midnight) — the big total, the week bars and the 24h dist all
+ * share that one source, so they agree with each other. Typing is the
+ * one in-app metric: it counts chat characters in this app only.
  */
 
 /* ═══════ Icons ═══════ */
@@ -244,7 +246,7 @@ function Typing({
       <div className="st-typing-item">
         <div className="st-typing-val">{data.today.toLocaleString()}</div>
         <div className="st-typing-label">
-          {isWeekly ? '本周总字数' : '今日打字'}
+          {isWeekly ? '本周字数' : '今日字数'}
         </div>
       </div>
       <div className="st-typing-item">
@@ -379,7 +381,10 @@ export default function ScreenTimePage() {
     () => new Array<number>(24).fill(0),
   );
   const [unlocks, setUnlocks] = useState<UnlockSummary>({ count: 0, firstAt: null });
-  // Typing: sum of user message content lengths in db.messages.
+  // Typing: sum of user message content lengths in db.messages — only what
+  // she types in THIS app's chats. Android has no public system-wide
+  // keystroke source (that'd take shipping an IME), so the section is
+  // labeled 应用内聊天 instead of pretending to be a global counter.
   // Today = sum where createdAt ≥ today 00:00. Avg = last 7 days / 7.
   // Lives in dexie; useLiveQuery re-runs when she sends a new message.
   const typing = useLiveQuery(
@@ -466,9 +471,9 @@ export default function ScreenTimePage() {
   const totalMs = usage.reduce((a, b) => a + b.foregroundMs, 0);
   const { h: totalH, m: totalM } = formatHM(totalMs);
 
-  // Prefer the week-aggregate's "today" total because it sums across
-  // every package (not just the apps surfaced in getTodayUsage). If week
-  // data isn't loaded yet, fall back to the per-app sum.
+  // getTodayUsage and getWeekUsage's last bar share the native span
+  // engine, so they agree; the week value only backstops the ranking
+  // denominator while today's per-app list is still loading.
   const todayMsFromWeek = weekDays[weekDays.length - 1]?.totalMs ?? 0;
   const weekBars = buildWeekBars(weekDays);
   const comparison = buildComparison(weekDays);
@@ -590,7 +595,7 @@ export default function ScreenTimePage() {
 
           <div className="st-div" />
 
-          <div className="st-section-title">打字</div>
+          <div className="st-section-title">打字 · 应用内聊天</div>
           <Typing data={typing} isWeekly={false} />
 
           <div className="st-div" />

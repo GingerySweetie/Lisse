@@ -4,6 +4,12 @@ import { registerPlugin } from '@capacitor/core';
  * UsageStats — bridges Android's UsageStatsManager. The user must grant
  * "Usage access" via Settings (special access permission); manifest
  * declaration alone is not enough.
+ *
+ * All usage queries reconstruct foreground time natively from the raw
+ * UsageEvents stream (resumed → paused/stopped, clipped to the asked
+ * window), so results come back one row per package with no duplicate
+ * buckets, day totals split at local midnight, and this app itself
+ * included — same accounting the system's 数字健康 page uses.
  */
 
 export interface AppUsage {

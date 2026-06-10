@@ -14,6 +14,9 @@ export interface SleepSession {
   /** ISO-8601 with offset. */
   startTime: string;
   endTime: string;
+  /** Net screen-off minutes: brief night wakes (≤ 30 min screen-on gaps)
+   *  are merged into the block and subtracted, so this can be smaller
+   *  than endTime − startTime. */
   durationMinutes: number;
 }
 
@@ -26,7 +29,9 @@ export interface SleepPlugin {
    *  is pure native and doesn't depend on Health Connect being installed. */
   isAvailable(): Promise<{ available: boolean }>;
   /** Estimate last night's sleep from screen lock/unlock events.
-   *  Returns null session if no qualifying span (≥ 3h within the
+   *  Screen-off spans separated by ≤ 30 min get merged into one block
+   *  first, so checking the phone at 3am doesn't split the night.
+   *  Returns null session if no qualifying block (net ≥ 3h within the
    *  yesterday-18:00 → today-14:00 window) was found. */
   estimateLastNightSleep(): Promise<{
     session: SleepSession | null;
