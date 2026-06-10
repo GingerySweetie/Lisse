@@ -178,6 +178,17 @@ export interface AppSettings {
    *  needs the user to tap the update banner — the app reloads itself
    *  as soon as the new version is detected. Default on. */
   autoApplyUpdate: boolean;
+
+  // ─── Bill-capture source toggles ───
+  /** Notification-listener path for Alipay + WeChat. Default ON. */
+  billSrcAlipayWechat: boolean;
+  /** Notification-listener path for banks (招行 etc., once package added).
+   *  Default ON, but no effect until the user reports a real package name. */
+  billSrcBankNotification: boolean;
+  /** Screen-read fallback (AccessibilityService) for Alipay/WeChat
+   *  foreground only. Default OFF — user must opt in twice (here +
+   *  system Settings). */
+  billSrcScreenAccessibility: boolean;
 }
 
 export interface Persona {

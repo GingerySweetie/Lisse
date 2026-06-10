@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import BillSniffer, { type CapturedBill } from '../lib/native/bill-sniffer';
-import { db } from '../db';
+import { db, getSettings } from '../db';
 import { newId } from '../lib/id';
-import type { ExpenseCategory } from '../types';
+import type { ExpenseCategory, IncomeCategory } from '../types';
 
 /**
  * Listens for Android payment-notification captures and:
@@ -27,6 +27,18 @@ export default function BillReceiver() {
 
     async function persistAndQueue(b: CapturedBill, popup: boolean) {
       try {
+        // Honor the per-source toggles. The native side captures
+        // everything (still useful for the debug log); the JS side
+        // decides whether each capture turns into a real bill row.
+        const settings = await getSettings();
+        const sourceEnabled =
+          (b.source === 'alipay' || b.source === 'wechat')
+            ? settings.billSrcAlipayWechat
+            : b.source === 'bank'
+              ? settings.billSrcBankNotification
+              : false;
+        if (!sourceEnabled) return;
+
         const sinceMs = Date.now() - 60_000;
         const recent = await db.bills
           .where('createdAt')
@@ -38,13 +50,16 @@ export default function BillReceiver() {
         if (!dup) {
           const d = new Date(b.timestamp || Date.now());
           const ds = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+          const kind: 'expense' | 'income' = b.kind === 'income' ? 'income' : 'expense';
           await db.bills.add({
             id: newId(),
             date: ds,
             item: b.merchant,
             amount: b.amount,
-            category: guessCategory(b.merchant),
-            kind: 'expense',
+            category: kind === 'income'
+              ? guessIncomeCategory(b.merchant)
+              : guessCategory(b.merchant),
+            kind,
             source: 'auto',
             createdAt: b.timestamp || Date.now(),
           });
@@ -271,4 +286,12 @@ function guessCategory(merchant: string): ExpenseCategory {
     return '娱乐';
   if (/(医|院|诊|挂号|药店|体检)/.test(m)) return '医疗';
   return '日用';
+}
+
+function guessIncomeCategory(merchant: string): IncomeCategory {
+  if (/(工资|薪|奖金)/.test(merchant)) return '工资';
+  if (/(红包)/.test(merchant)) return '红包';
+  if (/(退款|退还)/.test(merchant)) return '退款';
+  if (/(兼职|稿费)/.test(merchant)) return '兼职';
+  return '其他';
 }

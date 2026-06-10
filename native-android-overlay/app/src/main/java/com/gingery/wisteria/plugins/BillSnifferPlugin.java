@@ -44,6 +44,7 @@ public class BillSnifferPlugin extends Plugin {
                 bill.put("amount", intent.getDoubleExtra("amount", 0));
                 bill.put("merchant", intent.getStringExtra("merchant"));
                 bill.put("source", intent.getStringExtra("source"));
+                bill.put("kind", intent.getStringExtra("kind"));
                 bill.put("timestamp", intent.getLongExtra("timestamp", 0));
                 notifyListeners("billCaptured", bill);
             }
@@ -90,6 +91,7 @@ public class BillSnifferPlugin extends Plugin {
             o.put("amount", b.amount);
             o.put("merchant", b.merchant);
             o.put("source", b.source);
+            o.put("kind", b.kind);
             o.put("timestamp", b.timestamp);
             arr.put(o);
         }

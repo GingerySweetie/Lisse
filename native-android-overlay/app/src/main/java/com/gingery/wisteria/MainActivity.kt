@@ -3,6 +3,7 @@ package com.gingery.wisteria
 import android.content.Intent
 import android.os.Bundle
 import com.getcapacitor.BridgeActivity
+import com.gingery.wisteria.plugins.AccessibilityCapturePlugin
 import com.gingery.wisteria.plugins.BillSnifferPlugin
 import com.gingery.wisteria.plugins.ShareIntentPlugin
 import com.gingery.wisteria.plugins.SleepEstimatePlugin
@@ -16,6 +17,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(SleepEstimatePlugin::class.java)
         registerPlugin(ShareIntentPlugin::class.java)
         registerPlugin(BillSnifferPlugin::class.java)
+        registerPlugin(AccessibilityCapturePlugin::class.java)
         super.onCreate(savedInstanceState)
     }
 

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Payment-screen reader scope.
+  - typeWindowContentChanged + typeWindowStateChanged: only events we care
+    about. Not typeViewClicked / typeViewTextChanged etc.
+  - packageNames restricts the OS to ONLY deliver events from these two
+    apps. Anything else in the foreground = no events arrive at all.
+    Defense in depth on top of the in-service package check.
+  - canRetrieveWindowContent + flagDefault: minimal required surface for
+    reading visible text. No haptic / gesture / IME interception.
+  - description / settingsActivity stay null — there's no in-system
+    settings affordance; the toggle lives in the Wisteria settings page.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged"
+    android:packageNames="com.eg.android.AlipayGphone,com.tencent.mm"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="100"
+    android:canRetrieveWindowContent="true"
+    android:accessibilityFlags="flagDefault"
+    android:description="@string/payment_accessibility_description" />

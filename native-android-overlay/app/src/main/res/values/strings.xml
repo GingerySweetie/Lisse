@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="payment_accessibility_description">仅在前台为支付宝或微信时，识别支付成功页面上的金额数字。不截图、不上传、不保存屏幕内容。</string>
+</resources>
