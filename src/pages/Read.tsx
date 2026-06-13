@@ -72,7 +72,10 @@ export default function ReadPage() {
         : ep.chatModels[0] ?? null;
     setModel(m);
     setPersonaId(conversation?.personaId ?? settings.defaultPersonaId);
-    setStyleId(conversation?.styleId ?? settings.defaultStyleId);
+    // Single source of truth: settings.defaultStyleId. The old
+    // conversation.styleId fallback pinned the first style ever used
+    // in this conversation forever.
+    setStyleId(settings.defaultStyleId);
   }, [endpoints, settings, conversation]);
 
   function selectedPersona() {
@@ -348,7 +351,13 @@ export default function ReadPage() {
             onChange={setPersonaId}
             groupPersonaIds={conversation?.personaIds}
           />
-          <StylePicker styleId={styleId} onChange={setStyleId} />
+          <StylePicker
+            styleId={styleId}
+            onChange={async (id) => {
+              setStyleId(id);
+              await saveSettings({ defaultStyleId: id });
+            }}
+          />
           <EndpointPicker
             endpointId={endpointId}
             model={model}
