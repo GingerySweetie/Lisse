@@ -190,6 +190,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           { to: '/styles', glyph: '✦', label: '写作风格' },
           { to: '/memory', glyph: '◎', label: '记忆' },
           { to: '/mcp', glyph: '⌬', label: 'MCP' },
+          { to: '/browser', glyph: '◗', label: '浏览器' },
           { to: '/data', glyph: '⇄', label: '导入 / 导出' },
           { to: '/settings', glyph: '⊙', label: 'Endpoints' },
         ].map((item) => (

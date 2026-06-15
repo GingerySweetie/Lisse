@@ -11,6 +11,8 @@ import type {
   Message,
   Persona,
   PeriodEntry,
+  BrowserBookmark,
+  BrowserScript,
   WeightEntry,
   WritingStyle,
 } from '../types';
@@ -33,6 +35,8 @@ class LisseDB extends Dexie {
   periodEntries!: EntityTable<PeriodEntry, 'id'>;
   weightEntries!: EntityTable<WeightEntry, 'id'>;
   mcpServers!: EntityTable<McpServer, 'id'>;
+  browserBookmarks!: EntityTable<BrowserBookmark, 'id'>;
+  browserScripts!: EntityTable<BrowserScript, 'id'>;
   kv!: EntityTable<KVRow, 'key'>;
 
   constructor() {
@@ -191,9 +195,36 @@ class LisseDB extends Dexie {
       kv: 'key',
     });
 
+    this.version(13)
+      .stores({
+        endpoints: 'id, name, format, createdAt',
+        conversations: 'id, updatedAt, createdAt, source, personaId, styleId, bookId, room, [room+personaId]',
+        messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+        personas: 'id, name, builtin, createdAt',
+        memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+        writingStyles: 'id, name, builtin, createdAt',
+        books: 'id, title, createdAt, updatedAt, conversationId',
+        bills: 'id, date, category, createdAt',
+        bookmarks: 'id, bookId, position, createdAt, [bookId+position]',
+        periodEntries: 'id, startDate, createdAt',
+        weightEntries: 'id, date, createdAt',
+        mcpServers: 'id, name, enabled, createdAt',
+        browserBookmarks: 'id, position, createdAt',
+        browserScripts: 'id, name, autoRun, createdAt',
+        kv: 'key',
+      })
+      .upgrade(async (tx) => {
+        const bm = tx.table('browserBookmarks');
+        const now = Date.now();
+        for (const b of BUILTIN_BROWSER_BOOKMARKS) {
+          await bm.put({ ...b, createdAt: now, updatedAt: now });
+        }
+      });
+
     this.on('populate', async (tx) => {
       const personas = tx.table('personas');
       const styles = tx.table('writingStyles');
+      const browserBookmarks = tx.table('browserBookmarks');
       const now = Date.now();
       for (const p of BUILTIN_PERSONAS) {
         await personas.put({ ...p, createdAt: now, updatedAt: now });
@@ -201,9 +232,19 @@ class LisseDB extends Dexie {
       for (const s of BUILTIN_STYLES) {
         await styles.put({ ...s, createdAt: now, updatedAt: now });
       }
+      for (const b of BUILTIN_BROWSER_BOOKMARKS) {
+        await browserBookmarks.put({ ...b, createdAt: now, updatedAt: now });
+      }
     });
   }
 }
+
+const BUILTIN_BROWSER_BOOKMARKS: Omit<BrowserBookmark, 'createdAt' | 'updatedAt'>[] = [
+  { id: 'bm_claude',  name: 'Claude',   url: 'https://claude.ai',          glyph: 'C',  position: 0 },
+  { id: 'bm_chatgpt', name: 'ChatGPT',  url: 'https://chatgpt.com',        glyph: 'G',  position: 1 },
+  { id: 'bm_poe',     name: 'Poe',      url: 'https://poe.com',            glyph: 'P',  position: 2 },
+  { id: 'bm_gemini',  name: 'Gemini',   url: 'https://gemini.google.com',  glyph: '✦',  position: 3 },
+];
 
 const BUILTIN_PERSONAS: Omit<Persona, 'createdAt' | 'updatedAt'>[] = [
   {
@@ -376,6 +417,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   billSrcAlipayWechat: true,
   billSrcBankNotification: true,
   billSrcScreenAccessibility: false,
+  browserUserAgent: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {

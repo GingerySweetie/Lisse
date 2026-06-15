@@ -20,6 +20,8 @@ const StylesPage = lazy(() => import('./pages/Styles'));
 const McpPage = lazy(() => import('./pages/Mcp'));
 const ScreenTimePage = lazy(() => import('./pages/ScreenTime'));
 const BillSourcesPage = lazy(() => import('./pages/BillSources'));
+const BrowserPage = lazy(() => import('./pages/Browser'));
+const BrowserScriptsPage = lazy(() => import('./pages/BrowserScripts'));
 const BooksPage = lazy(() => import('./pages/Books'));
 const ReadPage = lazy(() => import('./pages/Read'));
 const BedroomPickerPage = lazy(() => import('./pages/Bedroom'));
@@ -71,6 +73,8 @@ export default function App() {
             <Route path="/bedroom/:personaId" element={<BedroomChatPage />} />
             <Route path="/billing" element={<BillingPage />} />
             <Route path="/bill-sources" element={<BillSourcesPage />} />
+            <Route path="/browser" element={<BrowserPage />} />
+            <Route path="/browser/scripts" element={<BrowserScriptsPage />} />
             <Route path="/body" element={<BodyPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:conversationId" element={<ChatPage />} />

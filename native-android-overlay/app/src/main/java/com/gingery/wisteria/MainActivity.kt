@@ -5,6 +5,7 @@ import android.os.Bundle
 import com.getcapacitor.BridgeActivity
 import com.gingery.wisteria.plugins.AccessibilityCapturePlugin
 import com.gingery.wisteria.plugins.BillSnifferPlugin
+import com.gingery.wisteria.plugins.InAppBrowserPlugin
 import com.gingery.wisteria.plugins.ShareIntentPlugin
 import com.gingery.wisteria.plugins.SleepEstimatePlugin
 import com.gingery.wisteria.plugins.StepCounterPlugin
@@ -18,6 +19,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(ShareIntentPlugin::class.java)
         registerPlugin(BillSnifferPlugin::class.java)
         registerPlugin(AccessibilityCapturePlugin::class.java)
+        registerPlugin(InAppBrowserPlugin::class.java)
         super.onCreate(savedInstanceState)
     }
 
