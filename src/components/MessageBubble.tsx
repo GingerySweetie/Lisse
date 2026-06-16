@@ -507,11 +507,12 @@ function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
 }
 
-/** Merge short consecutive paragraphs into flowing prose.
- *  Keeps real paragraph breaks (before/after headings, lists, code blocks,
- *  or when a paragraph is long enough to be intentional). */
+/** Merge short consecutive paragraphs into flowing prose, and collapse
+ *  in-paragraph single \n into spaces so prose reflows at the container
+ *  edge instead of breaking where the model emitted its newlines.
+ *  Lists / headings / quotes / fenced code keep their structural \n. */
 function mergeShortParagraphs(raw: string): string {
-  // Don't touch code blocks
+  // Don't touch fenced code blocks
   const parts = raw.split(/(```[\s\S]*?```)/);
   return parts.map((part, i) => {
     if (i % 2 === 1) return part; // code block, keep as-is
@@ -521,13 +522,22 @@ function mergeShortParagraphs(raw: string): string {
     let buffer: string[] = [];
     for (const p of paragraphs) {
       const trimmed = p.trim();
-      const isSpecial = /^#{1,6}\s|^[-*+]\s|^\d+\.\s|^>/.test(trimmed);
-      const isShort = trimmed.length < 80;
-      if (!isSpecial && isShort) {
-        buffer.push(trimmed);
+      // Structural if ANY line inside is a heading / list / blockquote.
+      // Tested per-line because a paragraph might be "intro\n- item".
+      const hasStructure = trimmed
+        .split('\n')
+        .some((line) => /^#{1,6}\s|^[-*+]\s|^\d+\.\s|^>/.test(line));
+      // Non-structural prose: collapse single \n inside the paragraph
+      // to a space so it reflows naturally.
+      const processed = hasStructure
+        ? trimmed
+        : trimmed.replace(/\n+/g, ' ');
+      const isShort = processed.length < 80;
+      if (!hasStructure && isShort) {
+        buffer.push(processed);
       } else {
         if (buffer.length) { merged.push(buffer.join(' ')); buffer = []; }
-        merged.push(trimmed);
+        merged.push(processed);
       }
     }
     if (buffer.length) merged.push(buffer.join(' '));
