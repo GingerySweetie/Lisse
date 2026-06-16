@@ -187,6 +187,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           { to: '/billing', glyph: '¥', label: '账单' },
           { to: '/personas', glyph: '◇', label: '人格' },
           { to: '/books', glyph: '☷', label: '书架' },
+          { to: '/music', glyph: '♪', label: '音乐' },
           { to: '/styles', glyph: '✦', label: '写作风格' },
           { to: '/memory', glyph: '◎', label: '记忆' },
           { to: '/mcp', glyph: '⌬', label: 'MCP' },

@@ -362,6 +362,28 @@ export interface BrowserScript {
   updatedAt: number;
 }
 
+/** NetEase Cloud Music login state. Singleton row (id = 'netease'). */
+export interface MusicCredentials {
+  id: 'netease';
+  userId: number;
+  nickname: string;
+  avatarUrl?: string;
+  /** vipType > 0 = VIP. Used to badge the user, not gate anything. */
+  vipType: number;
+  savedAt: number;
+}
+
+/** A track the user has played, for "recently played" + auto-complete. */
+export interface MusicHistoryEntry {
+  id: string;
+  songId: number;
+  name: string;
+  artist: string;
+  album: string;
+  picUrl?: string;
+  playedAt: number;
+}
+
 /**
  * Expense / billing record. Storage for the 账单 room — separate from
  * conversations so it can have its own schema and listing semantics.

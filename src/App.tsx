@@ -28,6 +28,7 @@ const BedroomPickerPage = lazy(() => import('./pages/Bedroom'));
 const BedroomChatPage = lazy(() => import('./pages/BedroomChat'));
 const BillingPage = lazy(() => import('./pages/Billing'));
 const BodyPage = lazy(() => import('./pages/Body'));
+const MusicPage = lazy(() => import('./pages/Music'));
 
 export default function App() {
   // Capture window-level errors + unhandled promise rejections so async
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="/browser" element={<BrowserPage />} />
             <Route path="/browser/scripts" element={<BrowserScriptsPage />} />
             <Route path="/body" element={<BodyPage />} />
+            <Route path="/music" element={<MusicPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:conversationId" element={<ChatPage />} />
             <Route path="/settings" element={<SettingsPage />} />
