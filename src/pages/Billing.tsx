@@ -1,940 +1,630 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Capacitor } from '@capacitor/core';
 import { db } from '../db';
-import { newId } from '../lib/id';
-import BillSniffer from '../lib/native/bill-sniffer';
-import type {
-  Bill,
-  BillCategory,
-  BillKind,
-  ExpenseCategory,
-  IncomeCategory,
-} from '../types';
 
 /**
- * Billing — expense + income tracking. Bills are stored in their own
- * Dexie table. Currency assumed ¥ for display. Donut chart aggregates
- * the visible month's expenses by category; income shown as a separate
- * summary row above the donut.
+ * Billing — 极简日配额视图. 几何海面 = 今日花费 / 每日配给 比例.
+ * 自动入账走通知监听 / 屏幕识别. 这里只显示「今日还剩多少」一个数.
+ * 左下角隐形 tap zone 进设置改预算.
  */
 
-const expenseCats: Record<ExpenseCategory, string> = {
-  餐饮: '#e8a060',
-  交通: '#7baab8',
-  购物: '#b08acc',
-  日用: '#82b496',
-  娱乐: '#d88898',
-  医疗: '#6890b0',
-};
+const COLS = 10;
+const ROWS = 15;
+const W = 400;
+const H = 700;
+const JITTER = 0.55;
 
-const incomeCats: Record<IncomeCategory, string> = {
-  工资: '#7ab896',
-  红包: '#e89880',
-  退款: '#7baab8',
-  兼职: '#b08acc',
-  其他: '#a090a8',
-};
+const BUDGET_KEY = 'wisteria-daily-budget';
 
-const INCOME_GREEN = '#5fa57e';
-
-function billKind(b: Bill): BillKind {
-  return b.kind ?? 'expense';
+interface Pt {
+  x: number;
+  y: number;
+}
+interface Sparkle {
+  x: number;
+  y: number;
+  delay: number;
+  dur: number;
+  size: number;
+  brightness: number;
+}
+interface Triangle {
+  id: number;
+  points: string;
+  cx: number;
+  cy: number;
+  depth: number;
+  hueShift: number;
+  lightShift: number;
+  sparkles: Sparkle[];
 }
 
-function catColor(b: Bill): string {
-  if (billKind(b) === 'income') {
-    return incomeCats[b.category as IncomeCategory] ?? INCOME_GREEN;
+function seededRandom(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 16807 + 0) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+function buildMesh(seed: number): Triangle[] {
+  const rand = seededRandom(seed);
+  const cw = W / COLS;
+  const ch = H / ROWS;
+  const pts: Pt[] = [];
+
+  for (let r = 0; r <= ROWS; r++) {
+    for (let c = 0; c <= COLS; c++) {
+      const edge = r === 0 || r === ROWS || c === 0 || c === COLS;
+      pts.push({
+        x: c * cw + (edge ? 0 : (rand() - 0.5) * cw * JITTER),
+        y: r * ch + (edge ? 0 : (rand() - 0.5) * ch * JITTER),
+      });
+    }
   }
-  return expenseCats[b.category as ExpenseCategory] ?? '#aaa';
+
+  const tris: number[][] = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const tl = r * (COLS + 1) + c;
+      const tr = tl + 1;
+      const bl = tl + (COLS + 1);
+      const br = bl + 1;
+      if (rand() > 0.5) {
+        tris.push([tl, tr, bl]);
+        tris.push([tr, br, bl]);
+      } else {
+        tris.push([tl, tr, br]);
+        tris.push([tl, br, bl]);
+      }
+    }
+  }
+
+  return tris.map((idxs, i) => {
+    const vs = idxs.map((j) => pts[j]);
+    const cx = (vs[0].x + vs[1].x + vs[2].x) / 3;
+    const cy = (vs[0].y + vs[1].y + vs[2].y) / 3;
+
+    // depth: 0 at bottom-left, 1 at top-right
+    const depth = (cx / W + (1 - cy / H)) / 2 + (rand() - 0.5) * 0.12;
+
+    // fine sparkle points inside triangle
+    const sparkles: Sparkle[] = Array.from(
+      { length: 16 + Math.floor(rand() * 10) },
+      () => {
+        const a = rand(),
+          b = rand();
+        const s = a + b > 1 ? { a: 1 - a, b: 1 - b } : { a, b };
+        return {
+          x: vs[0].x + s.a * (vs[1].x - vs[0].x) + s.b * (vs[2].x - vs[0].x),
+          y: vs[0].y + s.a * (vs[1].y - vs[0].y) + s.b * (vs[2].y - vs[0].y),
+          delay: rand() * 16,
+          dur: 0.8 + rand() * 3.7,
+          size: 0.3 + rand() * 0.8,
+          brightness: 1,
+        };
+      },
+    );
+
+    return {
+      id: i,
+      points: vs.map((v) => `${v.x},${v.y}`).join(' '),
+      cx,
+      cy,
+      depth,
+      hueShift: rand() * 14 - 7,
+      lightShift: rand() * 5 - 2.5,
+      sparkles,
+    };
+  });
 }
 
-function BackButton({ onClick }: { onClick: () => void }) {
+function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
+  const waterLine = 1 - Math.min(ratio, 1.15) * 0.95;
+  const isDrowned = ratio >= 0.95;
+
   return (
-    <button
-      onClick={onClick}
-      style={{
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        color: '#8a7090',
-        padding: 4,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        fontSize: 12,
-        fontFamily: "'Crimson Pro','Noto Serif SC',serif",
-        fontStyle: 'italic',
-      }}
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      style={{ width: '100%', height: '100%', display: 'block' }}
     >
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-        <path
-          d="M10 3L5 8L10 13"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      玄関
-    </button>
+      <defs>
+        <filter id="sparkGlow" x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="1.5" result="glow" />
+          <feMerge>
+            <feMergeNode in="glow" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      {mesh.map((tri) => {
+        const isSea = tri.depth > waterLine;
+        const edgeDist = Math.abs(tri.depth - waterLine);
+        const nearEdge = edgeDist < 0.06;
+
+        let fill: string;
+        if (isSea) {
+          const d = Math.min(
+            (tri.depth - waterLine) / Math.max(1 - waterLine, 0.01),
+            1,
+          );
+          const h = 205 + tri.hueShift;
+          const s = isDrowned ? 25 + d * 15 : 30 + d * 20;
+          const l = isDrowned
+            ? 72 + d * 8 + tri.lightShift
+            : 78 - d * 12 + tri.lightShift;
+          fill = `hsl(${h}, ${s}%, ${Math.max(60, Math.min(92, l))}%)`;
+        } else {
+          const d = Math.min(
+            (waterLine - tri.depth) / Math.max(waterLine, 0.01),
+            1,
+          );
+          const h = 275 + tri.hueShift * 0.4;
+          const s = 18 + d * 8;
+          const l = 88 + d * 4 + tri.lightShift * 0.3;
+          fill = `hsl(${h}, ${s}%, ${Math.max(85, Math.min(96, l))}%)`;
+        }
+
+        const stroke =
+          nearEdge && !isDrowned
+            ? 'rgba(200,210,235,0.5)'
+            : isSea
+              ? 'rgba(190,215,240,0.15)'
+              : 'rgba(220,210,235,0.12)';
+
+        return (
+          <polygon
+            key={tri.id}
+            points={tri.points}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={nearEdge ? 1 : 0.4}
+            style={{ transition: 'fill 0.7s ease, stroke 0.5s ease' }}
+          />
+        );
+      })}
+
+      {/* fine sparkles on beach */}
+      {mesh
+        .filter((tri) => tri.depth <= waterLine + 0.02)
+        .flatMap((tri) =>
+          tri.sparkles.map((sp, si) => (
+            <circle
+              key={`s${tri.id}-${si}`}
+              cx={sp.x}
+              cy={sp.y}
+              r={sp.size}
+              fill="white"
+              filter="url(#sparkGlow)"
+              opacity={0}
+              style={{
+                animation: `shimmerDot ${sp.dur}s ${sp.delay}s ease-in-out infinite`,
+              }}
+            />
+          )),
+        )}
+
+      {/* extra bright sparkle accents */}
+      {!isDrowned &&
+        mesh
+          .filter((tri) => tri.depth < waterLine - 0.03)
+          .slice(0, 50)
+          .map((tri) => (
+            <circle
+              key={`bright-${tri.id}`}
+              cx={tri.cx + tri.hueShift}
+              cy={tri.cy + tri.lightShift * 2}
+              r={0.8}
+              fill="white"
+              filter="url(#sparkGlow)"
+              opacity={0}
+              style={{
+                animation: `shimmerSharp 4.8s ${tri.sparkles[0].delay}s ease-in-out infinite`,
+              }}
+            />
+          ))}
+
+      {/* ultra-fine dust layer */}
+      {!isDrowned &&
+        mesh
+          .filter((tri) => tri.depth < waterLine)
+          .flatMap((tri) =>
+            tri.sparkles
+              .filter((_, i) => i % 2 === 0)
+              .map((sp, si) => (
+                <circle
+                  key={`dust-${tri.id}-${si}`}
+                  cx={sp.x + si * 1.5}
+                  cy={sp.y - si * 0.8}
+                  r={0.2 + sp.size * 0.25}
+                  fill="white"
+                  filter="url(#sparkGlow)"
+                  opacity={0}
+                  style={{
+                    animation: `shimmerDust ${0.4 + sp.dur * 0.5}s ${sp.delay * 1.2}s ease-in-out infinite`,
+                  }}
+                />
+              )),
+          )}
+    </svg>
   );
 }
 
-function Donut({ data }: { data: Bill[] }) {
-  const expenses = data.filter((d) => billKind(d) === 'expense');
-  const tot: Record<string, number> = {};
-  expenses.forEach((d) => {
-    tot[d.category] = (tot[d.category] || 0) + d.amount;
-  });
-  const total = Object.values(tot).reduce((a, b) => a + b, 0);
-  const sorted = Object.entries(tot).sort((a, b) => b[1] - a[1]);
-  const r = 34;
-  const cx = 45;
-  const cy = 45;
-  const circ = 2 * Math.PI * r;
-  let off = 0;
+function SettingsMesh({ seed }: { seed: number }) {
+  const mesh = useMemo(() => buildMesh(seed), [seed]);
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-      <svg width="90" height="90" viewBox="0 0 90 90">
-        {sorted.map(([c, v]) => {
-          const d = total > 0 ? (circ * v) / total : 0;
-          const g = circ - d;
-          const el = (
-            <circle
-              key={c}
-              cx={cx}
-              cy={cy}
-              r={r}
-              fill="none"
-              stroke={expenseCats[c as ExpenseCategory] || '#aaa'}
-              strokeWidth="8"
-              strokeDasharray={`${d} ${g}`}
-              strokeDashoffset={-off}
-              strokeLinecap="round"
-              transform={`rotate(-90 ${cx} ${cy})`}
-            />
-          );
-          off += d;
-          return el;
-        })}
-        <text
-          x={cx}
-          y={cy - 4}
-          textAnchor="middle"
-          fill="#4a3550"
-          fontSize="15"
-          fontFamily="'JetBrains Mono',monospace"
-          fontWeight="500"
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      style={{ width: '100%', height: '100%', display: 'block' }}
+    >
+      <defs>
+        <filter
+          id="settingsGlow"
+          x="-100%"
+          y="-100%"
+          width="300%"
+          height="300%"
         >
-          ¥{total}
-        </text>
-        <text
-          x={cx}
-          y={cy + 12}
-          textAnchor="middle"
-          fill="#a090a8"
-          fontSize="9"
-        >
-          本月支出
-        </text>
-      </svg>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {sorted.length === 0 && (
-          <span style={{ fontSize: 12, color: '#a090a8' }}>本月还没记账喵</span>
-        )}
-        {sorted.map(([c, v]) => (
-          <div
-            key={c}
+          <feGaussianBlur stdDeviation="1.5" result="g" />
+          <feMerge>
+            <feMergeNode in="g" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      {mesh.map((tri) => {
+        const h = 275 + tri.hueShift * 0.4;
+        const s = 18 + tri.depth * 10;
+        const l = 89 + tri.lightShift * 0.3 + tri.depth * 3;
+        return (
+          <polygon
+            key={tri.id}
+            points={tri.points}
+            fill={`hsl(${h}, ${s}%, ${Math.min(96, l)}%)`}
+            stroke="rgba(220,210,235,0.1)"
+            strokeWidth={0.4}
+          />
+        );
+      })}
+      {mesh.flatMap((tri) =>
+        tri.sparkles.slice(0, 6).map((sp, si) => (
+          <circle
+            key={`ss-${tri.id}-${si}`}
+            cx={sp.x}
+            cy={sp.y}
+            r={sp.size * 0.8}
+            fill="white"
+            filter="url(#settingsGlow)"
+            opacity={0}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 12,
+              animation: `shimmerDot ${sp.dur * 1.3}s ${sp.delay}s ease-in-out infinite`,
             }}
-          >
+          />
+        )),
+      )}
+    </svg>
+  );
+}
+
+function SettingsPage({
+  budget,
+  setBudget,
+  onBack,
+}: {
+  budget: number;
+  setBudget: (n: number) => void;
+  onBack: () => void;
+}) {
+  const [draft, setDraft] = useState(String(budget));
+
+  const save = () => {
+    setBudget(Math.max(1, Number(draft) || 80));
+    onBack();
+  };
+
+  const serifFont = "'Cormorant Garamond',serif";
+  const sansFont =
+    "'Hiragino Sans','PingFang SC','Noto Sans SC',system-ui,sans-serif";
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        maxWidth: 420,
+        margin: '0 auto',
+        height: '100vh',
+        overflow: 'hidden',
+        fontFamily: sansFont,
+      }}
+    >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300&display=swap');
+        @keyframes shimmerDot {
+          0%, 100% { opacity: 0; }
+          3% { opacity: 1; }
+          6% { opacity: 0; }
+        }
+        .settings-input:focus {
+          border-color: rgba(180,165,210,0.4) !important;
+          background: rgba(255,255,255,0.55) !important;
+        }
+      `}</style>
+
+      {/* geo background */}
+      <div style={{ position: 'absolute', inset: 0 }}>
+        <SettingsMesh seed={77} />
+      </div>
+
+      {/* content overlay */}
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '0 28px',
+        }}
+      >
+        {/* back */}
+        <button
+          onClick={onBack}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'rgba(130,110,170,0.5)',
+            fontSize: 18,
+            cursor: 'pointer',
+            padding: '48px 0 0',
+            alignSelf: 'flex-start',
+            fontWeight: 200,
+          }}
+        >
+          ‹
+        </button>
+
+        {/* form area */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: 20,
+            marginTop: -40,
+          }}
+        >
+          {/* daily budget */}
+          <div>
             <div
               style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: expenseCats[c as ExpenseCategory],
-              }}
-            />
-            <span style={{ color: '#6a5a70', minWidth: 28 }}>{c}</span>
-            <span
-              style={{
-                color: '#a090a8',
-                fontFamily: "'JetBrains Mono',monospace",
-                fontSize: 11,
+                fontSize: 10,
+                letterSpacing: 3,
+                color: 'rgba(120,100,150,0.45)',
+                fontWeight: 300,
+                marginBottom: 10,
+                paddingLeft: 4,
               }}
             >
-              ¥{v}
-            </span>
+              每日配给
+            </div>
+            <div
+              style={{
+                position: 'relative',
+                background: 'rgba(255,255,255,0.35)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                borderRadius: 16,
+                border: '1px solid rgba(210,200,230,0.25)',
+                padding: '18px 20px',
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 6,
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: serifFont,
+                  fontSize: 14,
+                  fontWeight: 300,
+                  color: 'rgba(120,100,150,0.4)',
+                }}
+              >
+                ¥
+              </span>
+              <input
+                type="number"
+                className="settings-input"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: 32,
+                  fontWeight: 300,
+                  fontFamily: serifFont,
+                  color: 'rgba(80,60,110,0.8)',
+                  width: '100%',
+                  letterSpacing: -0.5,
+                }}
+              />
+            </div>
           </div>
-        ))}
+        </div>
+
+        {/* save */}
+        <div style={{ paddingBottom: 56 }}>
+          <button
+            onClick={save}
+            style={{
+              width: '100%',
+              padding: '16px 0',
+              background: 'rgba(255,255,255,0.3)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '1px solid rgba(210,200,230,0.2)',
+              borderRadius: 16,
+              color: 'rgba(100,80,140,0.6)',
+              fontSize: 12,
+              fontWeight: 300,
+              letterSpacing: 4,
+              cursor: 'pointer',
+              fontFamily: sansFont,
+              transition: 'all 0.3s ease',
+            }}
+          >
+            保存
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 export default function BillingPage() {
-  const navigate = useNavigate();
-  const recs = useLiveQuery(
-    () => db.bills.orderBy('createdAt').reverse().toArray(),
-    [],
-    [],
-  );
-  const [sheet, setSheet] = useState(false);
-  const amountRef = useRef<HTMLInputElement>(null);
+  const [page, setPage] = useState<'main' | 'settings'>('main');
 
-  // Auto-focus amount input on open — the input is the most common
-  // "wait, where do I type?" stumble.
-  useEffect(() => {
-    if (!sheet) return;
-    const t = setTimeout(() => amountRef.current?.focus(), 250);
-    return () => clearTimeout(t);
-  }, [sheet]);
-  const [ni, setNi] = useState<{
-    a: string;
-    i: string;
-    c: BillCategory;
-    k: BillKind;
-  }>({ a: '', i: '', c: '餐饮', k: 'expense' });
-
-  // Bill-sniffer banner: on Android, prompt to enable the notification
-  // listener so 支付宝 / 微信支付 通知 auto-feed the bills table. Hidden on web.
-  const [snifferEnabled, setSnifferEnabled] = useState<boolean | null>(null);
-  const [debugOpen, setDebugOpen] = useState(false);
-  useEffect(() => {
-    if (Capacitor.getPlatform() !== 'android') return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await BillSniffer.isEnabled();
-        if (!cancelled) setSnifferEnabled(r.enabled);
-      } catch {
-        // ignore
-      }
-    })();
-    // Re-poll when the page regains focus — the user comes back from the
-    // system settings page after toggling the switch.
-    function refocus() {
-      void BillSniffer.isEnabled()
-        .then((r) => {
-          if (!cancelled) setSnifferEnabled(r.enabled);
-        })
-        .catch(() => {});
-    }
-    window.addEventListener('focus', refocus);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('focus', refocus);
-    };
-  }, []);
-
-  // Group by date string
-  const grouped: Record<string, Bill[]> = {};
-  (recs ?? []).forEach((r) => {
-    if (!grouped[r.date]) grouped[r.date] = [];
-    grouped[r.date].push(r);
+  // dailyBudget 持久化到 localStorage. 默认 ¥80.
+  const [budget, setBudgetState] = useState<number>(() => {
+    const raw = localStorage.getItem(BUDGET_KEY);
+    const n = raw ? Number(raw) : 80;
+    return Number.isFinite(n) && n > 0 ? n : 80;
   });
-  const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+  const setBudget = (n: number) => {
+    setBudgetState(n);
+    localStorage.setItem(BUDGET_KEY, String(n));
+  };
 
-  // Month totals for the header summary row.
-  const totals = (recs ?? []).reduce(
-    (acc, r) => {
-      if (billKind(r) === 'income') acc.income += r.amount;
-      else acc.expense += r.amount;
-      return acc;
+  // 今日已花 = today's expense bills 总和. createdAt 落在今天 0:00..24:00 内.
+  const spent = useLiveQuery(
+    async () => {
+      const now = new Date();
+      const start = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      ).getTime();
+      const end = start + 24 * 3600 * 1000;
+      const rows = await db.bills
+        .where('createdAt')
+        .between(start, end, true, false)
+        .toArray();
+      return rows
+        .filter((b) => (b.kind ?? 'expense') === 'expense')
+        .reduce((sum, b) => sum + b.amount, 0);
     },
-    { income: 0, expense: 0 },
+    [],
+    0,
   );
-  const net = totals.income - totals.expense;
 
-  const amountNum = parseFloat(ni.a);
-  const canSave = Number.isFinite(amountNum) && amountNum > 0;
+  const mesh = useMemo(() => buildMesh(42), []);
 
-  async function add() {
-    if (!canSave) return;
-    const today = new Date();
-    const ds = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
-    // Item is optional now — fall back to category label so the row
-    // still has a recognizable name when she's just tapping in a quick
-    // amount.
-    const item = ni.i.trim() || ni.c;
-    await db.bills.add({
-      id: newId(),
-      date: ds,
-      item,
-      amount: amountNum,
-      category: ni.c,
-      kind: ni.k,
-      source: 'manual',
-      createdAt: Date.now(),
-    });
-    setNi({ a: '', i: '', c: ni.k === 'income' ? '工资' : '餐饮', k: ni.k });
-    setSheet(false);
+  const ratio = Math.min(spent / Math.max(budget, 1), 1.15);
+  const remaining = Math.max(budget - spent, 0);
+  const isDrowned = ratio >= 0.95;
+  const isOver = spent > budget;
+
+  if (page === 'settings') {
+    return (
+      <SettingsPage
+        budget={budget}
+        setBudget={setBudget}
+        onBack={() => setPage('main')}
+      />
+    );
   }
-
-  function switchKind(k: BillKind) {
-    setNi((p) => ({
-      ...p,
-      k,
-      c: k === 'income' ? '工资' : '餐饮',
-    }));
-  }
-
-  const sheetCats: BillCategory[] =
-    ni.k === 'income'
-      ? (Object.keys(incomeCats) as IncomeCategory[])
-      : (Object.keys(expenseCats) as ExpenseCategory[]);
-  const sheetColors: Record<string, string> =
-    ni.k === 'income' ? incomeCats : expenseCats;
-
-  async function deleteBill(id: string, e: React.MouseEvent) {
-    e.stopPropagation();
-    if (!confirm('删掉这一笔？')) return;
-    await db.bills.delete(id);
-  }
-
-  const monthLabel = (() => {
-    const now = new Date();
-    return `${now.getFullYear()}年${now.getMonth() + 1}月`;
-  })();
 
   return (
     <div
       style={{
         width: '100%',
-        minHeight: '100%',
-        position: 'relative',
-        background: 'var(--page)',
-        fontFamily: "-apple-system,'PingFang SC',sans-serif",
+        maxWidth: 420,
+        margin: '0 auto',
+        fontFamily:
+          "'Hiragino Sans','PingFang SC','Noto Sans SC',system-ui,sans-serif",
       }}
     >
-      {/* Header */}
-      <div
-        className="topbar"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '14px 16px 12px',
-        }}
-      >
-        <BackButton onClick={() => navigate('/home')} />
-        <div
-          style={{
-            fontFamily: "'Cormorant Garamond', serif",
-            fontStyle: 'italic',
-            fontWeight: 500,
-            fontSize: 18,
-            color: 'var(--head)',
-            letterSpacing: 1,
-          }}
-        >
-          账单
-        </div>
-        <div style={{ width: 48 }} />
-      </div>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300&display=swap');
+        @keyframes shimmerDot {
+          0%, 100% { opacity: 0; }
+          3% { opacity: 1; }
+          6% { opacity: 0; }
+        }
+        @keyframes shimmerSharp {
+          0%, 100% { opacity: 0; transform: scale(0.6); }
+          3% { opacity: 1; transform: scale(2); }
+          7% { opacity: 0; transform: scale(0.6); }
+        }
+        @keyframes shimmerDust {
+          0%, 100% { opacity: 0; }
+          2% { opacity: 1; }
+          5% { opacity: 0; }
+        }
+        @keyframes breathe {
+          0%, 100% { opacity: 0.75; }
+          50% { opacity: 1; }
+        }
+        @keyframes drift {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
+        }
+      `}</style>
 
-      {snifferEnabled === false && (
-        <div
-          style={{
-            margin: '8px 16px 0',
-            padding: '10px 14px',
-            background: 'rgba(232,196,104,0.15)',
-            border: '1px solid rgba(232,196,104,0.3)',
-            borderRadius: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            fontSize: 12,
-            color: '#6b4f1d',
-            lineHeight: 1.5,
-          }}
-        >
-          <span style={{ flex: 1 }}>
-            打开「通知使用权 → Wisteria」之后，
-            支付宝 / 微信付款会自动入账。
-          </span>
-          <button
-            type="button"
-            onClick={() => void BillSniffer.openSettings().catch(() => {})}
-            style={{
-              flexShrink: 0,
-              background: '#b08344',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              padding: '6px 12px',
-              fontSize: 12,
-              cursor: 'pointer',
-            }}
-          >
-            去开启
-          </button>
-        </div>
-      )}
-
-      {snifferEnabled === true && (
-        <div
-          style={{
-            margin: '8px 16px 0',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 12,
-            fontSize: 11,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => navigate('/bill-sources')}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'rgba(120,100,155,0.5)',
-              cursor: 'pointer',
-              padding: 0,
-              textDecoration: 'underline',
-            }}
-          >
-            来源设置
-          </button>
-          <button
-            type="button"
-            onClick={() => setDebugOpen(true)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'rgba(120,100,155,0.5)',
-              cursor: 'pointer',
-              padding: 0,
-              textDecoration: 'underline',
-            }}
-          >
-            通知日志（诊断用）
-          </button>
-        </div>
-      )}
-
-      {debugOpen && <DebugLogSheet onClose={() => setDebugOpen(false)} />}
-
-      {/* Month label */}
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 20,
-          padding: '20px 0 16px',
+          position: 'relative',
+          width: '100%',
+          height: '88vh',
+          maxHeight: 720,
+          borderRadius: 22,
+          overflow: 'hidden',
+          boxShadow: '0 4px 32px rgba(140,120,180,0.12)',
+          background: isDrowned
+            ? 'linear-gradient(180deg, #d0dff0 0%, #c0d5ea 100%)'
+            : 'linear-gradient(180deg, #f5f0f8 0%, #efe8f4 100%)',
+          transition: 'background 0.8s ease',
         }}
       >
-        <span style={{ fontSize: 14, color: '#5a4060', letterSpacing: 1 }}>
-          {monthLabel}
-        </span>
-      </div>
+        {/* geo mesh layer */}
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <GeoSea ratio={ratio} mesh={mesh} />
+        </div>
 
-      {/* Summary row: 支 / 收 / 净 */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: 28,
-          padding: '0 24px 16px',
-          fontFamily: "'JetBrains Mono',monospace",
-        }}
-      >
-        <SummaryStat label="支" value={totals.expense} color="#b08acc" />
-        <SummaryStat label="收" value={totals.income} color={INCOME_GREEN} />
-        <SummaryStat
-          label="净"
-          value={net}
-          color={net >= 0 ? INCOME_GREEN : '#c45858'}
-          signed
-        />
-      </div>
-
-      {/* Donut */}
-      <div style={{ padding: '0 24px 20px', display: 'flex', justifyContent: 'center' }}>
+        {/* number only */}
         <div
           style={{
-            background: 'rgba(255,255,255,0.55)',
-            backdropFilter: 'blur(8px)',
-            border: '1px solid rgba(157,110,189,0.06)',
-            borderRadius: 20,
-            padding: '20px 24px',
+            position: 'absolute',
+            top: 48,
+            right: 36,
+            pointerEvents: 'none',
+            fontSize: 42,
+            fontWeight: 300,
+            fontFamily: "'Cormorant Garamond',serif",
+            letterSpacing: -0.5,
+            lineHeight: 1,
+            color: 'rgba(255,255,255,0.9)',
+            textShadow: '0 1px 8px rgba(80,120,180,0.15)',
+            transition: 'color 0.8s ease',
           }}
         >
-          <Donut data={recs ?? []} />
+          {isOver ? `-${spent - budget}` : remaining.toFixed(0)}
         </div>
-      </div>
 
-      {/* List */}
-      <div style={{ padding: '0 16px 100px' }}>
-        {dates.length === 0 && (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '40px 20px',
-              color: '#a090a8',
-              fontSize: 13,
-            }}
-          >
-            还没有账目喵。点右下角 + 记一笔。
-          </div>
-        )}
-        {dates.map((d) => (
-          <div key={d} style={{ marginBottom: 16 }}>
-            <div
-              style={{
-                fontSize: 12,
-                color: '#a090a8',
-                fontWeight: 300,
-                marginBottom: 8,
-                paddingLeft: 4,
-              }}
-            >
-              {d}
-            </div>
-            {grouped[d].map((r) => (
-              <div
-                key={r.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 12px',
-                  marginBottom: 4,
-                  background: 'rgba(255,255,255,0.45)',
-                  backdropFilter: 'blur(6px)',
-                  border: '1px solid rgba(157,110,189,0.04)',
-                  borderRadius: 14,
-                }}
-              >
-                <div
-                  style={{
-                    width: 3,
-                    height: 28,
-                    borderRadius: 2,
-                    background: catColor(r),
-                    flexShrink: 0,
-                  }}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      color: '#3a2840',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {r.item}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: '#b0a0b8',
-                      marginTop: 1,
-                      display: 'flex',
-                      gap: 4,
-                    }}
-                  >
-                    <span>{r.category}</span>
-                    {r.source === 'auto' && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          color: '#c0b0c8',
-                          background: 'rgba(176,138,204,0.1)',
-                          padding: '0 4px',
-                          borderRadius: 4,
-                        }}
-                      >
-                        自动
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    fontSize: 15,
-                    color: billKind(r) === 'income' ? INCOME_GREEN : '#4a3550',
-                    fontWeight: 500,
-                    fontFamily: "'JetBrains Mono',monospace",
-                  }}
-                >
-                  {billKind(r) === 'income' ? '+' : ''}¥{r.amount}
-                </div>
-                <button
-                  onClick={(e) => deleteBill(r.id, e)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: '#c0b0c8',
-                    fontSize: 14,
-                    padding: 4,
-                  }}
-                  aria-label="删除"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-
-      {/* FAB */}
-      <button
-        onClick={() => setSheet(true)}
-        style={{
-          position: 'fixed',
-          bottom: 24,
-          right: 20,
-          width: 48,
-          height: 48,
-          borderRadius: '50%',
-          border: 'none',
-          cursor: 'pointer',
-          background: 'linear-gradient(135deg,#b08acc,#9068b8)',
-          boxShadow: '0 4px 16px rgba(157,110,189,0.3)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 20,
-        }}
-      >
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-          <path
-            d="M10 4V16M4 10H16"
-            stroke="#fff"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
-
-      {/* Sheet overlay */}
-      {sheet && (
+        {/* settings tap zone — invisible */}
         <div
-          onClick={() => setSheet(false)}
+          onClick={() => setPage('settings')}
           style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(40,20,50,0.3)',
-            backdropFilter: 'blur(3px)',
-            zIndex: 30,
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            width: 80,
+            height: 44,
+            cursor: 'pointer',
           }}
         />
-      )}
-
-      {/* Sheet */}
-      <div
-        style={{
-          position: 'fixed',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 40,
-          background: 'rgba(255,255,255,0.92)',
-          backdropFilter: 'blur(20px)',
-          borderRadius: '24px 24px 0 0',
-          border: '1px solid rgba(157,110,189,0.08)',
-          padding: '20px 24px 32px',
-          transform: `translateY(${sheet ? 0 : 100}%)`,
-          transition: 'transform .35s cubic-bezier(0.4,0,0.2,1)',
-        }}
-      >
-        <div
-          style={{
-            width: 32,
-            height: 3,
-            borderRadius: 2,
-            background: 'rgba(157,110,189,0.2)',
-            margin: '0 auto 20px',
-          }}
-        />
-        <div
-          style={{
-            fontSize: 14,
-            color: '#4a3550',
-            fontWeight: 500,
-            marginBottom: 14,
-            textAlign: 'center',
-          }}
-        >
-          记一笔
-        </div>
-        {/* Kind toggle */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: 6,
-            marginBottom: 16,
-          }}
-        >
-          {(['expense', 'income'] as const).map((k) => (
-            <button
-              key={k}
-              onClick={() => switchKind(k)}
-              style={{
-                padding: '6px 18px',
-                borderRadius: 18,
-                fontSize: 13,
-                border: '1.5px solid',
-                borderColor:
-                  ni.k === k
-                    ? k === 'income'
-                      ? INCOME_GREEN
-                      : '#b08acc'
-                    : 'rgba(157,110,189,0.12)',
-                background:
-                  ni.k === k
-                    ? k === 'income'
-                      ? `${INCOME_GREEN}18`
-                      : 'rgba(176,138,204,0.12)'
-                    : 'transparent',
-                color:
-                  ni.k === k
-                    ? k === 'income'
-                      ? INCOME_GREEN
-                      : '#7050a0'
-                    : '#8a7090',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                transition: 'all .15s',
-              }}
-            >
-              {k === 'expense' ? '支出' : '收入'}
-            </button>
-          ))}
-        </div>
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <span style={{ fontSize: 18, color: '#8a7090' }}>¥</span>
-          <input
-            ref={amountRef}
-            value={ni.a}
-            onChange={(e) => setNi((p) => ({ ...p, a: e.target.value }))}
-            placeholder="0"
-            type="number"
-            inputMode="decimal"
-            style={{
-              fontSize: 36,
-              fontFamily: "'JetBrains Mono',monospace",
-              fontWeight: 500,
-              color: '#3a2840',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: '1.5px solid rgba(157,110,189,0.25)',
-              outline: 'none',
-              width: 140,
-              textAlign: 'center',
-              padding: '4px 8px',
-            }}
-          />
-        </div>
-        <input
-          value={ni.i}
-          onChange={(e) => setNi((p) => ({ ...p, i: e.target.value }))}
-          placeholder={ni.k === 'income' ? '备注（可空）' : '买了什么（可空）'}
-          style={{
-            width: '100%',
-            padding: '10px 14px',
-            fontSize: 14,
-            color: '#3a2840',
-            background: 'rgba(245,238,248,0.6)',
-            border: '1px solid rgba(157,110,189,0.1)',
-            borderRadius: 12,
-            outline: 'none',
-            marginBottom: 16,
-            fontFamily: 'inherit',
-          }}
-        />
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 8,
-            marginBottom: 20,
-          }}
-        >
-          {sheetCats.map((c) => {
-            const tone = sheetColors[c];
-            const on = ni.c === c;
-            return (
-              <button
-                key={c}
-                onClick={() => setNi((p) => ({ ...p, c }))}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: 20,
-                  fontSize: 13,
-                  border: `1.5px solid ${on ? tone : 'rgba(157,110,189,0.12)'}`,
-                  background: on ? `${tone}18` : 'transparent',
-                  color: on ? tone : '#8a7090',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  transition: 'all .15s',
-                }}
-              >
-                {c}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          onClick={() => void add()}
-          disabled={!canSave}
-          style={{
-            width: '100%',
-            padding: '12px 0',
-            borderRadius: 14,
-            border: 'none',
-            background: canSave
-              ? ni.k === 'income'
-                ? `linear-gradient(135deg,${INCOME_GREEN},#4a8a68)`
-                : 'linear-gradient(135deg,#b08acc,#9068b8)'
-              : 'rgba(176,138,204,0.15)',
-            color: canSave ? '#fff' : '#b0a0b8',
-            fontSize: 14,
-            fontWeight: 500,
-            cursor: canSave ? 'pointer' : 'not-allowed',
-            fontFamily: 'inherit',
-          }}
-        >
-          保存
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SummaryStat({
-  label,
-  value,
-  color,
-  signed,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  signed?: boolean;
-}) {
-  const sign = signed ? (value >= 0 ? '+' : '-') : '';
-  const display = Math.abs(value);
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 2,
-      }}
-    >
-      <span style={{ fontSize: 10, color: '#a090a8', letterSpacing: 1 }}>
-        {label}
-      </span>
-      <span style={{ fontSize: 15, color, fontWeight: 500 }}>
-        {sign}¥{display}
-      </span>
-    </div>
-  );
-}
-
-
-function DebugLogSheet({ onClose }: { onClose: () => void }) {
-  const [entries, setEntries] = useState<
-    Array<{ ts: number; source: string; body: string }>
-  >([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    void BillSniffer.getDebugLog()
-      .then((r) => setEntries(r.entries))
-      .catch(() => setEntries([]))
-      .finally(() => setLoading(false));
-  }, []);
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 60,
-        background: "rgba(40,30,55,0.4)",
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 600,
-          maxHeight: "80vh",
-          background: "#fff",
-          borderRadius: "16px 16px 0 0",
-          padding: "16px 18px 24px",
-          overflowY: "auto",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 8,
-          }}
-        >
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: "#4a3550", margin: 0 }}>
-            通知日志（最近 20 条）
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ background: "none", border: "none", color: "#8a7090", fontSize: 13, cursor: "pointer" }}
-          >
-            关
-          </button>
-        </div>
-        <p style={{ fontSize: 11, color: "#8a7090", margin: "0 0 12px", lineHeight: 1.6 }}>
-          这里列出 服务监听到的所有 支付宝 / 微信 通知。若你刚付完款这里没新条目，
-          说明系统根本没把通知发给 Wisteria（可能是 MIUI 通知锁屏 / 没勾通知使用权 / 支付宝关了系统通知）。
-        </p>
-        {loading ? (
-          <div style={{ fontSize: 12, color: "#a090a8" }}>读取中……</div>
-        ) : entries.length === 0 ? (
-          <div style={{ fontSize: 12, color: "#a090a8" }}>暂无记录。</div>
-        ) : (
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {[...entries].reverse().map((e, i) => (
-              <li
-                key={i}
-                style={{
-                  marginBottom: 10,
-                  padding: 10,
-                  background: "rgba(160,140,200,0.06)",
-                  borderRadius: 8,
-                  fontSize: 11,
-                  lineHeight: 1.6,
-                  color: "#4a3550",
-                }}
-              >
-                <div style={{ fontSize: 10, color: "#8a7090", marginBottom: 4 }}>
-                  {new Date(e.ts).toLocaleString()} · {e.source}
-                </div>
-                <div style={{ wordBreak: "break-all", fontFamily: "monospace" }}>{e.body}</div>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
     </div>
   );
