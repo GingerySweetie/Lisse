@@ -51,7 +51,7 @@ class InAppBrowserActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var urlBar: EditText
-    private lateinit var progress: ProgressBar
+    private lateinit var progressBar: ProgressBar
     private var autoInjects: JSONArray = JSONArray()
     private var savedScripts: JSONArray = JSONArray()
 
@@ -163,7 +163,7 @@ class InAppBrowserActivity : AppCompatActivity() {
     }
 
     private fun buildProgress(): View {
-        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = false
             max = 100
             progress = 0
@@ -172,7 +172,7 @@ class InAppBrowserActivity : AppCompatActivity() {
                 dp(2),
             )
         }
-        return progress
+        return progressBar
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -184,7 +184,7 @@ class InAppBrowserActivity : AppCompatActivity() {
                 1f,
             )
         }
-        webView = WebView(this).apply {
+        webView = WebView(this).apply web@ {
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -202,7 +202,7 @@ class InAppBrowserActivity : AppCompatActivity() {
             }
             CookieManager.getInstance().apply {
                 setAcceptCookie(true)
-                setAcceptThirdPartyCookies(this@apply, true)
+                setAcceptThirdPartyCookies(this@web, true)
             }
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
@@ -213,16 +213,16 @@ class InAppBrowserActivity : AppCompatActivity() {
                     view: WebView?, url: String?, favicon: android.graphics.Bitmap?
                 ) {
                     urlBar.setText(url ?: "")
-                    progress.visibility = View.VISIBLE
+                    progressBar.visibility = View.VISIBLE
                 }
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    progress.visibility = View.GONE
+                    progressBar.visibility = View.GONE
                     if (url != null) applyAutoInjects(url)
                 }
             }
             webChromeClient = object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                    progress.progress = newProgress
+                    progressBar.progress = newProgress
                 }
                 override fun onReceivedTitle(view: WebView?, title: String?) {
                     title?.let { this@InAppBrowserActivity.title = it }
