@@ -114,15 +114,33 @@ class StepCounterPlugin : Plugin(), SensorEventListener {
         val today = todayKey()
         val storedDay = prefs.getString(KEY_BASELINE_DAY, null)
         val storedBaseline = prefs.getFloat(KEY_BASELINE_VALUE, -1f)
+        val lastSeenCum = prefs.getFloat(KEY_LAST_CUMULATIVE, -1f)
 
         val baseline: Float = when {
             // Day rolled over since we last saw an event.
+            //
+            // Naive baseline = today's first reading would lose every step
+            // walked before the app first opened today (the common
+            // "wake up, walk around, look at phone at noon" case). To
+            // recover most of that, anchor today's baseline at YESTERDAY'S
+            // last observed cumulative value. We assume the user didn't
+            // walk much between her last app session yesterday and
+            // midnight — usually true because the device's been still /
+            // asleep overnight. Worst case: we slightly overcount today
+            // by however many steps she did walk between last-event-of-
+            // yesterday and midnight. Strictly better than the previous
+            // "lose all morning steps" behavior.
+            //
+            // Only use this trick when lastSeenCum is plausible
+            // (non-negative and not larger than the current reading,
+            // which would mean the device rebooted in the meantime).
             storedDay != today -> {
+                val newBaseline = if (lastSeenCum in 0f..cumulative) lastSeenCum else cumulative
                 prefs.edit()
                     .putString(KEY_BASELINE_DAY, today)
-                    .putFloat(KEY_BASELINE_VALUE, cumulative)
+                    .putFloat(KEY_BASELINE_VALUE, newBaseline)
                     .apply()
-                cumulative
+                newBaseline
             }
             // Phone rebooted during the day — sensor counter reset to 0.
             cumulative + 1f < storedBaseline -> {
@@ -135,7 +153,10 @@ class StepCounterPlugin : Plugin(), SensorEventListener {
         val diff = (cumulative - baseline).toInt().coerceAtLeast(0)
         todaySteps = diff
         lastCumulative = cumulative
-        prefs.edit().putInt(KEY_LAST_TODAY_STEPS, diff).apply()
+        prefs.edit()
+            .putInt(KEY_LAST_TODAY_STEPS, diff)
+            .putFloat(KEY_LAST_CUMULATIVE, cumulative)
+            .apply()
 
         val data = JSObject()
         data.put("steps", diff)
@@ -155,5 +176,8 @@ class StepCounterPlugin : Plugin(), SensorEventListener {
         private const val KEY_BASELINE_DAY = "baseline_day"
         private const val KEY_BASELINE_VALUE = "baseline_value"
         private const val KEY_LAST_TODAY_STEPS = "last_today_steps"
+        // Last cumulative reading we observed; used as the next day's
+        // baseline so we don't lose pre-open steps. See onSensorChanged.
+        private const val KEY_LAST_CUMULATIVE = "last_cumulative"
     }
 }
