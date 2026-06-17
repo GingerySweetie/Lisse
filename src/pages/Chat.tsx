@@ -104,9 +104,12 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!settings) return;
-    const fromConv = conversation?.styleId ?? null;
-    setStyleId(fromConv ?? settings.defaultStyleId);
-  }, [settings, conversation]);
+    // settings.defaultStyleId is the single source of truth.
+    // We used to fall back to conversation.styleId, but that pinned the
+    // first style she ever used in this conversation forever — changing
+    // the global default on /styles wouldn't visibly do anything in chat.
+    setStyleId(settings.defaultStyleId);
+  }, [settings]);
 
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
@@ -488,7 +491,15 @@ export default function ChatPage() {
             />
           </MenuRow>
           <MenuRow label="风格">
-            <StylePicker styleId={styleId} onChange={setStyleId} />
+            <StylePicker
+              styleId={styleId}
+              onChange={async (id) => {
+                setStyleId(id);
+                // Single source of truth: writing here updates everywhere
+                // (Styles page UseStyle dropdown, every other chat tab).
+                await saveSettings({ defaultStyleId: id });
+              }}
+            />
           </MenuRow>
           <MenuRow label="模型">
             <EndpointPicker

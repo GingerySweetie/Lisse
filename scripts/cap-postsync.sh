@@ -139,6 +139,19 @@ access_service = """        <service
 if "PaymentAccessibilityService" not in src:
     src = re.sub(r'(\s*</application>)', '\n' + access_service + r'\1', src, count=1)
 
+# InAppBrowserActivity registration. singleTask so switching out of the
+# app and back doesn't recreate the WebView (preserves cookies + any
+# WebSocket / SSE connection the page has open).
+browser_activity = """        <activity
+            android:name="com.gingery.wisteria.plugins.InAppBrowserActivity"
+            android:launchMode="singleTask"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+"""
+if "InAppBrowserActivity" not in src:
+    src = re.sub(r'(\s*</application>)', '\n' + browser_activity + r'\1', src, count=1)
+
 open(p, 'w').write(src)
 PY
 
@@ -233,6 +246,8 @@ EXPECTED=(
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/AccessibilityCapturePlugin.kt"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/PaymentAccessibilityService.kt"
   "$ANDROID_DIR/app/src/main/res/xml/payment_accessibility_config.xml"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/InAppBrowserPlugin.kt"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/InAppBrowserActivity.kt"
 )
 for f in "${EXPECTED[@]}"; do
   if [ ! -f "$f" ]; then
@@ -245,7 +260,8 @@ for marker in 'registerPlugin(StepCounterPlugin' \
               'registerPlugin(ShareIntentPlugin' \
               'registerPlugin(BillSnifferPlugin' \
               'registerPlugin(UsageStatsPlugin' \
-              'registerPlugin(AccessibilityCapturePlugin'; do
+              'registerPlugin(AccessibilityCapturePlugin' \
+              'registerPlugin(InAppBrowserPlugin'; do
   if ! grep -q "$marker" \
       "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/MainActivity.kt"; then
     echo "[postsync] ERROR: MainActivity.kt doesn't $marker" >&2

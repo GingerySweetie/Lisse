@@ -189,6 +189,12 @@ export interface AppSettings {
    *  foreground only. Default OFF — user must opt in twice (here +
    *  system Settings). */
   billSrcScreenAccessibility: boolean;
+
+  // ─── In-app browser ───
+  /** Override UA string sent by the in-app browser WebView. Null = use
+   *  the device's default WebView UA. A common reason to override:
+   *  some sites gate features on UA sniffing. */
+  browserUserAgent: string | null;
 }
 
 export interface Persona {
@@ -327,6 +333,55 @@ export interface WeightEntry {
   kg: number;
   notes?: string;
   createdAt: number;
+}
+
+/** Bookmark on the in-app browser home tile grid. */
+export interface BrowserBookmark {
+  id: string;
+  name: string;
+  url: string;
+  /** Two-character emoji or short glyph for the tile face. */
+  glyph?: string;
+  /** Display order; smaller first. */
+  position: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A bookmarklet: JS code the user can fire (or auto-fire) in the browser. */
+export interface BrowserScript {
+  id: string;
+  name: string;
+  /** Raw JS body. May start with `javascript:` — the native side strips it. */
+  code: string;
+  /** When autoRun is on, code fires on every onPageFinished whose URL
+   *  contains urlPattern (case-insensitive). Empty pattern = match all. */
+  urlPattern?: string;
+  autoRun: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** NetEase Cloud Music login state. Singleton row (id = 'netease'). */
+export interface MusicCredentials {
+  id: 'netease';
+  userId: number;
+  nickname: string;
+  avatarUrl?: string;
+  /** vipType > 0 = VIP. Used to badge the user, not gate anything. */
+  vipType: number;
+  savedAt: number;
+}
+
+/** A track the user has played, for "recently played" + auto-complete. */
+export interface MusicHistoryEntry {
+  id: string;
+  songId: number;
+  name: string;
+  artist: string;
+  album: string;
+  picUrl?: string;
+  playedAt: number;
 }
 
 /**
