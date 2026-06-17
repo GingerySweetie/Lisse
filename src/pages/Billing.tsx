@@ -126,6 +126,7 @@ function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
       style={{ width: '100%', height: '100%', display: 'block' }}
     >
       <defs>
@@ -255,6 +256,7 @@ function SettingsMesh({ seed }: { seed: number }) {
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
       style={{ width: '100%', height: '100%', display: 'block' }}
     >
       <defs>
@@ -331,9 +333,7 @@ function SettingsPage({
       style={{
         position: 'relative',
         width: '100%',
-        maxWidth: 420,
-        margin: '0 auto',
-        height: '100vh',
+        height: '100%',
         overflow: 'hidden',
         fontFamily: sansFont,
       }}
@@ -540,8 +540,13 @@ export default function BillingPage() {
     <div
       style={{
         width: '100%',
-        maxWidth: 420,
-        margin: '0 auto',
+        height: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+        background: isDrowned
+          ? 'linear-gradient(180deg, #d0dff0 0%, #c0d5ea 100%)'
+          : 'linear-gradient(180deg, #f5f0f8 0%, #efe8f4 100%)',
+        transition: 'background 0.8s ease',
         fontFamily:
           "'Hiragino Sans','PingFang SC','Noto Sans SC',system-ui,sans-serif",
       }}
@@ -573,58 +578,35 @@ export default function BillingPage() {
         }
       `}</style>
 
+      {/* geo mesh layer — stretch to fill whatever device aspect we
+          end up on; sparkles becoming subtly elliptical reads as
+          "wind on water" rather than a bug. */}
+      <div style={{ position: 'absolute', inset: 0 }}>
+        <GeoSea ratio={ratio} mesh={mesh} />
+      </div>
+
+      {/* number doubles as the settings entry */}
       <div
+        onClick={() => setPage('settings')}
         style={{
-          position: 'relative',
-          width: '100%',
-          height: '88vh',
-          maxHeight: 720,
-          borderRadius: 22,
-          overflow: 'hidden',
-          boxShadow: '0 4px 32px rgba(140,120,180,0.12)',
-          background: isDrowned
-            ? 'linear-gradient(180deg, #d0dff0 0%, #c0d5ea 100%)'
-            : 'linear-gradient(180deg, #f5f0f8 0%, #efe8f4 100%)',
-          transition: 'background 0.8s ease',
+          position: 'absolute',
+          top: 48,
+          right: 36,
+          padding: '8px 12px',
+          margin: '-8px -12px',
+          cursor: 'pointer',
+          fontSize: 42,
+          fontWeight: 300,
+          fontFamily: "'Cormorant Garamond',serif",
+          letterSpacing: -0.5,
+          lineHeight: 1,
+          color: 'rgba(255,255,255,0.9)',
+          textShadow: '0 1px 8px rgba(80,120,180,0.15)',
+          transition: 'color 0.8s ease',
+          WebkitTapHighlightColor: 'transparent',
         }}
       >
-        {/* geo mesh layer */}
-        <div style={{ position: 'absolute', inset: 0 }}>
-          <GeoSea ratio={ratio} mesh={mesh} />
-        </div>
-
-        {/* number only */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 48,
-            right: 36,
-            pointerEvents: 'none',
-            fontSize: 42,
-            fontWeight: 300,
-            fontFamily: "'Cormorant Garamond',serif",
-            letterSpacing: -0.5,
-            lineHeight: 1,
-            color: 'rgba(255,255,255,0.9)',
-            textShadow: '0 1px 8px rgba(80,120,180,0.15)',
-            transition: 'color 0.8s ease',
-          }}
-        >
-          {isOver ? `-${spent - budget}` : remaining.toFixed(0)}
-        </div>
-
-        {/* settings tap zone — invisible */}
-        <div
-          onClick={() => setPage('settings')}
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            width: 80,
-            height: 44,
-            cursor: 'pointer',
-          }}
-        />
+        {isOver ? `-${spent - budget}` : remaining.toFixed(0)}
       </div>
     </div>
   );
