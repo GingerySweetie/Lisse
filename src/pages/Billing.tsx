@@ -128,15 +128,6 @@ function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
       viewBox={`0 0 ${W} ${H}`}
       style={{ width: '100%', height: '100%', display: 'block' }}
     >
-      <defs>
-        <filter id="sparkGlow" x="-100%" y="-100%" width="300%" height="300%">
-          <feGaussianBlur stdDeviation="1.5" result="glow" />
-          <feMerge>
-            <feMergeNode in="glow" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
       {mesh.map((tri) => {
         const isSea = tri.depth > waterLine;
         const edgeDist = Math.abs(tri.depth - waterLine);
@@ -195,7 +186,6 @@ function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
               cy={sp.y}
               r={sp.size}
               fill="white"
-              filter="url(#sparkGlow)"
               opacity={0}
               style={{
                 animation: `shimmerDot ${sp.dur}s ${sp.delay}s ease-in-out infinite`,
@@ -216,7 +206,6 @@ function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
               cy={tri.cy + tri.lightShift * 2}
               r={0.8}
               fill="white"
-              filter="url(#sparkGlow)"
               opacity={0}
               style={{
                 animation: `shimmerSharp 4.8s ${tri.sparkles[0].delay}s ease-in-out infinite`,
@@ -238,7 +227,6 @@ function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
                   cy={sp.y - si * 0.8}
                   r={0.2 + sp.size * 0.25}
                   fill="white"
-                  filter="url(#sparkGlow)"
                   opacity={0}
                   style={{
                     animation: `shimmerDust ${0.4 + sp.dur * 0.5}s ${sp.delay * 1.2}s ease-in-out infinite`,
@@ -257,21 +245,6 @@ function SettingsMesh({ seed }: { seed: number }) {
       viewBox={`0 0 ${W} ${H}`}
       style={{ width: '100%', height: '100%', display: 'block' }}
     >
-      <defs>
-        <filter
-          id="settingsGlow"
-          x="-100%"
-          y="-100%"
-          width="300%"
-          height="300%"
-        >
-          <feGaussianBlur stdDeviation="1.5" result="g" />
-          <feMerge>
-            <feMergeNode in="g" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
       {mesh.map((tri) => {
         const h = 275 + tri.hueShift * 0.4;
         const s = 18 + tri.depth * 10;
@@ -294,7 +267,6 @@ function SettingsMesh({ seed }: { seed: number }) {
             cy={sp.y}
             r={sp.size * 0.8}
             fill="white"
-            filter="url(#settingsGlow)"
             opacity={0}
             style={{
               animation: `shimmerDot ${sp.dur * 1.3}s ${sp.delay}s ease-in-out infinite`,
