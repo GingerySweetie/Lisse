@@ -3,9 +3,20 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
 
 /**
- * Billing — 极简日配额视图. 几何海面 = 今日花费 / 每日配给 比例.
- * 自动入账走通知监听 / 屏幕识别. 这里只显示「今日还剩多少」一个数.
- * 左下角隐形 tap zone 进设置改预算.
+ * Billing — 极简日配额视图.
+ *
+ * 几何海面 = 今日花费 / 每日配给 的水位线. 沙滩淹没 = 今天没钱了.
+ *
+ * 设置页四个输入: 工资 / 储蓄 / 房租 / 今日已花. dailyBudget =
+ * (工资 − 储蓄 − 房租) / 当月天数. 财务面三项存 localStorage.
+ *
+ * spent 来源是两合: Dexie 自动汇总今日 expense 总和作为 baseline,
+ * 设置页里手动改的话写一个 "今日 override", 第二天 0:00 自动失效
+ * 回到 Dexie auto.
+ *
+ * 性能: 没有 SVG filter (feGaussianBlur 在数千 circle 上是性能毒
+ * 药). sparkle 只用 opacity animation, will-change: opacity 让 GPU
+ * 接管. sparkle 总数约 2500 个.
  */
 
 const COLS = 10;
@@ -14,7 +25,52 @@ const W = 400;
 const H = 700;
 const JITTER = 0.55;
 
-const BUDGET_KEY = 'wisteria-daily-budget';
+const FIN_KEY = 'wisteria-budget-finance';
+const OVERRIDE_KEY = 'wisteria-budget-spent-override';
+
+interface FinanceConfig {
+  salary: number;
+  savings: number;
+  rent: number;
+}
+const DEFAULT_FIN: FinanceConfig = { salary: 5000, savings: 1000, rent: 1500 };
+
+interface SpentOverride {
+  value: number;
+  date: string; // YYYY-MM-DD
+}
+
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function loadFinance(): FinanceConfig {
+  try {
+    const raw = localStorage.getItem(FIN_KEY);
+    if (!raw) return { ...DEFAULT_FIN };
+    const parsed = JSON.parse(raw) as Partial<FinanceConfig>;
+    return {
+      salary: Number(parsed.salary) || DEFAULT_FIN.salary,
+      savings: Number(parsed.savings) || 0,
+      rent: Number(parsed.rent) || 0,
+    };
+  } catch {
+    return { ...DEFAULT_FIN };
+  }
+}
+
+function loadOverrideIfFresh(): SpentOverride | null {
+  try {
+    const raw = localStorage.getItem(OVERRIDE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SpentOverride;
+    if (parsed.date !== todayStr()) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 interface Pt {
   x: number;
@@ -26,7 +82,6 @@ interface Sparkle {
   delay: number;
   dur: number;
   size: number;
-  brightness: number;
 }
 interface Triangle {
   id: number;
@@ -84,13 +139,11 @@ function buildMesh(seed: number): Triangle[] {
     const vs = idxs.map((j) => pts[j]);
     const cx = (vs[0].x + vs[1].x + vs[2].x) / 3;
     const cy = (vs[0].y + vs[1].y + vs[2].y) / 3;
-
-    // depth: 0 at bottom-left, 1 at top-right
     const depth = (cx / W + (1 - cy / H)) / 2 + (rand() - 0.5) * 0.12;
 
-    // fine sparkle points inside triangle
+    // v5 sparkle count: 10..16 per triangle (was 16..26)
     const sparkles: Sparkle[] = Array.from(
-      { length: 16 + Math.floor(rand() * 10) },
+      { length: 10 + Math.floor(rand() * 6) },
       () => {
         const a = rand(),
           b = rand();
@@ -100,8 +153,7 @@ function buildMesh(seed: number): Triangle[] {
           y: vs[0].y + s.a * (vs[1].y - vs[0].y) + s.b * (vs[2].y - vs[0].y),
           delay: rand() * 16,
           dur: 0.8 + rand() * 3.7,
-          size: 0.3 + rand() * 0.8,
-          brightness: 1,
+          size: 0.4 + rand() * 0.9,
         };
       },
     );
@@ -129,19 +181,9 @@ function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
       preserveAspectRatio="none"
       style={{ width: '100%', height: '100%', display: 'block' }}
     >
-      <defs>
-        <filter id="sparkGlow" x="-100%" y="-100%" width="300%" height="300%">
-          <feGaussianBlur stdDeviation="1.5" result="glow" />
-          <feMerge>
-            <feMergeNode in="glow" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
       {mesh.map((tri) => {
         const isSea = tri.depth > waterLine;
-        const edgeDist = Math.abs(tri.depth - waterLine);
-        const nearEdge = edgeDist < 0.06;
+        const nearEdge = Math.abs(tri.depth - waterLine) < 0.06;
 
         let fill: string;
         if (isSea) {
@@ -166,26 +208,25 @@ function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
           fill = `hsl(${h}, ${s}%, ${Math.max(85, Math.min(96, l))}%)`;
         }
 
-        const stroke =
-          nearEdge && !isDrowned
-            ? 'rgba(200,210,235,0.5)'
-            : isSea
-              ? 'rgba(190,215,240,0.15)'
-              : 'rgba(220,210,235,0.12)';
-
         return (
           <polygon
             key={tri.id}
             points={tri.points}
             fill={fill}
-            stroke={stroke}
+            stroke={
+              nearEdge && !isDrowned
+                ? 'rgba(200,210,235,0.5)'
+                : isSea
+                  ? 'rgba(190,215,240,0.15)'
+                  : 'rgba(220,210,235,0.12)'
+            }
             strokeWidth={nearEdge ? 1 : 0.4}
-            style={{ transition: 'fill 0.7s ease, stroke 0.5s ease' }}
+            style={{ transition: 'fill 0.7s ease' }}
           />
         );
       })}
 
-      {/* fine sparkles on beach */}
+      {/* main sparkle layer */}
       {mesh
         .filter((tri) => tri.depth <= waterLine + 0.02)
         .flatMap((tri) =>
@@ -196,53 +237,53 @@ function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
               cy={sp.y}
               r={sp.size}
               fill="white"
-              filter="url(#sparkGlow)"
               opacity={0}
               style={{
+                willChange: 'opacity',
                 animation: `shimmerDot ${sp.dur}s ${sp.delay}s ease-in-out infinite`,
               }}
             />
           )),
         )}
 
-      {/* extra bright sparkle accents */}
+      {/* accent sparkles — 30 only */}
       {!isDrowned &&
         mesh
           .filter((tri) => tri.depth < waterLine - 0.03)
-          .slice(0, 50)
+          .slice(0, 30)
           .map((tri) => (
             <circle
-              key={`bright-${tri.id}`}
+              key={`b-${tri.id}`}
               cx={tri.cx + tri.hueShift}
               cy={tri.cy + tri.lightShift * 2}
-              r={0.8}
+              r={1.0}
               fill="white"
-              filter="url(#sparkGlow)"
               opacity={0}
               style={{
-                animation: `shimmerSharp 4.8s ${tri.sparkles[0].delay}s ease-in-out infinite`,
+                willChange: 'opacity',
+                animation: `shimmerAccent ${4.8 + tri.lightShift * 0.3}s ${tri.sparkles[0].delay}s ease-in-out infinite`,
               }}
             />
           ))}
 
-      {/* ultra-fine dust layer */}
+      {/* dust layer — every 3rd of main reused */}
       {!isDrowned &&
         mesh
           .filter((tri) => tri.depth < waterLine)
           .flatMap((tri) =>
             tri.sparkles
-              .filter((_, i) => i % 2 === 0)
+              .filter((_, i) => i % 3 === 0)
               .map((sp, si) => (
                 <circle
-                  key={`dust-${tri.id}-${si}`}
-                  cx={sp.x + si * 1.5}
-                  cy={sp.y - si * 0.8}
-                  r={0.2 + sp.size * 0.25}
+                  key={`d-${tri.id}-${si}`}
+                  cx={sp.x + si * 1.2}
+                  cy={sp.y - si * 0.6}
+                  r={0.25 + sp.size * 0.2}
                   fill="white"
-                  filter="url(#sparkGlow)"
                   opacity={0}
                   style={{
-                    animation: `shimmerDust ${0.4 + sp.dur * 0.5}s ${sp.delay * 1.2}s ease-in-out infinite`,
+                    willChange: 'opacity',
+                    animation: `shimmerDust ${0.5 + sp.dur * 0.5}s ${sp.delay * 1.2}s ease-in-out infinite`,
                   }}
                 />
               )),
@@ -251,232 +292,174 @@ function GeoSea({ ratio, mesh }: { ratio: number; mesh: Triangle[] }) {
   );
 }
 
-function SettingsMesh({ seed }: { seed: number }) {
-  const mesh = useMemo(() => buildMesh(seed), [seed]);
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      style={{ width: '100%', height: '100%', display: 'block' }}
-    >
-      <defs>
-        <filter
-          id="settingsGlow"
-          x="-100%"
-          y="-100%"
-          width="300%"
-          height="300%"
-        >
-          <feGaussianBlur stdDeviation="1.5" result="g" />
-          <feMerge>
-            <feMergeNode in="g" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-      {mesh.map((tri) => {
-        const h = 275 + tri.hueShift * 0.4;
-        const s = 18 + tri.depth * 10;
-        const l = 89 + tri.lightShift * 0.3 + tri.depth * 3;
-        return (
-          <polygon
-            key={tri.id}
-            points={tri.points}
-            fill={`hsl(${h}, ${s}%, ${Math.min(96, l)}%)`}
-            stroke="rgba(220,210,235,0.1)"
-            strokeWidth={0.4}
-          />
-        );
-      })}
-      {mesh.flatMap((tri) =>
-        tri.sparkles.slice(0, 6).map((sp, si) => (
-          <circle
-            key={`ss-${tri.id}-${si}`}
-            cx={sp.x}
-            cy={sp.y}
-            r={sp.size * 0.8}
-            fill="white"
-            filter="url(#settingsGlow)"
-            opacity={0}
-            style={{
-              animation: `shimmerDot ${sp.dur * 1.3}s ${sp.delay}s ease-in-out infinite`,
-            }}
-          />
-        )),
-      )}
-    </svg>
-  );
+interface SettingsDraft {
+  salary: string;
+  savings: string;
+  rent: string;
+  spent: string;
 }
 
 function SettingsPage({
-  budget,
-  setBudget,
+  finance,
+  spentBaseline,
+  onSave,
   onBack,
 }: {
-  budget: number;
-  setBudget: (n: number) => void;
+  finance: FinanceConfig;
+  /** Today's spent value the main page is currently showing (Dexie sum or override). */
+  spentBaseline: number;
+  onSave: (
+    finance: FinanceConfig,
+    spentOverride: number | null,
+  ) => void;
   onBack: () => void;
 }) {
-  const [draft, setDraft] = useState(String(budget));
+  const [vals, setVals] = useState<SettingsDraft>({
+    salary: String(finance.salary),
+    savings: String(finance.savings),
+    rent: String(finance.rent),
+    spent: String(spentBaseline),
+  });
+  const set = (k: keyof SettingsDraft, v: string) =>
+    setVals((p) => ({ ...p, [k]: v }));
+
+  const now = new Date();
+  const daysInMonth = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0,
+  ).getDate();
+  const salary = Math.max(0, Number(vals.salary) || 0);
+  const savings = Math.max(0, Number(vals.savings) || 0);
+  const rent = Math.max(0, Number(vals.rent) || 0);
+  const pool = Math.max(0, salary - savings - rent);
+  const daily = Math.round(pool / daysInMonth);
 
   const save = () => {
-    setBudget(Math.max(1, Number(draft) || 80));
+    const editedSpent = Math.max(0, Number(vals.spent) || 0);
+    // Only persist as override if user actually moved it off baseline.
+    const override =
+      editedSpent === Math.round(spentBaseline) ? null : editedSpent;
+    onSave({ salary, savings, rent }, override);
     onBack();
   };
 
-  const serifFont = "'Cormorant Garamond',serif";
-  const sansFont =
-    "'Hiragino Sans','PingFang SC','Noto Sans SC',system-ui,sans-serif";
+  const serif = "'Cormorant Garamond',serif";
+  const fields: Array<{ key: keyof SettingsDraft; label: string }> = [
+    { key: 'salary', label: '工资' },
+    { key: 'savings', label: '储蓄' },
+    { key: 'rent', label: '房租' },
+    { key: 'spent', label: '今日已花' },
+  ];
 
   return (
     <div
       style={{
-        position: 'relative',
         width: '100%',
-        height: '100%',
-        overflow: 'hidden',
-        fontFamily: sansFont,
+        minHeight: '100%',
+        background: '#fbf9fd',
+        fontFamily:
+          "'Hiragino Sans','PingFang SC','Noto Sans SC',system-ui,sans-serif",
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300&display=swap');
-        @keyframes shimmerDot {
-          0%, 100% { opacity: 0; }
-          3% { opacity: 1; }
-          6% { opacity: 0; }
-        }
-        .settings-input:focus {
-          border-color: rgba(180,165,210,0.4) !important;
-          background: rgba(255,255,255,0.55) !important;
-        }
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300&display=swap');
+        .min-input { border: none; outline: none; background: none; }
       `}</style>
 
-      {/* geo background */}
-      <div style={{ position: 'absolute', inset: 0 }}>
-        <SettingsMesh seed={77} />
-      </div>
-
-      {/* content overlay */}
       <div
+        onClick={save}
         style={{
-          position: 'relative',
-          zIndex: 1,
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '0 28px',
+          padding: '52px 32px 0',
+          color: 'rgba(160,140,180,0.35)',
+          fontSize: 16,
+          cursor: 'pointer',
+          fontWeight: 200,
+          WebkitTapHighlightColor: 'transparent',
         }}
       >
-        {/* back */}
-        <button
-          onClick={onBack}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: 'rgba(130,110,170,0.5)',
-            fontSize: 18,
-            cursor: 'pointer',
-            padding: '48px 0 0',
-            alignSelf: 'flex-start',
-            fontWeight: 200,
-          }}
-        >
-          ‹
-        </button>
+        ‹
+      </div>
 
-        {/* form area */}
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: 20,
-            marginTop: -40,
-          }}
-        >
-          {/* daily budget */}
-          <div>
+      <div
+        style={{
+          flex: 1,
+          padding: '48px 36px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 40,
+        }}
+      >
+        {fields.map((f) => (
+          <div key={f.key}>
             <div
               style={{
                 fontSize: 10,
                 letterSpacing: 3,
-                color: 'rgba(120,100,150,0.45)',
+                color: 'rgba(140,120,170,0.35)',
                 fontWeight: 300,
-                marginBottom: 10,
-                paddingLeft: 4,
+                marginBottom: 12,
               }}
             >
-              每日配给
+              {f.label}
             </div>
-            <div
+            <input
+              type="number"
+              className="min-input"
+              value={vals[f.key]}
+              onChange={(e) => set(f.key, e.target.value)}
               style={{
-                position: 'relative',
-                background: 'rgba(255,255,255,0.35)',
-                backdropFilter: 'blur(12px)',
-                WebkitBackdropFilter: 'blur(12px)',
-                borderRadius: 16,
-                border: '1px solid rgba(210,200,230,0.25)',
-                padding: '18px 20px',
-                display: 'flex',
-                alignItems: 'baseline',
-                gap: 6,
+                width: '100%',
+                fontSize: 36,
+                fontWeight: 300,
+                fontFamily: serif,
+                color: 'rgba(80,60,110,0.7)',
+                letterSpacing: -0.5,
+                borderBottom: '1px solid rgba(200,185,220,0.15)',
+                paddingBottom: 8,
               }}
-            >
-              <span
-                style={{
-                  fontFamily: serifFont,
-                  fontSize: 14,
-                  fontWeight: 300,
-                  color: 'rgba(120,100,150,0.4)',
-                }}
-              >
-                ¥
-              </span>
-              <input
-                type="number"
-                className="settings-input"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  outline: 'none',
-                  fontSize: 32,
-                  fontWeight: 300,
-                  fontFamily: serifFont,
-                  color: 'rgba(80,60,110,0.8)',
-                  width: '100%',
-                  letterSpacing: -0.5,
-                }}
-              />
-            </div>
+            />
           </div>
-        </div>
+        ))}
+      </div>
 
-        {/* save */}
-        <div style={{ paddingBottom: 56 }}>
-          <button
-            onClick={save}
-            style={{
-              width: '100%',
-              padding: '16px 0',
-              background: 'rgba(255,255,255,0.3)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              border: '1px solid rgba(210,200,230,0.2)',
-              borderRadius: 16,
-              color: 'rgba(100,80,140,0.6)',
-              fontSize: 12,
-              fontWeight: 300,
-              letterSpacing: 4,
-              cursor: 'pointer',
-              fontFamily: sansFont,
-              transition: 'all 0.3s ease',
-            }}
-          >
-            保存
-          </button>
+      <div
+        style={{
+          padding: '28px 36px 60px',
+          borderTop: '1px solid rgba(200,185,220,0.1)',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            letterSpacing: 3,
+            color: 'rgba(140,120,170,0.3)',
+            fontWeight: 300,
+            marginBottom: 8,
+          }}
+        >
+          每日配给
+        </div>
+        <div
+          style={{
+            fontSize: 32,
+            fontWeight: 300,
+            fontFamily: serif,
+            color: 'rgba(80,60,110,0.65)',
+          }}
+        >
+          {daily}
+        </div>
+        <div
+          style={{
+            fontSize: 10,
+            color: 'rgba(140,120,170,0.25)',
+            marginTop: 6,
+            fontWeight: 300,
+          }}
+        >
+          ({salary} − {savings} − {rent}) ÷ {daysInMonth}
         </div>
       </div>
     </div>
@@ -486,19 +469,13 @@ function SettingsPage({
 export default function BillingPage() {
   const [page, setPage] = useState<'main' | 'settings'>('main');
 
-  // dailyBudget 持久化到 localStorage. 默认 ¥80.
-  const [budget, setBudgetState] = useState<number>(() => {
-    const raw = localStorage.getItem(BUDGET_KEY);
-    const n = raw ? Number(raw) : 80;
-    return Number.isFinite(n) && n > 0 ? n : 80;
-  });
-  const setBudget = (n: number) => {
-    setBudgetState(n);
-    localStorage.setItem(BUDGET_KEY, String(n));
-  };
+  const [finance, setFinance] = useState<FinanceConfig>(loadFinance);
+  const [override, setOverride] = useState<SpentOverride | null>(
+    loadOverrideIfFresh,
+  );
 
-  // 今日已花 = today's expense bills 总和. createdAt 落在今天 0:00..24:00 内.
-  const spent = useLiveQuery(
+  // Dexie auto-sum: today's expense bills 总和.
+  const dexieSpent = useLiveQuery(
     async () => {
       const now = new Date();
       const start = new Date(
@@ -519,18 +496,47 @@ export default function BillingPage() {
     0,
   );
 
-  const mesh = useMemo(() => buildMesh(42), []);
+  // Manual override beats Dexie auto-sum, but only for today.
+  const spent =
+    override && override.date === todayStr() ? override.value : dexieSpent;
 
-  const ratio = Math.min(spent / Math.max(budget, 1), 1.15);
-  const remaining = Math.max(budget - spent, 0);
+  const now = new Date();
+  const daysInMonth = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0,
+  ).getDate();
+  const pool = Math.max(0, finance.salary - finance.savings - finance.rent);
+  const dailyBudget = Math.max(1, Math.round(pool / daysInMonth));
+
+  const mesh = useMemo(() => buildMesh(42), []);
+  const ratio = Math.min(spent / Math.max(dailyBudget, 1), 1.15);
+  const remaining = Math.max(dailyBudget - spent, 0);
   const isDrowned = ratio >= 0.95;
-  const isOver = spent > budget;
+  const isOver = spent > dailyBudget;
+
+  function handleSave(
+    nextFinance: FinanceConfig,
+    nextOverride: number | null,
+  ) {
+    setFinance(nextFinance);
+    localStorage.setItem(FIN_KEY, JSON.stringify(nextFinance));
+    if (nextOverride === null) {
+      setOverride(null);
+      localStorage.removeItem(OVERRIDE_KEY);
+    } else {
+      const o: SpentOverride = { value: nextOverride, date: todayStr() };
+      setOverride(o);
+      localStorage.setItem(OVERRIDE_KEY, JSON.stringify(o));
+    }
+  }
 
   if (page === 'settings') {
     return (
       <SettingsPage
-        budget={budget}
-        setBudget={setBudget}
+        finance={finance}
+        spentBaseline={spent}
+        onSave={handleSave}
         onBack={() => setPage('main')}
       />
     );
@@ -539,9 +545,9 @@ export default function BillingPage() {
   return (
     <div
       style={{
+        position: 'relative',
         width: '100%',
         height: '100%',
-        position: 'relative',
         overflow: 'hidden',
         background: isDrowned
           ? 'linear-gradient(180deg, #d0dff0 0%, #c0d5ea 100%)'
@@ -558,34 +564,22 @@ export default function BillingPage() {
           3% { opacity: 1; }
           6% { opacity: 0; }
         }
-        @keyframes shimmerSharp {
-          0%, 100% { opacity: 0; transform: scale(0.6); }
-          3% { opacity: 1; transform: scale(2); }
-          7% { opacity: 0; transform: scale(0.6); }
-        }
-        @keyframes shimmerDust {
+        @keyframes shimmerAccent {
           0%, 100% { opacity: 0; }
           2% { opacity: 1; }
           5% { opacity: 0; }
         }
-        @keyframes breathe {
-          0%, 100% { opacity: 0.75; }
-          50% { opacity: 1; }
-        }
-        @keyframes drift {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-4px); }
+        @keyframes shimmerDust {
+          0%, 100% { opacity: 0; }
+          2% { opacity: 0.85; }
+          4% { opacity: 0; }
         }
       `}</style>
 
-      {/* geo mesh layer — stretch to fill whatever device aspect we
-          end up on; sparkles becoming subtly elliptical reads as
-          "wind on water" rather than a bug. */}
       <div style={{ position: 'absolute', inset: 0 }}>
         <GeoSea ratio={ratio} mesh={mesh} />
       </div>
 
-      {/* number doubles as the settings entry */}
       <div
         onClick={() => setPage('settings')}
         style={{
@@ -594,7 +588,6 @@ export default function BillingPage() {
           right: 36,
           padding: '8px 12px',
           margin: '-8px -12px',
-          cursor: 'pointer',
           fontSize: 42,
           fontWeight: 300,
           fontFamily: "'Cormorant Garamond',serif",
@@ -602,11 +595,12 @@ export default function BillingPage() {
           lineHeight: 1,
           color: 'rgba(255,255,255,0.9)',
           textShadow: '0 1px 8px rgba(80,120,180,0.15)',
-          transition: 'color 0.8s ease',
+          cursor: 'pointer',
+          userSelect: 'none',
           WebkitTapHighlightColor: 'transparent',
         }}
       >
-        {isOver ? `-${spent - budget}` : remaining.toFixed(0)}
+        {isOver ? `−${spent - dailyBudget}` : remaining.toFixed(0)}
       </div>
     </div>
   );
