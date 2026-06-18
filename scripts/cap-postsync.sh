@@ -41,6 +41,16 @@ if [ -d "$OVERLAY_DIR/app/src/main/res" ]; then
   # resource merger fails with "Duplicate resources". Drop the PNG so
   # our XML wins.
   find "$ANDROID_DIR/app/src/main/res" -type f -name 'splash.png' -delete || true
+  # Capacitor 8 scaffolds .webp launcher icons in every mipmap-*. Our
+  # overlay drops .png at the same resource names — gradle then sees
+  # "ic_launcher.webp" + "ic_launcher.png" in the same folder and
+  # bails with "Duplicate resources". Sweep the webp originals out
+  # after the cp so our PNGs win.
+  find "$ANDROID_DIR/app/src/main/res" -type d -name 'mipmap-*' \
+    -not -name 'mipmap-anydpi-*' | while read -r d; do
+    rm -f "$d/ic_launcher.webp" "$d/ic_launcher_round.webp" \
+          "$d/ic_launcher_foreground.webp" 2>/dev/null || true
+  done
 fi
 
 # 2. Patch AndroidManifest.xml:
