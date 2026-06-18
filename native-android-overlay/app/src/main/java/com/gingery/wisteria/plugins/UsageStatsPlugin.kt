@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
+import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.util.Base64
@@ -84,7 +85,9 @@ class UsageStatsPlugin : Plugin() {
         requestPermission(call)
     }
 
-    /** Generic per-app usage query. */
+    /** Generic per-app usage query. Returns one row per package — uses
+     *  queryAndAggregateUsageStats so the same package can't show up
+     *  twice in the same window (which queryUsageStats would let it). */
     @PluginMethod
     fun getUsageStats(call: PluginCall) {
         val start = call.getLong("startTime") ?: run {
@@ -99,14 +102,14 @@ class UsageStatsPlugin : Plugin() {
             call.reject("UsageStatsManager 不可用")
             return
         }
-        val list = try {
-            mgr.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
+        val map = try {
+            mgr.queryAndAggregateUsageStats(start, end)
         } catch (e: Exception) {
-            call.reject("queryUsageStats 失败：${e.message}")
+            call.reject("queryAndAggregateUsageStats 失败：${e.message}")
             return
         }
         val out = JSObject()
-        out.put("usage", buildAppUsageArray(list))
+        out.put("usage", buildAppUsageArray(map.values))
         call.resolve(out)
     }
 
@@ -159,14 +162,14 @@ class UsageStatsPlugin : Plugin() {
             return
         }
         val range = todayRange()
-        val list = try {
-            mgr.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, range[0], range[1])
+        val map = try {
+            mgr.queryAndAggregateUsageStats(range[0], range[1])
         } catch (e: Exception) {
-            call.reject("queryUsageStats 失败：${e.message}")
+            call.reject("queryAndAggregateUsageStats 失败：${e.message}")
             return
         }
         val out = JSObject()
-        out.put("usage", buildAppUsageArray(list))
+        out.put("usage", buildAppUsageArray(map.values))
         call.resolve(out)
     }
 
@@ -176,44 +179,53 @@ class UsageStatsPlugin : Plugin() {
             call.reject("UsageStatsManager 不可用")
             return
         }
-        val c = Calendar.getInstance()
-        c.set(Calendar.HOUR_OF_DAY, 0)
-        c.set(Calendar.MINUTE, 0)
-        c.set(Calendar.SECOND, 0)
-        c.set(Calendar.MILLISECOND, 0)
-        c.add(Calendar.DAY_OF_YEAR, -6)
-        val startWeek = c.timeInMillis
-        val now = System.currentTimeMillis()
-
-        val totalByDate = HashMap<String, Long>()
-        val ownPkg = context.packageName
+        // INTERVAL_DAILY records have system-defined bucket edges that
+        // DON'T align with local midnight, and the API can return
+        // overlapping rows per package — that's why the old impl had
+        // bars on wrong days and inflated totals. Query each day
+        // separately with queryAndAggregateUsageStats(localMidnightN,
+        // localMidnightN+1): the aggregate dedupes packages and the
+        // window we give it is the correct day boundary.
         val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-
-        try {
-            val stats = mgr.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startWeek, now)
-            stats?.forEach { s ->
-                val pkg = s.packageName ?: return@forEach
-                if (pkg == ownPkg) return@forEach
-                val fg = s.totalTimeInForeground
-                if (fg <= 0) return@forEach
-                val date = fmt.format(Date(s.firstTimeStamp))
-                totalByDate[date] = (totalByDate[date] ?: 0L) + fg
-            }
-        } catch (e: Exception) {
-            call.reject("queryUsageStats 失败：${e.message}")
-            return
-        }
-
+        val ownPkg = context.packageName
+        val now = System.currentTimeMillis()
         val days = JSArray()
-        val iter = c.clone() as Calendar
+
+        val dayStart = Calendar.getInstance()
+        dayStart.set(Calendar.HOUR_OF_DAY, 0)
+        dayStart.set(Calendar.MINUTE, 0)
+        dayStart.set(Calendar.SECOND, 0)
+        dayStart.set(Calendar.MILLISECOND, 0)
+        dayStart.add(Calendar.DAY_OF_YEAR, -6)
+
         for (i in 0 until 7) {
-            val date = fmt.format(iter.time)
+            val from = dayStart.timeInMillis
+            val nextDay = (dayStart.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_YEAR, 1)
+            }.timeInMillis
+            // Today's window stops at "now" — we don't want to query
+            // into the future.
+            val to = minOf(nextDay, now)
+            var totalMs = 0L
+            if (to > from) {
+                try {
+                    val map = mgr.queryAndAggregateUsageStats(from, to)
+                    for ((pkg, s) in map) {
+                        if (pkg == ownPkg) continue
+                        totalMs += foregroundMsOf(s)
+                    }
+                } catch (_: Exception) {
+                    // Leave totalMs at 0 — surface as no data rather than
+                    // killing the whole week query for one bad bucket.
+                }
+            }
             val day = JSObject()
-            day.put("date", date)
-            day.put("totalMs", totalByDate[date] ?: 0L)
+            day.put("date", fmt.format(Date(from)))
+            day.put("totalMs", totalMs)
             days.put(day)
-            iter.add(Calendar.DAY_OF_YEAR, 1)
+            dayStart.add(Calendar.DAY_OF_YEAR, 1)
         }
+
         val ret = JSObject()
         ret.put("days", days)
         call.resolve(ret)
@@ -332,7 +344,22 @@ class UsageStatsPlugin : Plugin() {
         }
     }
 
-    private fun buildAppUsageArray(stats: List<UsageStats>?): JSArray {
+    /** Foreground ms for a UsageStats row. On API 29+ we prefer
+     *  totalTimeVisible — it's what Digital Wellbeing shows and it
+     *  matches the user's intuition of "屏幕上看见这个 app 的时间".
+     *  totalTimeInForeground tends to overcount on Xiaomi/Huawei/OPPO
+     *  ROMs (it can keep ticking after the app is technically
+     *  backgrounded). */
+    private fun foregroundMsOf(s: UsageStats): Long {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val visible = s.totalTimeVisible
+            if (visible > 0) visible else s.totalTimeInForeground
+        } else {
+            s.totalTimeInForeground
+        }
+    }
+
+    private fun buildAppUsageArray(stats: Collection<UsageStats>?): JSArray {
         val arr = JSArray()
         if (stats == null) return arr
         val pm = context.packageManager
@@ -340,7 +367,7 @@ class UsageStatsPlugin : Plugin() {
         for (s in stats) {
             val pkg = s.packageName ?: continue
             if (pkg == ownPkg) continue
-            val fg = s.totalTimeInForeground
+            val fg = foregroundMsOf(s)
             if (fg <= 0) continue
             val o = JSObject()
             o.put("packageName", pkg)

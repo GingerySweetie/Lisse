@@ -48,10 +48,13 @@ function mergeWeight(entries: WeightEntry[]): typeof DEMO.weight {
   };
 }
 
-/** Build a sleep.* shape from the native sleep estimate. We only know
- *  total start/end; without sleep stages we approximate "深睡" as 45%
- *  of total and render a single non-deep segment. Good enough for the
- *  card; sleep stages can come later. */
+/** Build a sleep.* shape from the native sleep estimate. The native
+ *  source is just "longest screen-off span overnight" — no sleep-stage
+ *  data is available at all. We deliberately set deepH/deepM to -1 so
+ *  the renderer can hide the 深睡 line instead of showing a fabricated
+ *  number (the previous impl wrote `totalMin * 0.45`, which always
+ *  disagreed with any wearable / Health Connect source — confusing,
+ *  not informative). Segments are a single non-deep block. */
 function mergeSleep(s: SleepSession): typeof DEMO.sleep {
   const start = new Date(s.startTime);
   const end = new Date(s.endTime);
@@ -60,17 +63,14 @@ function mergeSleep(s: SleepSession): typeof DEMO.sleep {
   const totalMin = Math.max(0, s.durationMinutes);
   const totalH = Math.floor(totalMin / 60);
   const totalM = totalMin % 60;
-  const deepMin = Math.round(totalMin * 0.45);
-  const deepH = Math.floor(deepMin / 60);
-  const deepM = deepMin % 60;
   const windowH = Math.max(8.5, totalMin / 60 + 0.5);
   return {
     startHHMM: fmt(start),
     endHHMM: fmt(end),
     totalH,
     totalM,
-    deepH,
-    deepM,
+    deepH: -1,
+    deepM: -1,
     deltaMinVsYesterday: 0,
     segs: [{ o: 0, d: totalMin / 60, deep: false }],
     windowH,
@@ -558,20 +558,35 @@ function SleepCard({
           <span style={{ fontSize: 16, color: 'var(--text-3)' }}>分</span>
         </span>
         <span className="wis-sleep-cap">
-          深睡 {data.deepH} 时 {data.deepM} 分 · 较昨日{' '}
-          {data.deltaMinVsYesterday >= 0 ? '+' : ''}
+          {data.deepH >= 0 ? (
+            <>
+              深睡 {data.deepH} 时 {data.deepM} 分 ·{' '}
+            </>
+          ) : (
+            <>估算·熄屏时长 · </>
+          )}
+          较昨日 {data.deltaMinVsYesterday >= 0 ? '+' : ''}
           {data.deltaMinVsYesterday} 分
         </span>
       </div>
       <div className="wis-legend">
-        <span>
-          <i style={{ background: 'var(--lav-600)' }} />
-          深睡
-        </span>
-        <span>
-          <i style={{ background: 'var(--lav-300)' }} />
-          浅睡
-        </span>
+        {data.deepH >= 0 ? (
+          <>
+            <span>
+              <i style={{ background: 'var(--lav-600)' }} />
+              深睡
+            </span>
+            <span>
+              <i style={{ background: 'var(--lav-300)' }} />
+              浅睡
+            </span>
+          </>
+        ) : (
+          <span style={{ opacity: 0.7 }}>
+            <i style={{ background: 'var(--lav-300)' }} />
+            没有分期数据
+          </span>
+        )}
       </div>
     </div>
   );

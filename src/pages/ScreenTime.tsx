@@ -239,12 +239,15 @@ function Typing({
   data: { today: number; avg: number };
   isWeekly: boolean;
 }) {
+  // 标签里点明这是 Wisteria 内部输入字数 — 不是系统输入法级别
+  // 的打字统计 (Android 没有公开的输入法 IME 用量 API). 避免跟
+  // 数字健康 / Gboard 自带统计对不上时让用户怀疑。
   return (
     <div className="st-typing-row">
       <div className="st-typing-item">
         <div className="st-typing-val">{data.today.toLocaleString()}</div>
         <div className="st-typing-label">
-          {isWeekly ? '本周总字数' : '今日打字'}
+          {isWeekly ? 'Wisteria · 本周输入' : 'Wisteria · 今日输入'}
         </div>
       </div>
       <div className="st-typing-item">
