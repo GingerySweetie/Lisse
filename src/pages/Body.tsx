@@ -6,6 +6,15 @@ import { Footprints, Bed, Droplet, Plus, Scale, Trash2, X } from 'lucide-react';
 import { db } from '../db';
 import StepCounter from '../lib/native/step-counter';
 import Sleep, { type SleepSession } from '../lib/native/sleep';
+import {
+  checkHealthAuth,
+  getLastNightSleep,
+  getTodaySteps,
+  getWeeklySteps,
+  isHealthAvailable,
+  requestHealthPermissions,
+  type SleepSummary,
+} from '../services/health-connect';
 import { schedulePeriodReminders } from '../lib/native/notifications';
 import {
   addPeriodStart,
@@ -77,6 +86,52 @@ function mergeSleep(s: SleepSession): typeof DEMO.sleep {
   };
 }
 
+/** Sleep summary from Health Connect (band-recorded). If the band emits
+ *  per-stage data, we surface deep-sleep minutes and split the segments
+ *  bar into deep / non-deep blocks. If no stages, falls back to one
+ *  block + -1 sentinel (renderer hides "深睡" line, same as estimate). */
+function mergeHcSleep(s: SleepSummary): typeof DEMO.sleep {
+  const start = new Date(s.startDate);
+  const end = new Date(s.endDate);
+  const fmt = (d: Date) =>
+    `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const totalMin = Math.max(0, s.durationMinutes);
+  const totalH = Math.floor(totalMin / 60);
+  const totalM = totalMin % 60;
+  const windowH = Math.max(8.5, totalMin / 60 + 0.5);
+
+  const hasStages = s.stages.length > 0;
+  let deepH = -1;
+  let deepM = -1;
+  let segs: { o: number; d: number; deep: boolean }[] = [
+    { o: 0, d: totalMin / 60, deep: false },
+  ];
+  if (hasStages) {
+    const deepMin = s.totalsByStage.deep;
+    deepH = Math.floor(deepMin / 60);
+    deepM = deepMin % 60;
+    // Build segments relative to the session start, in hours.
+    const sessionStartMs = start.getTime();
+    segs = s.stages.map((st) => {
+      const o = (new Date(st.startDate).getTime() - sessionStartMs) / 3_600_000;
+      const d = st.durationMinutes / 60;
+      return { o: Math.max(0, o), d, deep: st.stage === 'deep' };
+    });
+  }
+
+  return {
+    startHHMM: fmt(start),
+    endHHMM: fmt(end),
+    totalH,
+    totalM,
+    deepH,
+    deepM,
+    deltaMinVsYesterday: 0,
+    segs,
+    windowH,
+  };
+}
+
 const DEMO = {
   steps: { today: 6420, goal: 8000, week: [5200, 7100, 6800, 9200, 4300, 8800, 6420] },
   sleep: {
@@ -109,8 +164,15 @@ export default function BodyPage() {
   const [filled, setFilled] = useState(true);
   const [weightDraft, setWeightDraft] = useState('');
   const [liveSteps, setLiveSteps] = useState<number | null>(null);
+  /** HC 给的过去 7 天每天步数 (升序, 今天在末). 没接通 HC 则保持 null. */
+  const [weeklySteps, setWeeklySteps] = useState<number[] | null>(null);
   const [liveSleep, setLiveSleep] = useState<SleepSession | null>(null);
+  const [hcSleep, setHcSleep] = useState<SleepSummary | null>(null);
   const [sleepNeedsAuth, setSleepNeedsAuth] = useState(false);
+  /** Health Connect 授权态. null = 还没问, true = 拿了 HC 读权限, false = 没拿
+   *  (或者系统根本没装 HC). HC ready 时步数 / 睡眠都走 HC, 不再启动原生
+   *  TYPE_STEP_COUNTER + SleepEstimate. */
+  const [hcReady, setHcReady] = useState<boolean | null>(null);
   const [periodSheet, setPeriodSheet] = useState(false);
 
   // Real period entries — when the user has logged at least one cycle,
@@ -128,10 +190,67 @@ export default function BodyPage() {
     [],
   );
 
-  // Steps via the native TYPE_STEP_COUNTER sensor. The plugin handles
-  // the daily baseline + day-rollover so getSteps() already returns
-  // today's count; the stepUpdate event fires it live as she walks.
+  // Probe Health Connect authorization on first mount. HC ready (read
+  // grant for steps/sleep) → it's the data source. Otherwise we fall
+  // through to the native plugins (TYPE_STEP_COUNTER + UsageEvents
+  // sleep estimate) so we still have *something* on a fresh install
+  // where the user hasn't connected HC yet.
   useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') {
+      setHcReady(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const avail = await isHealthAvailable();
+      if (!avail) {
+        if (!cancelled) setHcReady(false);
+        return;
+      }
+      const ok = await checkHealthAuth();
+      if (!cancelled) setHcReady(ok);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ─── HC data path ──────────────────────────────────────────────────
+  // When HC is authorized: pull today's steps + last 7-day daily totals
+  // + last night's sleep. Refresh on visibility so backgrounding then
+  // returning gives fresh numbers (small bands write to HC in batches).
+  useEffect(() => {
+    if (hcReady !== true) return;
+    let cancelled = false;
+    async function pull() {
+      const [today, week, sleep] = await Promise.all([
+        getTodaySteps(),
+        getWeeklySteps(),
+        getLastNightSleep(),
+      ]);
+      if (cancelled) return;
+      setLiveSteps(Math.round(today));
+      if (week.length === 7) setWeeklySteps(week.map((d) => d.steps));
+      if (sleep) setHcSleep(sleep);
+    }
+    void pull();
+    function onVis() {
+      if (document.visibilityState === 'visible') void pull();
+    }
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onVis);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onVis);
+    };
+  }, [hcReady]);
+
+  // ─── Native fallback path ──────────────────────────────────────────
+  // Only used when HC isn't connected. Once user grants HC we tear
+  // down the sensor listener.
+  useEffect(() => {
+    if (hcReady !== false) return;
     if (Capacitor.getPlatform() !== 'android') return;
     let cleanup: (() => void) | undefined;
     let cancelled = false;
@@ -155,12 +274,12 @@ export default function BodyPage() {
       cancelled = true;
       cleanup?.();
     };
-  }, []);
+  }, [hcReady]);
 
-  // Sleep via UsageEvents screen-on/off span estimate (native plugin
-  // SleepEstimatePlugin). Permission is the same Usage Access switch
-  // ScreenTime uses; one grant covers both.
+  // Sleep — also native fallback path. SleepEstimatePlugin reads the
+  // screen-off span via UsageEvents and is "estimate, not real".
   useEffect(() => {
+    if (hcReady !== false) return;
     if (Capacitor.getPlatform() !== 'android') return;
     let cancelled = false;
     async function refresh() {
@@ -188,7 +307,12 @@ export default function BodyPage() {
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('focus', onVis);
     };
-  }, []);
+  }, [hcReady]);
+
+  async function handleConnectHc() {
+    const ok = await requestHealthPermissions();
+    setHcReady(ok);
+  }
 
   async function handleConnectSleep() {
     try {
@@ -206,13 +330,23 @@ export default function BodyPage() {
     }
   }
 
-  // Merge live data into the demo skeleton.
+  // Merge live data into the demo skeleton. Source priority for sleep:
+  // HC (real, may include stages) > native estimate > DEMO. For steps:
+  // HC weekly array > DEMO week. liveSteps already coalesces today.
+  const mergedSleep = hcSleep
+    ? mergeHcSleep(hcSleep)
+    : liveSleep
+      ? mergeSleep(liveSleep)
+      : DEMO.sleep;
   const data = filled
     ? {
         ...DEMO,
-        steps:
-          liveSteps !== null ? { ...DEMO.steps, today: liveSteps } : DEMO.steps,
-        sleep: liveSleep ? mergeSleep(liveSleep) : DEMO.sleep,
+        steps: {
+          ...DEMO.steps,
+          today: liveSteps !== null ? liveSteps : DEMO.steps.today,
+          week: weeklySteps ?? DEMO.steps.week,
+        },
+        sleep: mergedSleep,
       }
     : null;
 
@@ -293,35 +427,72 @@ export default function BodyPage() {
         <div className="wis-screen-eyebrow">健康 · 一间安静的诊室</div>
         <h1 className="wis-screen-title">今天的身体</h1>
 
-        {/* Preview toggle */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-            marginTop: 18,
-            padding: '10px 14px',
-            borderRadius: 'var(--r-card)',
-            border: '1px dashed var(--line)',
-            background: 'rgba(245,240,250,0.45)',
-          }}
-        >
-          <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
-            <strong style={{ color: 'var(--text-2)', fontWeight: 500 }}>预览模式</strong>
-            <span style={{ marginLeft: 8 }}>
-              真实数据要等接入 Google Fit / 手环 / 手动日志后才会有
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setFilled((v) => !v)}
-            className="btn-ghost"
-            style={{ flexShrink: 0, fontSize: 12, padding: '4px 12px' }}
+        {/* HC connection prompt / preview toggle */}
+        {hcReady === false && Capacitor.getPlatform() === 'android' ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginTop: 18,
+              padding: '10px 14px',
+              borderRadius: 'var(--r-card)',
+              border: '1px dashed var(--line)',
+              background: 'rgba(245,240,250,0.45)',
+            }}
           >
-            {filled ? '看空状态' : '看示例数据'}
-          </button>
-        </div>
+            <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
+              <strong style={{ color: 'var(--text-2)', fontWeight: 500 }}>
+                连接 Health Connect
+              </strong>
+              <span style={{ marginLeft: 8 }}>
+                授权后步数 / 心率 / 睡眠 / 体重从手环走 HC 同步
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleConnectHc()}
+              className="btn-ghost"
+              style={{ flexShrink: 0, fontSize: 12, padding: '4px 12px' }}
+            >
+              连接
+            </button>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginTop: 18,
+              padding: '10px 14px',
+              borderRadius: 'var(--r-card)',
+              border: '1px dashed var(--line)',
+              background: 'rgba(245,240,250,0.45)',
+            }}
+          >
+            <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.5 }}>
+              <strong style={{ color: 'var(--text-2)', fontWeight: 500 }}>
+                {hcReady ? '已连接 Health Connect' : '预览模式'}
+              </strong>
+              <span style={{ marginLeft: 8 }}>
+                {hcReady
+                  ? '步数 / 睡眠走手环实时数据'
+                  : '真实数据要等接入 Health Connect / 手动日志后才会有'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFilled((v) => !v)}
+              className="btn-ghost"
+              style={{ flexShrink: 0, fontSize: 12, padding: '4px 12px' }}
+            >
+              {filled ? '看空状态' : '看示例数据'}
+            </button>
+          </div>
+        )}
 
         {data ? (
           <div className="wis-health-cards">
