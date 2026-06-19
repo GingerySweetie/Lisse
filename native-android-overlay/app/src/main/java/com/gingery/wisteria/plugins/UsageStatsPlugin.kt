@@ -2,7 +2,6 @@ package com.gingery.wisteria.plugins
 
 import android.app.AppOpsManager
 import android.app.usage.UsageEvents
-import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
@@ -10,7 +9,6 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
-import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.util.Base64
@@ -85,9 +83,8 @@ class UsageStatsPlugin : Plugin() {
         requestPermission(call)
     }
 
-    /** Generic per-app usage query. Returns one row per package — uses
-     *  queryAndAggregateUsageStats so the same package can't show up
-     *  twice in the same window (which queryUsageStats would let it). */
+    /** Generic per-app usage query. 走事件重建, 严格只统计 [start, end]
+     *  窗口内的前台时间, 不受 daily bucket 边界塌帐影响. */
     @PluginMethod
     fun getUsageStats(call: PluginCall) {
         val start = call.getLong("startTime") ?: run {
@@ -102,14 +99,14 @@ class UsageStatsPlugin : Plugin() {
             call.reject("UsageStatsManager 不可用")
             return
         }
-        val map = try {
-            mgr.queryAndAggregateUsageStats(start, end)
+        val perPkg = try {
+            computePerAppForeground(mgr, start, end)
         } catch (e: Exception) {
-            call.reject("queryAndAggregateUsageStats 失败：${e.message}")
+            call.reject("queryEvents 失败：${e.message}")
             return
         }
         val out = JSObject()
-        out.put("usage", buildAppUsageArray(map.values))
+        out.put("usage", buildAppUsageJsArray(perPkg))
         call.resolve(out)
     }
 
@@ -162,14 +159,14 @@ class UsageStatsPlugin : Plugin() {
             return
         }
         val range = todayRange()
-        val map = try {
-            mgr.queryAndAggregateUsageStats(range[0], range[1])
+        val perPkg = try {
+            computePerAppForeground(mgr, range[0], range[1])
         } catch (e: Exception) {
-            call.reject("queryAndAggregateUsageStats 失败：${e.message}")
+            call.reject("queryEvents 失败：${e.message}")
             return
         }
         val out = JSObject()
-        out.put("usage", buildAppUsageArray(map.values))
+        out.put("usage", buildAppUsageJsArray(perPkg))
         call.resolve(out)
     }
 
@@ -179,15 +176,12 @@ class UsageStatsPlugin : Plugin() {
             call.reject("UsageStatsManager 不可用")
             return
         }
-        // INTERVAL_DAILY records have system-defined bucket edges that
-        // DON'T align with local midnight, and the API can return
-        // overlapping rows per package — that's why the old impl had
-        // bars on wrong days and inflated totals. Query each day
-        // separately with queryAndAggregateUsageStats(localMidnightN,
-        // localMidnightN+1): the aggregate dedupes packages and the
-        // window we give it is the correct day boundary.
+        // 走事件重建. queryAndAggregateUsageStats 返回的是 system
+        // daily bucket 的累计值 (bucket 边界不对齐本地午夜, 且包含
+        // 跨午夜的前一日活动残留), 顶部大数字会被吹爆 (实测 00:04
+        // 显示 1h53m). 改成对每一天单独 queryEvents 算 foreground
+        // 时长, 跟 24h 分布同口径, 跟数字健康对齐.
         val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val ownPkg = context.packageName
         val now = System.currentTimeMillis()
         val days = JSArray()
 
@@ -203,20 +197,15 @@ class UsageStatsPlugin : Plugin() {
             val nextDay = (dayStart.clone() as Calendar).apply {
                 add(Calendar.DAY_OF_YEAR, 1)
             }.timeInMillis
-            // Today's window stops at "now" — we don't want to query
-            // into the future.
+            // 今天的窗口截到 now, 不查未来.
             val to = minOf(nextDay, now)
             var totalMs = 0L
             if (to > from) {
                 try {
-                    val map = mgr.queryAndAggregateUsageStats(from, to)
-                    for ((pkg, s) in map) {
-                        if (pkg == ownPkg) continue
-                        totalMs += foregroundMsOf(s)
-                    }
+                    val perPkg = computePerAppForeground(mgr, from, to)
+                    for ((_, ms) in perPkg) totalMs += ms
                 } catch (_: Exception) {
-                    // Leave totalMs at 0 — surface as no data rather than
-                    // killing the whole week query for one bad bucket.
+                    // 留 0, 不让一个坏天毁掉整个周查询.
                 }
             }
             val day = JSObject()
@@ -344,35 +333,76 @@ class UsageStatsPlugin : Plugin() {
         }
     }
 
-    /** Foreground ms for a UsageStats row. On API 29+ we prefer
-     *  totalTimeVisible — it's what Digital Wellbeing shows and it
-     *  matches the user's intuition of "屏幕上看见这个 app 的时间".
-     *  totalTimeInForeground tends to overcount on Xiaomi/Huawei/OPPO
-     *  ROMs (it can keep ticking after the app is technically
-     *  backgrounded). */
-    private fun foregroundMsOf(s: UsageStats): Long {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val visible = s.totalTimeVisible
-            if (visible > 0) visible else s.totalTimeInForeground
-        } else {
-            s.totalTimeInForeground
+    /**
+     * 走事件重建窗口内的 per-app 前台时长. queryAndAggregateUsageStats
+     * 返回的是 system daily bucket 内的累计值, bucket 边界不对齐本地
+     * 午夜 — 早上 00:04 query (todayMidnight, now) 会把昨天傍晚同
+     * bucket 的活动全部带进来, 顶部大数字直接吹爆.
+     *
+     * 事件流: MOVE_TO_FOREGROUND 入栈, MOVE_TO_BACKGROUND 出栈 +
+     * 累计. 跨窗口边界的 span 用 maxOf(since, start) / minOf(end, now)
+     * 钳到窗口内. 窗口结束时仍在前台的 app 用 min(end, now) 截尾.
+     *
+     * 这是跟 24h 分布 (本身已经事件重建) 同口径, 跟数字健康对齐.
+     *
+     * 已知 caveat: app 在 start 之前进入前台、跨过 start 没出栈, 我
+     * 们看不到那个 FOREGROUND 事件 (因为 queryEvents 只返回窗口内
+     * 的事件), 这部分时间会丢. 影响最大的场景是早晨刚过午夜立刻查,
+     * 用户在午夜跨过来还在用同一个 app — 那一小段会少算. 我们不做
+     * 提前查询补偿来换简单。
+     */
+    private fun computePerAppForeground(
+        mgr: UsageStatsManager,
+        start: Long,
+        end: Long,
+    ): Map<String, Long> {
+        val perPkg = HashMap<String, Long>()
+        val foregroundSince = HashMap<String, Long>()
+        val ownPkg = context.packageName
+
+        val events = mgr.queryEvents(start, end)
+        val ev = UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(ev)
+            val pkg = ev.packageName ?: continue
+            if (pkg == ownPkg) continue
+            when (ev.eventType) {
+                UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    foregroundSince[pkg] = ev.timeStamp
+                }
+                UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                    val since = foregroundSince.remove(pkg) ?: continue
+                    val effStart = maxOf(since, start)
+                    val dur = ev.timeStamp - effStart
+                    if (dur > 0) {
+                        perPkg[pkg] = (perPkg[pkg] ?: 0L) + dur
+                    }
+                }
+            }
         }
+        // 还在前台的 app, 用 min(end, now) 截尾
+        val cap = minOf(end, System.currentTimeMillis())
+        for ((pkg, since) in foregroundSince) {
+            val effStart = maxOf(since, start)
+            val dur = cap - effStart
+            if (dur > 0) {
+                perPkg[pkg] = (perPkg[pkg] ?: 0L) + dur
+            }
+        }
+        return perPkg
     }
 
-    private fun buildAppUsageArray(stats: Collection<UsageStats>?): JSArray {
+    private fun buildAppUsageJsArray(perPkg: Map<String, Long>): JSArray {
         val arr = JSArray()
-        if (stats == null) return arr
         val pm = context.packageManager
-        val ownPkg = context.packageName
-        for (s in stats) {
-            val pkg = s.packageName ?: continue
-            if (pkg == ownPkg) continue
-            val fg = foregroundMsOf(s)
+        // 按时长降序
+        val sorted = perPkg.entries.sortedByDescending { it.value }
+        for ((pkg, fg) in sorted) {
             if (fg <= 0) continue
             val o = JSObject()
             o.put("packageName", pkg)
             o.put("foregroundMs", fg)
-            o.put("lastTimeUsed", s.lastTimeUsed)
+            o.put("lastTimeUsed", 0L)
 
             var appName: String = pkg
             var iconBase64: String? = null
