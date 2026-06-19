@@ -53,6 +53,18 @@ if [ -d "$OVERLAY_DIR/app/src/main/res" ]; then
   done
 fi
 
+# 2a. Bump minSdkVersion → 26 in android/variables.gradle.
+#     Capacitor 8's scaffold defaults to 24. @capgo/capacitor-health
+#     needs ≥ 26 (Health Connect doesn't exist below it), and that's
+#     the floor we now demand. Idempotent: sed only fires when the
+#     value is still 24.
+VARS="$ANDROID_DIR/variables.gradle"
+if [ -f "$VARS" ] && grep -qE 'minSdkVersion[[:space:]]*=[[:space:]]*24' "$VARS"; then
+  echo "[postsync] bumping minSdkVersion 24 → 26 (Health Connect floor)"
+  sed -i.bak -E 's/minSdkVersion[[:space:]]*=[[:space:]]*24/minSdkVersion = 26/' "$VARS"
+  rm -f "$VARS.bak"
+fi
+
 # 2. Patch AndroidManifest.xml:
 #    - ACTIVITY_RECOGNITION (step counter sensor)
 #    - PACKAGE_USAGE_STATS (special access, granted via Settings)
