@@ -1,14 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Capacitor } from '@capacitor/core';
-import { Footprints, Bed, Droplet, Plus, Scale, Trash2, X } from 'lucide-react';
+import {
+  Activity,
+  Bed,
+  Droplet,
+  Footprints,
+  Plus,
+  Scale,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { db } from '../db';
 import StepCounter from '../lib/native/step-counter';
 import Sleep, { type SleepSession } from '../lib/native/sleep';
 import {
   checkHealthAuth,
   getLastNightSleep,
+  getTodayHeartRate,
+  getTodayHeartRateSeries,
   getTodaySteps,
   getWeeklySteps,
   isHealthAvailable,
@@ -57,6 +68,29 @@ function mergeWeight(entries: WeightEntry[]): typeof DEMO.weight {
   };
 }
 
+/** One segment in the sleep bar. `stage` is HC sleep-stage data when the
+ *  band provided it; otherwise undefined. `deep` is kept for backward
+ *  compat — true ↔ stage === 'deep' so renderers that ignore stage still
+ *  pick the right color. */
+interface SleepSeg {
+  o: number;
+  d: number;
+  deep: boolean;
+  stage?: string;
+}
+interface SleepData {
+  startHHMM: string;
+  endHHMM: string;
+  totalH: number;
+  totalM: number;
+  /** -1 sentinel: no stage data available → renderer hides "深睡" line. */
+  deepH: number;
+  deepM: number;
+  deltaMinVsYesterday: number;
+  segs: SleepSeg[];
+  windowH: number;
+}
+
 /** Build a sleep.* shape from the native sleep estimate. The native
  *  source is just "longest screen-off span overnight" — no sleep-stage
  *  data is available at all. We deliberately set deepH/deepM to -1 so
@@ -64,7 +98,7 @@ function mergeWeight(entries: WeightEntry[]): typeof DEMO.weight {
  *  number (the previous impl wrote `totalMin * 0.45`, which always
  *  disagreed with any wearable / Health Connect source — confusing,
  *  not informative). Segments are a single non-deep block. */
-function mergeSleep(s: SleepSession): typeof DEMO.sleep {
+function mergeSleep(s: SleepSession): SleepData {
   const start = new Date(s.startTime);
   const end = new Date(s.endTime);
   const fmt = (d: Date) =>
@@ -90,7 +124,7 @@ function mergeSleep(s: SleepSession): typeof DEMO.sleep {
  *  per-stage data, we surface deep-sleep minutes and split the segments
  *  bar into deep / non-deep blocks. If no stages, falls back to one
  *  block + -1 sentinel (renderer hides "深睡" line, same as estimate). */
-function mergeHcSleep(s: SleepSummary): typeof DEMO.sleep {
+function mergeHcSleep(s: SleepSummary): SleepData {
   const start = new Date(s.startDate);
   const end = new Date(s.endDate);
   const fmt = (d: Date) =>
@@ -103,7 +137,7 @@ function mergeHcSleep(s: SleepSummary): typeof DEMO.sleep {
   const hasStages = s.stages.length > 0;
   let deepH = -1;
   let deepM = -1;
-  let segs: { o: number; d: number; deep: boolean }[] = [
+  let segs: { o: number; d: number; deep: boolean; stage?: string }[] = [
     { o: 0, d: totalMin / 60, deep: false },
   ];
   if (hasStages) {
@@ -115,7 +149,12 @@ function mergeHcSleep(s: SleepSummary): typeof DEMO.sleep {
     segs = s.stages.map((st) => {
       const o = (new Date(st.startDate).getTime() - sessionStartMs) / 3_600_000;
       const d = st.durationMinutes / 60;
-      return { o: Math.max(0, o), d, deep: st.stage === 'deep' };
+      return {
+        o: Math.max(0, o),
+        d,
+        deep: st.stage === 'deep',
+        stage: st.stage,
+      };
     });
   }
 
@@ -173,6 +212,13 @@ export default function BodyPage() {
    *  (或者系统根本没装 HC). HC ready 时步数 / 睡眠都走 HC, 不再启动原生
    *  TYPE_STEP_COUNTER + SleepEstimate. */
   const [hcReady, setHcReady] = useState<boolean | null>(null);
+  /** 今日心率: HC 直接读。null = 还没接通 / 没数据。 */
+  const [hr, setHr] = useState<{
+    latest: number | null;
+    min: number | null;
+    max: number | null;
+    series: number[];
+  }>({ latest: null, min: null, max: null, series: [] });
   const [periodSheet, setPeriodSheet] = useState(false);
 
   // Real period entries — when the user has logged at least one cycle,
@@ -215,36 +261,47 @@ export default function BodyPage() {
     };
   }, []);
 
-  // ─── HC data path ──────────────────────────────────────────────────
+  // ─── HC data pull ──────────────────────────────────────────────────
+  // Pulled out as a callback so it can fire from visibilitychange / focus
+  // listeners AND from the manual pull-to-refresh gesture below. Always
+  // re-fetches everything HC has — small batches, fast.
+  const pullHc = useCallback(async () => {
+    if (Capacitor.getPlatform() !== 'android') return;
+    const [today, week, sleep, hrSummary, hrSeries] = await Promise.all([
+      getTodaySteps(),
+      getWeeklySteps(),
+      getLastNightSleep(),
+      getTodayHeartRate(),
+      getTodayHeartRateSeries(),
+    ]);
+    setLiveSteps(Math.round(today));
+    if (week.length === 7) setWeeklySteps(week.map((d) => d.steps));
+    if (sleep) setHcSleep(sleep);
+    setHr({
+      latest: hrSummary.latest,
+      min: hrSummary.min,
+      max: hrSummary.max,
+      series: hrSeries,
+    });
+  }, []);
+
   // When HC is authorized: pull today's steps + last 7-day daily totals
-  // + last night's sleep. Refresh on visibility so backgrounding then
-  // returning gives fresh numbers (small bands write to HC in batches).
+  // + last night's sleep + heart rate. Refresh on visibility so
+  // backgrounding then returning gives fresh numbers (small bands write
+  // to HC in batches).
   useEffect(() => {
     if (hcReady !== true) return;
-    let cancelled = false;
-    async function pull() {
-      const [today, week, sleep] = await Promise.all([
-        getTodaySteps(),
-        getWeeklySteps(),
-        getLastNightSleep(),
-      ]);
-      if (cancelled) return;
-      setLiveSteps(Math.round(today));
-      if (week.length === 7) setWeeklySteps(week.map((d) => d.steps));
-      if (sleep) setHcSleep(sleep);
-    }
-    void pull();
+    void pullHc();
     function onVis() {
-      if (document.visibilityState === 'visible') void pull();
+      if (document.visibilityState === 'visible') void pullHc();
     }
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('focus', onVis);
     return () => {
-      cancelled = true;
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('focus', onVis);
     };
-  }, [hcReady]);
+  }, [hcReady, pullHc]);
 
   // ─── Native fallback path ──────────────────────────────────────────
   // Only used when HC isn't connected. Once user grants HC we tear
@@ -314,6 +371,55 @@ export default function BodyPage() {
     setHcReady(ok);
   }
 
+  // ─── Pull-to-refresh ──────────────────────────────────────────────
+  // Touch handlers on the scroll container. Detect a downward drag
+  // while at scrollTop=0, show a small "正在同步…" indicator, and call
+  // pullHc when the user crosses the trigger threshold + releases.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const [pullPx, setPullPx] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const PULL_TRIGGER = 70;
+  const PULL_CAP = 100;
+
+  function onTouchStart(e: React.TouchEvent) {
+    if (refreshing) return;
+    const el = scrollRef.current;
+    if (!el || el.scrollTop > 0) {
+      touchStartY.current = null;
+      return;
+    }
+    touchStartY.current = e.touches[0].clientY;
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    if (touchStartY.current === null) return;
+    const dy = e.touches[0].clientY - touchStartY.current;
+    if (dy <= 0) {
+      setPullPx(0);
+      return;
+    }
+    // Rubber-band: scale beyond half the cap to ease the drag.
+    const eased = dy <= PULL_CAP ? dy * 0.55 : PULL_CAP * 0.55;
+    setPullPx(eased);
+  }
+  async function onTouchEnd() {
+    if (touchStartY.current === null) return;
+    touchStartY.current = null;
+    if (pullPx >= PULL_TRIGGER * 0.5) {
+      setRefreshing(true);
+      setPullPx(36);
+      try {
+        await pullHc();
+      } catch {
+        // pullHc is already noisy on the console — swallow here.
+      }
+      setRefreshing(false);
+      setPullPx(0);
+    } else {
+      setPullPx(0);
+    }
+  }
+
   async function handleConnectSleep() {
     try {
       await Sleep.requestPermission();
@@ -352,6 +458,11 @@ export default function BodyPage() {
 
   return (
     <div
+      ref={scrollRef}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onTouchCancel={onTouchEnd}
       style={{
         width: '100%',
         height: '100%',
@@ -363,6 +474,42 @@ export default function BodyPage() {
         WebkitOverflowScrolling: 'touch',
       }}
     >
+      {/* Pull-to-refresh indicator */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: pullPx,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 11,
+          color: 'var(--text-3)',
+          letterSpacing: 1,
+          pointerEvents: 'none',
+          transition: refreshing ? 'none' : 'height 0.2s',
+          overflow: 'hidden',
+        }}
+      >
+        {pullPx > 0 && (
+          <span>
+            {refreshing
+              ? '同步中…'
+              : pullPx >= PULL_TRIGGER * 0.5
+                ? '松开同步'
+                : '下拉同步'}
+          </span>
+        )}
+      </div>
+      <div
+        style={{
+          transform: `translateY(${pullPx}px)`,
+          transition: refreshing ? 'none' : 'transform 0.2s',
+          willChange: 'transform',
+        }}
+      >
       <div
         className="topbar"
         style={{
@@ -497,6 +644,7 @@ export default function BodyPage() {
         {data ? (
           <div className="wis-health-cards">
             <StepsCard data={data.steps} />
+            <HeartRateCard data={hr} hcReady={hcReady === true} />
             <SleepCard
               data={data.sleep}
               needsAuth={sleepNeedsAuth}
@@ -613,6 +761,7 @@ export default function BodyPage() {
           onClose={() => setPeriodSheet(false)}
         />
       )}
+      </div>{/* /pull translate wrapper */}
     </div>
   );
 }
@@ -654,12 +803,83 @@ function StepsCard({ data }: { data: typeof DEMO.steps }) {
   );
 }
 
+function HeartRateCard({
+  data,
+  hcReady,
+}: {
+  data: {
+    latest: number | null;
+    min: number | null;
+    max: number | null;
+    series: number[];
+  };
+  hcReady: boolean;
+}) {
+  const empty = data.latest === null;
+  return (
+    <div className="wis-hcard">
+      <div className="wis-hcard-head">
+        <span className="wis-hcard-ic">
+          <Activity size={16} strokeWidth={1.7} />
+        </span>
+        <span className="wis-hcard-label">心率</span>
+        <span className="wis-hcard-aside">
+          {empty ? (hcReady ? '今日暂无' : '需连接 HC') : 'BPM'}
+        </span>
+      </div>
+      <div className="wis-steps-row">
+        <div
+          style={{
+            flexShrink: 0,
+            width: 96,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 34,
+              fontWeight: 500,
+              color: 'var(--head)',
+              lineHeight: 1,
+              letterSpacing: -1,
+            }}
+          >
+            {empty ? '—' : data.latest}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+            最新
+          </div>
+        </div>
+        <div className="wis-steps-side">
+          <div className="wis-steps-goal">
+            {empty ? (
+              <span>戴上手环测一次就有了</span>
+            ) : (
+              <>
+                范围 <b>{data.min}</b> – <b>{data.max}</b> BPM
+              </>
+            )}
+          </div>
+          {data.series.length >= 2 && (
+            <div className="wis-spark" style={{ marginTop: 8 }}>
+              <Sparkline data={data.series} h={40} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SleepCard({
   data,
   needsAuth,
   onConnect,
 }: {
-  data: typeof DEMO.sleep;
+  data: SleepData;
   needsAuth?: boolean;
   onConnect?: () => void;
 }) {
@@ -700,17 +920,34 @@ function SleepCard({
             preserveAspectRatio="none"
             style={{ display: 'block' }}
           >
-            {data.segs.map((s, i) => (
-              <rect
-                key={i}
-                x={(s.o / data.windowH) * 340}
-                y={s.deep ? 0 : 4}
-                width={Math.max(0, (s.d / data.windowH) * 340 - 2)}
-                height={s.deep ? 18 : 10}
-                rx="3"
-                fill={s.deep ? 'var(--lav-600)' : 'var(--lav-300)'}
-              />
-            ))}
+            {data.segs.map((s, i) => {
+              // 4-color stage palette (per brief): deep / light / rem / awake.
+              // Falls back to the binary deep/light coloring when stage isn't
+              // available (native estimate or band w/o stage data).
+              const fill = s.stage
+                ? s.stage === 'deep'
+                  ? '#4a2d7a'
+                  : s.stage === 'light'
+                    ? '#9b7cc5'
+                    : s.stage === 'rem'
+                      ? '#b8cce8'
+                      : '#e8e4ef'
+                : s.deep
+                  ? 'var(--lav-600)'
+                  : 'var(--lav-300)';
+              const isFullHeight = s.stage === 'deep' || s.deep;
+              return (
+                <rect
+                  key={i}
+                  x={(s.o / data.windowH) * 340}
+                  y={isFullHeight ? 0 : 4}
+                  width={Math.max(0, (s.d / data.windowH) * 340 - 2)}
+                  height={isFullHeight ? 18 : 10}
+                  rx="3"
+                  fill={fill}
+                />
+              );
+            })}
           </svg>
         </div>
         <div className="wis-sleep-scale">
@@ -741,7 +978,26 @@ function SleepCard({
         </span>
       </div>
       <div className="wis-legend">
-        {data.deepH >= 0 ? (
+        {data.segs.some((s) => s.stage) ? (
+          <>
+            <span>
+              <i style={{ background: '#4a2d7a' }} />
+              深睡
+            </span>
+            <span>
+              <i style={{ background: '#9b7cc5' }} />
+              浅睡
+            </span>
+            <span>
+              <i style={{ background: '#b8cce8' }} />
+              REM
+            </span>
+            <span>
+              <i style={{ background: '#e8e4ef' }} />
+              清醒
+            </span>
+          </>
+        ) : data.deepH >= 0 ? (
           <>
             <span>
               <i style={{ background: 'var(--lav-600)' }} />
@@ -917,7 +1173,10 @@ function RingProgress({
 }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const pct = Math.min(1, value / Math.max(1, max));
+  // Min 3% arc so the ring never reads as fully empty even at 0 steps
+  // (Anti-loneliness 强制保留一小段紫色, 跟 brief 一致). 0 步走到达
+  // 目标都会被 clamp 到 [0.03, 1.0] 之间.
+  const pct = Math.min(1, Math.max(0.03, value / Math.max(1, max)));
   const dash = c * pct;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>

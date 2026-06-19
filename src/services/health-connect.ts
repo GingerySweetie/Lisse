@@ -125,6 +125,19 @@ export async function getTodayHeartRate(): Promise<{
   };
 }
 
+/** 今日心率时间序列 (按时间升序, 用于迷你折线). 限制 200 点; 手环常按
+ *  5–10 分钟采样一次, 一天 ~150 点, 不会爆. */
+export async function getTodayHeartRateSeries(): Promise<number[]> {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const samples = await readSamples('heartRate', startOfDay, now, 500);
+  return samples
+    .filter((s) => s.value > 0)
+    .sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime())
+    .map((s) => Math.round(s.value))
+    .slice(-200);
+}
+
 /** 最近 7 天每天的步数, 顺序: 6 天前 → 今天. queryAggregated bucket=day
  *  让 HC 自己分桶, 不用我们手工逐日查。 */
 export async function getWeeklySteps(): Promise<
