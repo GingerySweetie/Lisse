@@ -255,27 +255,27 @@ export default function MessageBubble({
             }`}
           >
             {sib && sib.total > 1 && (
-              <div className="flex items-center gap-0.5 rounded-full bg-white/80 px-1 py-0.5 ring-1 ring-lavender-100">
+              <div className="flex items-center gap-0 text-ink-500/45">
                 <button
                   type="button"
                   onClick={() => gotoSibling(-1)}
                   disabled={disabled}
-                  className="msg-act p-1"
+                  className="px-0.5 py-0.5 transition hover:text-ink-700"
                   aria-label="上一条分支"
                 >
-                  <ChevronLeft size={14} />
+                  <ChevronLeft size={11} strokeWidth={1.5} />
                 </button>
-                <span className="px-1 tabular-nums">
+                <span className="px-0.5 text-[10px] tabular-nums leading-none">
                   {sib.index + 1}/{sib.total}
                 </span>
                 <button
                   type="button"
                   onClick={() => gotoSibling(1)}
                   disabled={disabled}
-                  className="msg-act p-1"
+                  className="px-0.5 py-0.5 transition hover:text-ink-700"
                   aria-label="下一条分支"
                 >
-                  <ChevronRight size={14} />
+                  <ChevronRight size={11} strokeWidth={1.5} />
                 </button>
               </div>
             )}
