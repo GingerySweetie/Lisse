@@ -257,3 +257,77 @@ export async function getRecentWeight(
     }))
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
+
+/** 诊断信息: 每个 dataType 在过去 24 小时里 HC 里到底有什么.
+ *  排查「HC 连上了但是面板全 0」时用 — 一眼看出来:
+ *  - read 权限拿到了吗
+ *  - 有几条样本
+ *  - 最后一笔什么时候
+ *  - 哪些 app/sourceName 在写 (= 小米运动健康 / 其他 / 还是没人写)
+ */
+export interface HcDiagEntry {
+  dataType: HealthDataType;
+  authorized: boolean;
+  sampleCount: number;
+  latestAt: string | null;
+  sources: string[];
+}
+
+export interface HcDiagReport {
+  available: boolean;
+  entries: HcDiagEntry[];
+  generatedAt: string;
+}
+
+export async function inspectHealthConnect(): Promise<HcDiagReport> {
+  const generatedAt = new Date().toISOString();
+  if (!isAndroid()) {
+    return { available: false, entries: [], generatedAt };
+  }
+  const types: HealthDataType[] = ['steps', 'heartRate', 'sleep', 'weight'];
+  let available = false;
+  try {
+    available = (await Health.isAvailable()).available;
+  } catch {
+    available = false;
+  }
+  if (!available) return { available: false, entries: [], generatedAt };
+
+  let auth;
+  try {
+    auth = await Health.checkAuthorization({ read: types, write: [] });
+  } catch {
+    auth = { readAuthorized: [], readDenied: [], writeAuthorized: [], writeDenied: [] };
+  }
+
+  const now = new Date();
+  const since24h = new Date(now.getTime() - 24 * 3600 * 1000);
+  const entries: HcDiagEntry[] = [];
+  for (const t of types) {
+    const authorized = auth.readAuthorized.includes(t);
+    let sampleCount = 0;
+    let latestAt: string | null = null;
+    const sourcesSet = new Set<string>();
+    if (authorized) {
+      // 睡眠 / 体重: 24h 窗口太短可能没数据, 拉 7 天兜底.
+      const longWindow = t === 'sleep' || t === 'weight';
+      const start = longWindow
+        ? new Date(now.getTime() - 7 * 24 * 3600 * 1000)
+        : since24h;
+      const samples = await readSamples(t, start, now, 500);
+      sampleCount = samples.length;
+      for (const s of samples) {
+        if (s.sourceName) sourcesSet.add(s.sourceName);
+        if (!latestAt || s.endDate > latestAt) latestAt = s.endDate;
+      }
+    }
+    entries.push({
+      dataType: t,
+      authorized,
+      sampleCount,
+      latestAt,
+      sources: Array.from(sourcesSet).sort(),
+    });
+  }
+  return { available: true, entries, generatedAt };
+}

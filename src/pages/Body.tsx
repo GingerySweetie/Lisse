@@ -22,8 +22,10 @@ import {
   getTodayHeartRateSeries,
   getTodaySteps,
   getWeeklySteps,
+  inspectHealthConnect,
   isHealthAvailable,
   requestHealthPermissions,
+  type HcDiagReport,
   type SleepSummary,
 } from '../services/health-connect';
 import { schedulePeriodReminders } from '../lib/native/notifications';
@@ -371,6 +373,24 @@ export default function BodyPage() {
     setHcReady(ok);
   }
 
+  // HC 诊断面板: HC 连上了但是数据全 0 时 (小米运动健康没共享 /
+  // 共享了但只勾了一部分 type / 同步延迟没推过来), 打开能直接看
+  // 到每个 dataType 在 HC 里有几条 / 最新一笔什么时候 / 谁在写,
+  // 一眼诊断小米那边是不是真的把数据 share 出去了.
+  const [hcDiagOpen, setHcDiagOpen] = useState(false);
+  const [hcDiag, setHcDiag] = useState<HcDiagReport | null>(null);
+  const [hcDiagLoading, setHcDiagLoading] = useState(false);
+  async function openHcDiag() {
+    setHcDiagOpen(true);
+    setHcDiagLoading(true);
+    try {
+      const r = await inspectHealthConnect();
+      setHcDiag(r);
+    } finally {
+      setHcDiagLoading(false);
+    }
+  }
+
   // ─── Pull-to-refresh ──────────────────────────────────────────────
   // Touch handlers on the scroll container. Detect a downward drag
   // while at scrollTop=0, show a small "正在同步…" indicator, and call
@@ -439,11 +459,30 @@ export default function BodyPage() {
   // Merge live data into the demo skeleton. Source priority for sleep:
   // HC (real, may include stages) > native estimate > DEMO. For steps:
   // HC weekly array > DEMO week. liveSteps already coalesces today.
-  const mergedSleep = hcSleep
+  //
+  // 关键: 当 HC 接通了但是手环没把数据共享出来时, hcSleep === null
+  // (Health Connect 没 sleep 样本). 之前 fallthrough 到 DEMO.sleep
+  // 显示 7时 48分 + 深睡 3时 30分 + 较昨日 +12 分 — 全是硬编演示数
+  // 据, 用户看着以为同步成功了实际全是假的. 现在 HC ready 时直接
+  // 给空状态结构, 让 SleepCard 渲染 "没有同步数据".
+  const emptySleep: SleepData = {
+    startHHMM: '—',
+    endHHMM: '—',
+    totalH: 0,
+    totalM: 0,
+    deepH: -1,
+    deepM: -1,
+    deltaMinVsYesterday: 0,
+    segs: [],
+    windowH: 8.5,
+  };
+  const mergedSleep: SleepData = hcSleep
     ? mergeHcSleep(hcSleep)
     : liveSleep
       ? mergeSleep(liveSleep)
-      : DEMO.sleep;
+      : hcReady === true
+        ? emptySleep
+        : DEMO.sleep;
   const data = filled
     ? {
         ...DEMO,
@@ -630,14 +669,26 @@ export default function BodyPage() {
                   : '真实数据要等接入 Health Connect / 手动日志后才会有'}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setFilled((v) => !v)}
-              className="btn-ghost"
-              style={{ flexShrink: 0, fontSize: 12, padding: '4px 12px' }}
-            >
-              {filled ? '看空状态' : '看示例数据'}
-            </button>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              {hcReady && (
+                <button
+                  type="button"
+                  onClick={() => void openHcDiag()}
+                  className="btn-ghost"
+                  style={{ fontSize: 12, padding: '4px 10px' }}
+                >
+                  诊断
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setFilled((v) => !v)}
+                className="btn-ghost"
+                style={{ fontSize: 12, padding: '4px 12px' }}
+              >
+                {filled ? '看空状态' : '看示例数据'}
+              </button>
+            </div>
           </div>
         )}
 
@@ -759,6 +810,14 @@ export default function BodyPage() {
         <PeriodSheet
           entries={periodEntries ?? []}
           onClose={() => setPeriodSheet(false)}
+        />
+      )}
+      {hcDiagOpen && (
+        <HcDiagSheet
+          report={hcDiag}
+          loading={hcDiagLoading}
+          onRefresh={() => void openHcDiag()}
+          onClose={() => setHcDiagOpen(false)}
         />
       )}
       </div>{/* /pull translate wrapper */}
@@ -883,6 +942,11 @@ function SleepCard({
   needsAuth?: boolean;
   onConnect?: () => void;
 }) {
+  // "无数据" 视觉态: HC 接通了但是手环还没把 sleep 共享出来,
+  // 我们给的是空 SleepData (totalH=0, segs=[]). 渲染时给一个
+  // 友善的占位别让用户以为是 0 时 0 分.
+  const noData =
+    data.totalH === 0 && data.totalM === 0 && data.segs.length === 0;
   return (
     <div className="wis-hcard">
       <div className="wis-hcard-head">
@@ -959,23 +1023,34 @@ function SleepCard({
         </div>
       </div>
       <div className="wis-sleep-tot">
-        <span className="wis-sleep-big">
-          {data.totalH}
-          <span style={{ fontSize: 16, color: 'var(--text-3)' }}>时</span>
-          {data.totalM}
-          <span style={{ fontSize: 16, color: 'var(--text-3)' }}>分</span>
-        </span>
-        <span className="wis-sleep-cap">
-          {data.deepH >= 0 ? (
-            <>
-              深睡 {data.deepH} 时 {data.deepM} 分 ·{' '}
-            </>
-          ) : (
-            <>估算·熄屏时长 · </>
-          )}
-          较昨日 {data.deltaMinVsYesterday >= 0 ? '+' : ''}
-          {data.deltaMinVsYesterday} 分
-        </span>
+        {noData ? (
+          <span
+            className="wis-sleep-cap"
+            style={{ fontSize: 13, opacity: 0.7 }}
+          >
+            还没有同步到睡眠数据
+          </span>
+        ) : (
+          <>
+            <span className="wis-sleep-big">
+              {data.totalH}
+              <span style={{ fontSize: 16, color: 'var(--text-3)' }}>时</span>
+              {data.totalM}
+              <span style={{ fontSize: 16, color: 'var(--text-3)' }}>分</span>
+            </span>
+            <span className="wis-sleep-cap">
+              {data.deepH >= 0 ? (
+                <>
+                  深睡 {data.deepH} 时 {data.deepM} 分 ·{' '}
+                </>
+              ) : (
+                <>估算·熄屏时长 · </>
+              )}
+              较昨日 {data.deltaMinVsYesterday >= 0 ? '+' : ''}
+              {data.deltaMinVsYesterday} 分
+            </span>
+          </>
+        )}
       </div>
       <div className="wis-legend">
         {data.segs.some((s) => s.stage) ? (
@@ -1129,6 +1204,184 @@ function WeightCard({
       </div>
     </div>
   );
+}
+
+/** HC 诊断面板. 排查「HC 已连接但数据全 0」时直接看 HC 里每个
+ *  dataType 在过去窗口里有什么. 不发请求, 不写数据, 只读。 */
+function HcDiagSheet({
+  report,
+  loading,
+  onRefresh,
+  onClose,
+}: {
+  report: HcDiagReport | null;
+  loading: boolean;
+  onRefresh: () => void;
+  onClose: () => void;
+}) {
+  const labels: Record<string, string> = {
+    steps: '步数',
+    heartRate: '心率',
+    sleep: '睡眠',
+    weight: '体重',
+  };
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 50,
+        background: 'rgba(40,30,55,0.4)',
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%',
+          maxWidth: 600,
+          maxHeight: '85vh',
+          background: '#fff',
+          borderRadius: '16px 16px 0 0',
+          padding: '18px 20px 24px',
+          overflowY: 'auto',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 10,
+          }}
+        >
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: '#4a3550', margin: 0 }}>
+            Health Connect 诊断
+          </h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              style={{
+                background: 'rgba(160,140,200,0.1)',
+                border: 'none',
+                color: '#7a5a88',
+                fontSize: 12,
+                cursor: 'pointer',
+                padding: '4px 10px',
+                borderRadius: 6,
+              }}
+            >
+              {loading ? '查中…' : '刷新'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#8a7090',
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              关
+            </button>
+          </div>
+        </div>
+        <p style={{ fontSize: 11, color: '#8a7090', margin: '0 0 14px', lineHeight: 1.6 }}>
+          看每个 dataType 在 HC 里到底有什么. 「样本=0」+「来源=空」
+          就是小米运动健康没把这一类共享出来 —— 去 小米运动健康 →
+          设置 → 第三方接入 → Health Connect 把对应类型勾上.
+        </p>
+        {!report && loading && (
+          <div style={{ fontSize: 12, color: '#a090a8' }}>读取中……</div>
+        )}
+        {report && !report.available && (
+          <div style={{ fontSize: 12, color: '#a090a8' }}>
+            Health Connect 不可用 (设备 / 系统不支持).
+          </div>
+        )}
+        {report && report.available && (
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {report.entries.map((e) => (
+              <li
+                key={e.dataType}
+                style={{
+                  marginBottom: 10,
+                  padding: 12,
+                  background: 'rgba(160,140,200,0.06)',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  lineHeight: 1.7,
+                  color: '#4a3550',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 6,
+                  }}
+                >
+                  <strong style={{ fontSize: 13, fontWeight: 500 }}>
+                    {labels[e.dataType] ?? e.dataType}
+                  </strong>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: e.authorized ? '#5fa57e' : '#c45858',
+                      letterSpacing: 1,
+                    }}
+                  >
+                    {e.authorized ? '读权限 ✓' : '未授权'}
+                  </span>
+                </div>
+                <div style={{ color: '#8a7090' }}>
+                  样本 <b style={{ color: '#4a3550' }}>{e.sampleCount}</b> 条
+                  {e.latestAt && (
+                    <>
+                      {' · '}最新{' '}
+                      <b style={{ color: '#4a3550' }}>
+                        {fmtRelative(e.latestAt)}
+                      </b>
+                    </>
+                  )}
+                </div>
+                <div style={{ color: '#8a7090' }}>
+                  来源:{' '}
+                  <span style={{ color: e.sources.length > 0 ? '#4a3550' : '#c45858' }}>
+                    {e.sources.length > 0 ? e.sources.join(', ') : '空（没人写）'}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {report && (
+          <p style={{ fontSize: 10, color: '#a090a8', margin: '14px 0 0' }}>
+            报告时间 {fmtRelative(report.generatedAt)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function fmtRelative(iso: string): string {
+  const t = new Date(iso).getTime();
+  const dt = Date.now() - t;
+  if (dt < 60_000) return '刚刚';
+  if (dt < 3_600_000) return `${Math.floor(dt / 60_000)} 分钟前`;
+  if (dt < 86_400_000) return `${Math.floor(dt / 3_600_000)} 小时前`;
+  if (dt < 7 * 86_400_000) return `${Math.floor(dt / 86_400_000)} 天前`;
+  const d = new Date(t);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 function EmptyHealth() {
