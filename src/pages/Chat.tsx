@@ -285,37 +285,52 @@ export default function ChatPage() {
   }
 
   async function handleEdit(message: Message, newText: string) {
-    if (!conversation || !endpointId || !model) return;
+    if (!conversation || !endpointId || !model) {
+      console.warn('[edit] 缺少 endpoint / model, 跳过');
+      return;
+    }
     const ep = selectedEndpoint();
-    if (!ep) return;
+    if (!ep) {
+      console.warn('[edit] selectedEndpoint() 返回空, 跳过');
+      return;
+    }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setStreamingText('');
     setStreamingThinking('');
-    await editUserMessage({
-      conversation,
-      message,
-      newText,
-      endpoint: ep,
-      model,
-      persona: selectedPersona(),
-      style: selectedStyle(),
-      groupOthers: groupOthers(),
-      signal: controller.signal,
-      onDelta: (delta, assistantId) => {
-        setStreamingId(assistantId);
-        setStreamingText((prev) => prev + delta);
-      },
-      onThinking: (delta, assistantId) => {
-        setStreamingId(assistantId);
-        setStreamingThinking((prev) => prev + delta);
-      },
-    });
-    setStreamingId(null);
-    setStreamingText('');
-    setStreamingThinking('');
-    abortRef.current = null;
+    try {
+      await editUserMessage({
+        conversation,
+        message,
+        newText,
+        endpoint: ep,
+        model,
+        persona: selectedPersona(),
+        style: selectedStyle(),
+        groupOthers: groupOthers(),
+        signal: controller.signal,
+        onDelta: (delta, assistantId) => {
+          setStreamingId(assistantId);
+          setStreamingText((prev) => prev + delta);
+        },
+        onThinking: (delta, assistantId) => {
+          setStreamingId(assistantId);
+          setStreamingThinking((prev) => prev + delta);
+        },
+      });
+    } catch (e) {
+      // editUserMessage / streamAssistant 内部本来会把 assistant
+      // status 标 'error', 但如果在到达 streamAssistant 之前就炸
+      // (事务失败 / prefix 构建失败), 我们至少在 console 留痕,
+      // 避免「保存并重发」点完没动静.
+      console.error('[edit] 重发失败:', e);
+    } finally {
+      setStreamingId(null);
+      setStreamingText('');
+      setStreamingThinking('');
+      abortRef.current = null;
+    }
   }
 
   async function handleRegenerate(message: Message) {
