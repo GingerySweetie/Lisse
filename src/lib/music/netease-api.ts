@@ -1,4 +1,4 @@
-import { CapacitorHttp, type HttpHeaders } from '@capacitor/core';
+import { CapacitorCookies, CapacitorHttp, type HttpHeaders } from '@capacitor/core';
 import { weapi } from './netease-crypto';
 
 /**
@@ -218,4 +218,53 @@ export async function getLoginStatus(): Promise<UserAccount | null> {
     avatarUrl: data.profile?.avatarUrl,
     vipType: data.account.vipType ?? 0,
   };
+}
+
+/* ─── Cookie-import login (绕开 QR 风控) ────────────────────────────── */
+
+/**
+ * 把 MUSIC_U 直接塞进系统 cookie jar, 跳过 QR 扫码全过程. 用户去
+ * 浏览器登 music.163.com → F12 → Application → Cookies → 复制
+ * MUSIC_U 的值粘进来. 之后 CapacitorHttp 自动带 cookie, 等同登录态.
+ *
+ * NetEase 在 2024+ 把第三方 QR 接入的风控收得很紧 (我们看到的
+ * "安全风险提醒 22Qd2gX/178..." 就是这套). 直接拿用户已有的
+ * cookie 不触发任何 auth 流程, 风控也就没东西可拦.
+ */
+export async function loginByCookie(musicU: string): Promise<UserAccount | null> {
+  const u = musicU.trim();
+  if (!u) throw new Error('MUSIC_U 不能为空');
+  // music.163.com 自己的二级域名 + 主域名都要写一份, 不同 endpoint
+  // 用不同 subdomain.
+  for (const url of [
+    'https://music.163.com',
+    'https://interface.music.163.com',
+    'https://interface3.music.163.com',
+  ]) {
+    try {
+      await CapacitorCookies.setCookie({
+        url,
+        key: 'MUSIC_U',
+        value: u,
+      });
+    } catch {
+      // 单个 set 失败不致命, 继续
+    }
+  }
+  return getLoginStatus();
+}
+
+/** 清掉 cookie jar 里 music.163.com 的所有 cookie — 退出登录用. */
+export async function logout(): Promise<void> {
+  for (const url of [
+    'https://music.163.com',
+    'https://interface.music.163.com',
+    'https://interface3.music.163.com',
+  ]) {
+    try {
+      await CapacitorCookies.clearCookies({ url });
+    } catch {
+      // ignore
+    }
+  }
 }
