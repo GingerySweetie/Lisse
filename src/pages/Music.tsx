@@ -18,6 +18,7 @@ import {
   search as searchApi,
   getSongUrl,
   getLyric,
+  loginByCookie,
   loginQrKey,
   loginQrCheck,
   getLoginStatus,
@@ -645,6 +646,64 @@ function LoginSheet({
   onClose: () => void;
   onSuccess: () => void | Promise<void>;
 }) {
+  const [mode, setMode] = useState<'qr' | 'cookie'>('qr');
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/30 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-ink-900">
+            {mode === 'qr' ? '扫码登录' : 'Cookie 登录'}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1 text-ink-500 hover:bg-lavender-50"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="mb-4 flex justify-center gap-1 text-[11px]">
+          <button
+            type="button"
+            onClick={() => setMode('qr')}
+            className={`rounded-full px-3 py-1 ${
+              mode === 'qr'
+                ? 'bg-lavender-200 text-ink-900'
+                : 'text-ink-500 hover:bg-lavender-50'
+            }`}
+          >
+            扫码
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('cookie')}
+            className={`rounded-full px-3 py-1 ${
+              mode === 'cookie'
+                ? 'bg-lavender-200 text-ink-900'
+                : 'text-ink-500 hover:bg-lavender-50'
+            }`}
+          >
+            用 Cookie
+          </button>
+        </div>
+        {mode === 'qr' ? (
+          <QrLoginPanel onSuccess={onSuccess} />
+        ) : (
+          <CookieLoginPanel onSuccess={onSuccess} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QrLoginPanel({ onSuccess }: { onSuccess: () => void | Promise<void> }) {
   const [qrSvg, setQrSvg] = useState<string>('');
   const [status, setStatus] = useState<string>('生成二维码…');
   const unikeyRef = useRef<string>('');
@@ -685,7 +744,6 @@ function LoginSheet({
         }
         if (r.status === 'expired') {
           setStatus('过期了，重新开');
-          // Re-generate.
           start();
           return;
         }
@@ -706,35 +764,84 @@ function LoginSheet({
   }, []);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/30 backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <>
+      <p className="mb-4 text-xs text-ink-500">{status}</p>
       <div
-        className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        className="mx-auto h-[220px] w-[220px] rounded-lg bg-white"
+        dangerouslySetInnerHTML={{ __html: qrSvg }}
+      />
+      <p className="mt-4 text-[11px] text-ink-500/70">
+        扫码被风控拦了 ({'"'}安全风险提醒 22Qd...{'"'}) 就切到「用 Cookie」.
+      </p>
+    </>
+  );
+}
+
+function CookieLoginPanel({
+  onSuccess,
+}: {
+  onSuccess: () => void | Promise<void>;
+}) {
+  const [cookie, setCookie] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setError(null);
+    const u = cookie.trim();
+    if (!u) {
+      setError('粘 MUSIC_U 的值进来');
+      return;
+    }
+    setBusy(true);
+    try {
+      const acct = await loginByCookie(u);
+      if (!acct) {
+        setError('cookie 不对 / 过期了, 重新登 music.163.com 复制');
+        setBusy(false);
+        return;
+      }
+      await onSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="text-left">
+      <ol className="mb-3 list-decimal pl-4 text-[11px] leading-relaxed text-ink-500">
+        <li>
+          浏览器登 <span className="font-mono">music.163.com</span>
+        </li>
+        <li>F12 → Application → Cookies → music.163.com</li>
+        <li>
+          找 <span className="font-mono">MUSIC_U</span>, 复制{' '}
+          <em className="italic">Value</em> 这一列
+        </li>
+        <li>粘到下面框里, 点登录</li>
+      </ol>
+      <textarea
+        value={cookie}
+        onChange={(e) => setCookie(e.target.value)}
+        placeholder="MUSIC_U 值, 一长串字符…"
+        rows={4}
+        className="w-full resize-none rounded-lg border border-lavender-200 bg-lavender-50/60 p-2.5 font-mono text-[11px] text-ink-900 focus:border-lavender-300 focus:outline-none"
+      />
+      {error && (
+        <p className="mt-2 text-[11px] text-rose-500">{error}</p>
+      )}
+      <button
+        type="button"
+        onClick={() => void submit()}
+        disabled={busy}
+        className="mt-3 w-full rounded-lg bg-lavender-300 px-4 py-2 text-sm text-ink-900 hover:bg-lavender-400 disabled:opacity-50"
       >
-        <div className="mb-1 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-ink-900">扫码登录</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full p-1 text-ink-500 hover:bg-lavender-50"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        <p className="mb-4 text-xs text-ink-500">{status}</p>
-        <div
-          className="mx-auto h-[220px] w-[220px] rounded-lg bg-white"
-          dangerouslySetInnerHTML={{ __html: qrSvg }}
-        />
-        <p className="mt-4 text-[11px] text-ink-500/70">
-          登录态保存在本机 IndexedDB + 系统 cookie 罐。
-          <br />
-          只跟 music.163.com 通信，不发送给任何第三方。
-        </p>
-      </div>
+        {busy ? '验证中…' : '登录'}
+      </button>
+      <p className="mt-3 text-[10px] text-ink-500/70">
+        Cookie 存在本机系统 cookie 罐, 跟 NetEase 自己 app 同一份, 不发任何第三方.
+      </p>
     </div>
   );
 }
