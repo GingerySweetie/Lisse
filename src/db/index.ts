@@ -6,6 +6,7 @@ import type {
   Bookmark,
   Conversation,
   Endpoint,
+  HealthCacheRow,
   McpServer,
   MemoryFact,
   Message,
@@ -41,6 +42,7 @@ class LisseDB extends Dexie {
   browserScripts!: EntityTable<BrowserScript, 'id'>;
   musicCredentials!: EntityTable<MusicCredentials, 'id'>;
   musicHistory!: EntityTable<MusicHistoryEntry, 'id'>;
+  healthCache!: EntityTable<HealthCacheRow, 'id'>;
   kv!: EntityTable<KVRow, 'key'>;
 
   constructor() {
@@ -242,6 +244,29 @@ class LisseDB extends Dexie {
       browserScripts: 'id, name, autoRun, createdAt',
       musicCredentials: 'id',
       musicHistory: 'id, songId, playedAt',
+      kv: 'key',
+    });
+
+    // v15: Health Connect 读穿透缓存. MIUI 杀后台后 HC 数据偶发
+    // 蒸发, 这张表存最近一次非空快照按需 fallback.
+    this.version(15).stores({
+      endpoints: 'id, name, format, createdAt',
+      conversations: 'id, updatedAt, createdAt, source, personaId, styleId, bookId, room, [room+personaId]',
+      messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+      personas: 'id, name, builtin, createdAt',
+      memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+      writingStyles: 'id, name, builtin, createdAt',
+      books: 'id, title, createdAt, updatedAt, conversationId',
+      bills: 'id, date, category, createdAt',
+      bookmarks: 'id, bookId, position, createdAt, [bookId+position]',
+      periodEntries: 'id, startDate, createdAt',
+      weightEntries: 'id, date, createdAt',
+      mcpServers: 'id, name, enabled, createdAt',
+      browserBookmarks: 'id, position, createdAt',
+      browserScripts: 'id, name, autoRun, createdAt',
+      musicCredentials: 'id',
+      musicHistory: 'id, songId, playedAt',
+      healthCache: 'id, type, date, updatedAt, [type+date]',
       kv: 'key',
     });
 
