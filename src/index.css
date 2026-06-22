@@ -576,11 +576,16 @@
 }
 
 .thinking-modal-window {
-  position: absolute;
-  top: 0;
+  /* fixed 直接锚 viewport, 跟 backdrop 同级不嵌套. 防止 chat 树里
+     祖先 transform / filter / will-change 把 fixed 锚到祖先, 导致
+     窗口 height 塌缩到内容高度. portal 已经先脱离 DOM 一次, 这里
+     再 fixed 兜底保证 100% 复现修复. */
+  position: fixed;
+  top: var(--thinking-modal-top);
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 201;
   width: 100%;
   background: var(--bg, #fbf9fd);
   border-radius: 16px 16px 0 0;
