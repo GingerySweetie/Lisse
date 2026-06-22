@@ -345,8 +345,12 @@ export default function MessageBubble({
 }
 
 /**
- * Collapsible thinking block. Auto-expands while streaming so the user
- * can watch the reasoning unfold; collapses after the visible text starts.
+ * Thinking block — a small chip in the bubble that opens a centered
+ * modal when clicked. Long thinking traces stretched the chat flow
+ * unreadably; the modal puts them in their own scroll container.
+ *
+ * 流式期间 chip 显示「在想……」, 用户主动点开 modal 才看实时滚动;
+ * 不再自动展开避免 modal 在用户看正文时突然弹出.
  */
 function ThinkingBlock({
   text,
@@ -355,33 +359,113 @@ function ThinkingBlock({
   text: string;
   streaming: boolean;
 }) {
-  const [open, setOpen] = useState(streaming);
-  // When the assistant text starts streaming, fold thinking back to a peek.
-  useEffect(() => {
-    setOpen(streaming);
-  }, [streaming]);
+  // 三态: 'closed' = 完全不渲染; 'opening' = 已挂载, CSS 待跳到 open 帧;
+  // 'open' = 稳态; 'closing' = 触发 close 动画, 150ms 后 unmount.
+  const [phase, setPhase] = useState<'closed' | 'opening' | 'open' | 'closing'>(
+    'closed',
+  );
 
+  function open() {
+    if (phase !== 'closed') return;
+    setPhase('opening');
+    // 下一帧再切到 open, 让 'opening' 的初始 CSS 先 paint 一次,
+    // CSS transition 才能从 0.95/0 过渡到 1/1.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setPhase('open'));
+    });
+  }
+
+  function close() {
+    if (phase === 'closed' || phase === 'closing') return;
+    setPhase('closing');
+    window.setTimeout(() => setPhase('closed'), 150);
+  }
+
+  // ESC 关闭 + body 锁滚 (开 modal 时阻止背后聊天页跟着滚)
+  useEffect(() => {
+    if (phase === 'closed') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [phase]);
+
+  // 触发 chip — 流式时显示「在想……」, 否则「想了想」
   return (
-    <div className={`thinking-panel ${open ? 'is-open' : ''}`}>
+    <>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={open}
         className="thinking-head"
+        aria-haspopup="dialog"
       >
         <Brain size={13} className="opacity-60" />
         <span className="italic">{streaming ? '在想……' : '想了想'}</span>
-        <span className="thinking-chevron ml-1">
-          <ChevronDown size={13} />
-        </span>
       </button>
-      {open && (
-        <div className="thinking-body">
-          <div className="thinking-list">
-            {text}
-            {streaming && <span className="stream-cursor" />}
-          </div>
-        </div>
+      {phase !== 'closed' && (
+        <ThinkingModal
+          text={text}
+          streaming={streaming}
+          phase={phase}
+          onClose={close}
+        />
       )}
+    </>
+  );
+}
+
+function ThinkingModal({
+  text,
+  streaming,
+  phase,
+  onClose,
+}: {
+  text: string;
+  streaming: boolean;
+  phase: 'opening' | 'open' | 'closing';
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className={`thinking-modal-backdrop ${phase === 'open' ? 'is-open' : ''}`}
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className={`thinking-modal-window ${phase === 'open' ? 'is-open' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="想了想"
+      >
+        <header className="thinking-modal-bar">
+          <span className="thinking-modal-title">
+            <Brain size={13} className="opacity-60" />
+            <span className="italic">想了想</span>
+            {streaming && (
+              <span className="ml-2 text-[11px] opacity-60">实时</span>
+            )}
+          </span>
+          <button
+            type="button"
+            className="thinking-modal-close"
+            onClick={onClose}
+            aria-label="关闭"
+          >
+            <X size={16} />
+          </button>
+        </header>
+        <div className="thinking-modal-body">
+          {text}
+          {streaming && <span className="stream-cursor" />}
+        </div>
+      </div>
     </div>
   );
 }
