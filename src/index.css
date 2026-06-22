@@ -553,11 +553,15 @@
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(0, 0, 0, 0.4);
+  /* v2: 模糊+极轻白色蒙层, 替代之前的黑半透明. 让背后聊天页若
+     隐若现而不是被压黑, 跟皮肤的安静感对齐. */
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 16px;
   opacity: 0;
   transition: opacity 200ms ease-out;
   will-change: opacity;
@@ -565,8 +569,11 @@
 .thinking-modal-backdrop.is-open { opacity: 1; }
 
 .thinking-modal-window {
-  width: min(calc(100vw - 48px), 480px);
-  max-height: min(calc(100vh - 120px), 70vh);
+  /* v2: 几乎全屏. 上下各留 40px (主要给状态栏 / 导航栏 / safe-area
+     呼吸), 左右各留 16px. 不再用 min(...) 给小屏退回, 直接 calc
+     固定尺寸. */
+  width: calc(100vw - 32px);
+  height: calc(100vh - 80px);
   background: var(--bg, #fbf9fd);
   border-radius: 16px;
   overflow: hidden;
