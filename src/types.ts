@@ -385,6 +385,37 @@ export interface MusicHistoryEntry {
 }
 
 /**
+ * OnlyCircle — 私人朋友圈. 一条 post 是用户发出去的动态. 只有
+ * 用户和她的两个 AI 恋人能看到 (没有公开机制, 不上传任何服务器).
+ */
+export interface CirclePost {
+  id: string;
+  /** 动态正文. 支持多行。 */
+  text: string;
+  /** 附图. base64 data URLs (无 prefix), 跟 Attachment.data 同格式。
+   *  目前限制最多 9 张. */
+  images: string[];
+  createdAt: number;
+}
+
+/** 一条评论 / 点赞反应. 同一 persona 对同一 post 多次反应也存多
+ *  条 — 用户可以手动「让 X 再说」追加新评论, 历史保留. */
+export interface CircleReaction {
+  id: string;
+  postId: string;
+  /** 谁的反应. 用 personaId 关联到 db.personas。 */
+  personaId: string;
+  /** "comment" — 评论, "like" — 单纯点赞 (text 可空)。 */
+  kind: 'comment' | 'like';
+  /** 评论正文; kind=like 时为空。 */
+  text: string;
+  /** 'pending' = 还在生成 / 调用 API 中; 'done' / 'error'。 */
+  status: 'pending' | 'done' | 'error';
+  errorMessage?: string;
+  createdAt: number;
+}
+
+/**
  * Health Connect 读穿透缓存. MIUI 杀后台后 Gadgetbridge 写进 HC 的
  * 数据可能被清掉, Body 页 pull 时变成 0. 这里按 (type, date) 维度
  * 存最近一次 HC 实际返回的非空数据, HC 没读到就 fallback 回来.

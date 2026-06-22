@@ -30,6 +30,7 @@ const BillingPage = lazy(() => import('./pages/Billing'));
 const BodyPage = lazy(() => import('./pages/Body'));
 const MusicPage = lazy(() => import('./pages/Music'));
 const SearchPage = lazy(() => import('./pages/Search'));
+const CirclePage = lazy(() => import('./pages/Circle'));
 
 export default function App() {
   // Capture window-level errors + unhandled promise rejections so async
@@ -80,6 +81,7 @@ export default function App() {
             <Route path="/body" element={<BodyPage />} />
             <Route path="/music" element={<MusicPage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/circle" element={<CirclePage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:conversationId" element={<ChatPage />} />
             <Route path="/settings" element={<SettingsPage />} />

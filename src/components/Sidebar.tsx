@@ -184,6 +184,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         {[
           { to: '/home', glyph: '⌂', label: '玄関' },
           { to: '/search', glyph: '⌕', label: '搜索' },
+          { to: '/circle', glyph: '○', label: 'OnlyCircle' },
           { to: '/body', glyph: '♡', label: '身体' },
           { to: '/billing', glyph: '¥', label: '账单' },
           { to: '/personas', glyph: '◇', label: '人格' },
