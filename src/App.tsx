@@ -30,6 +30,7 @@ const BillingPage = lazy(() => import('./pages/Billing'));
 const BodyPage = lazy(() => import('./pages/Body'));
 const MusicPage = lazy(() => import('./pages/Music'));
 const SearchPage = lazy(() => import('./pages/Search'));
+const HealthReportPage = lazy(() => import('./pages/HealthReport'));
 const CirclePage = lazy(() => import('./pages/Circle'));
 
 export default function App() {
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="/browser" element={<BrowserPage />} />
             <Route path="/browser/scripts" element={<BrowserScriptsPage />} />
             <Route path="/body" element={<BodyPage />} />
+            <Route path="/health-report" element={<HealthReportPage />} />
             <Route path="/music" element={<MusicPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/circle" element={<CirclePage />} />

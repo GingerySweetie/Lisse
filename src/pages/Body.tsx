@@ -30,6 +30,11 @@ import {
   cachedTodaySteps,
   cachedWeeklySteps,
 } from '../services/health-cache';
+import {
+  ensureTodayRoast,
+  putDailySnapshot,
+  type DailyHealthSummary,
+} from '../services/health-roast';
 import { schedulePeriodReminders } from '../lib/native/notifications';
 import {
   addPeriodStart,
@@ -39,7 +44,7 @@ import {
   summarizeCycle,
 } from '../lib/period';
 import { addWeight } from '../lib/weight';
-import type { PeriodEntry, WeightEntry } from '../types';
+import type { HealthComment, PeriodEntry, Persona, WeightEntry } from '../types';
 
 /**
  * Body / 健康 — preview implementation following the Lavender DS health
@@ -240,6 +245,18 @@ export default function BodyPage() {
     [],
   );
 
+  // 今日 AI 健康吐槽 — 两个 persona 一人一条. ensureTodayRoast 把
+  // pending row 写进去后这里 live-query 自动 re-render.
+  const todayRoast = useLiveQuery(
+    async () => {
+      const today = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
+      return db.healthComments.where('date').equals(today).toArray();
+    },
+    [],
+    [],
+  );
+  const personas = useLiveQuery(() => db.personas.toArray(), [], []);
+
   // Probe Health Connect authorization on first mount. HC ready (read
   // grant for steps/sleep) → it's the data source. Otherwise we fall
   // through to the native plugins (TYPE_STEP_COUNTER + UsageEvents
@@ -301,6 +318,28 @@ export default function BodyPage() {
       .filter((r) => r.fromCache)
       .map((r) => r.updatedAt);
     setCacheUpdatedAt(cacheTimes.length > 0 ? Math.max(...cacheTimes) : null);
+
+    // 每次 HC pull 后把今日快照落盘 (周/月/年报告 + 聊天 system
+    // prompt 注入都从这张表读) + 触发 AI 吐槽 (同一天去重).
+    const summary: DailyHealthSummary = {
+      steps: Math.round(today.data),
+      heartRate: {
+        latest: hrSummary.data.latest,
+        min: hrSummary.data.min,
+        max: hrSummary.data.max,
+      },
+      sleep: sleep.data
+        ? {
+            totalMin: sleep.data.durationMinutes,
+            deepMin: sleep.data.totalsByStage.deep,
+            lightMin: sleep.data.totalsByStage.light,
+            remMin: sleep.data.totalsByStage.rem,
+            awakeMin: sleep.data.totalsByStage.awake,
+          }
+        : null,
+    };
+    void putDailySnapshot(summary);
+    void ensureTodayRoast(summary);
   }, []);
 
   // When HC is authorized: pull today's steps + last 7-day daily totals
@@ -710,6 +749,10 @@ export default function BodyPage() {
           </div>
         )}
 
+        {todayRoast && todayRoast.length > 0 && (
+          <RoastStrip roast={todayRoast} personas={personas ?? []} />
+        )}
+
         {data ? (
           <div className="wis-health-cards">
             <StepsCard data={data.steps} />
@@ -822,6 +865,65 @@ export default function BodyPage() {
           </div>
           <span style={{ color: 'rgba(31,58,74,0.4)', fontSize: 14 }}>→</span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('/health-report')}
+          style={{
+            marginTop: 10,
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '14px 18px',
+            background:
+              'linear-gradient(135deg, rgba(232,222,240,0.85), rgba(216,200,232,0.85))',
+            border: '1px solid rgba(80,60,110,0.08)',
+            borderRadius: 16,
+            cursor: 'pointer',
+            fontFamily: "'Noto Sans SC', sans-serif",
+            color: 'rgba(80,60,110,0.85)',
+            boxShadow: '0 1px 6px rgba(80,60,110,0.06)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: 'rgba(255,255,255,0.55)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'rgba(80,60,110,0.7)',
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M3 17 L9 11 L13 15 L21 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx="21" cy="7" r="1.4" fill="currentColor" />
+              </svg>
+            </span>
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontSize: 14, fontWeight: 500, letterSpacing: 1 }}>
+                健康报告
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'rgba(80,60,110,0.55)',
+                  marginTop: 2,
+                  fontStyle: 'italic',
+                  fontFamily: "'Cormorant Garamond', serif",
+                }}
+              >
+                看周 / 月 / 年 趋势 + AI 总结
+              </div>
+            </div>
+          </div>
+          <span style={{ color: 'rgba(80,60,110,0.4)', fontSize: 14 }}>→</span>
+        </button>
       </div>
 
       {periodSheet && (
@@ -876,6 +978,83 @@ function StepsCard({ data }: { data: typeof DEMO.steps }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** 顶部 AI 健康吐槽条. 在 banner 下、卡片上方. 两 persona 一人一条 +
+ *  pending / error 各自显态. 样式参考 OnlyCircle 评论行. */
+function RoastStrip({
+  roast,
+  personas,
+}: {
+  roast: HealthComment[];
+  personas: Persona[];
+}) {
+  const personaById = new Map(personas.map((p) => [p.id, p]));
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: '12px 14px',
+        borderRadius: 'var(--r-card)',
+        background: 'rgba(255,255,255,0.55)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid rgba(157,110,189,0.06)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      {roast.map((r) => {
+        const persona = personaById.get(r.personaId);
+        const color = persona?.color ?? '#a090a8';
+        const name = persona?.name ?? '?';
+        return (
+          <div
+            key={r.id}
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 8,
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >
+            <span
+              style={{
+                flexShrink: 0,
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: color,
+                alignSelf: 'center',
+              }}
+            />
+            <span
+              style={{
+                flexShrink: 0,
+                fontSize: 12,
+                fontWeight: 500,
+                color,
+              }}
+            >
+              {name}
+            </span>
+            <span style={{ flex: 1, color: 'var(--text-2)', wordBreak: 'break-word' }}>
+              {r.status === 'pending' && (
+                <span style={{ opacity: 0.55, fontStyle: 'italic' }}>看了眼…</span>
+              )}
+              {r.status === 'done' && r.text}
+              {r.status === 'error' && (
+                <span style={{ color: '#c45858', fontSize: 12 }}>
+                  没说出来 ({r.errorMessage ?? '未知错误'})
+                </span>
+              )}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

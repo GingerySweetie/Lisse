@@ -437,6 +437,50 @@ export interface HealthCacheRow {
 }
 
 /**
+ * AI 对一天健康数据的吐槽 / 关心. 每个 persona 对一天一条 — 复合
+ * 主键 "date|personaId" 防止刷新页面重复调用 API.
+ */
+export interface HealthComment {
+  /** "YYYY-MM-DD|personaId" */
+  id: string;
+  /** YYYY-MM-DD 本地日期. */
+  date: string;
+  /** 关联 db.personas. */
+  personaId: string;
+  text: string;
+  status: 'pending' | 'done' | 'error';
+  errorMessage?: string;
+  createdAt: number;
+}
+
+/**
+ * 每日健康汇总快照. Body 页面每次拉到非空 HC 数据时落一条, 给周
+ * /月/年报告页用. 同一天反复 put 覆盖 (id = 日期), 不累积.
+ */
+export interface HealthDailySnapshot {
+  /** YYYY-MM-DD */
+  id: string;
+  date: string;
+  /** 步数. 0 = 无数据. */
+  steps: number;
+  /** 心率 latest / min / max. null 表示无数据. */
+  heartRate: {
+    latest: number | null;
+    min: number | null;
+    max: number | null;
+  };
+  /** 睡眠总分钟数 + 各分期累计分钟. 没分期数据时除 total 外都 0. */
+  sleep: {
+    totalMin: number;
+    deepMin: number;
+    lightMin: number;
+    remMin: number;
+    awakeMin: number;
+  } | null;
+  updatedAt: number;
+}
+
+/**
  * Expense / billing record. Storage for the 账单 room — separate from
  * conversations so it can have its own schema and listing semantics.
  */

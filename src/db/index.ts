@@ -9,6 +9,8 @@ import type {
   Conversation,
   Endpoint,
   HealthCacheRow,
+  HealthComment,
+  HealthDailySnapshot,
   McpServer,
   MemoryFact,
   Message,
@@ -47,6 +49,8 @@ class LisseDB extends Dexie {
   healthCache!: EntityTable<HealthCacheRow, 'id'>;
   circlePosts!: EntityTable<CirclePost, 'id'>;
   circleReactions!: EntityTable<CircleReaction, 'id'>;
+  healthComments!: EntityTable<HealthComment, 'id'>;
+  healthDaily!: EntityTable<HealthDailySnapshot, 'id'>;
   kv!: EntityTable<KVRow, 'key'>;
 
   constructor() {
@@ -295,6 +299,32 @@ class LisseDB extends Dexie {
       healthCache: 'id, type, date, updatedAt, [type+date]',
       circlePosts: 'id, createdAt',
       circleReactions: 'id, postId, personaId, kind, createdAt, [postId+personaId]',
+      kv: 'key',
+    });
+
+    // v17: AI 健康吐槽 + 每日健康快照 (周/月/年报告用).
+    this.version(17).stores({
+      endpoints: 'id, name, format, createdAt',
+      conversations: 'id, updatedAt, createdAt, source, personaId, styleId, bookId, room, [room+personaId]',
+      messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+      personas: 'id, name, builtin, createdAt',
+      memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+      writingStyles: 'id, name, builtin, createdAt',
+      books: 'id, title, createdAt, updatedAt, conversationId',
+      bills: 'id, date, category, createdAt',
+      bookmarks: 'id, bookId, position, createdAt, [bookId+position]',
+      periodEntries: 'id, startDate, createdAt',
+      weightEntries: 'id, date, createdAt',
+      mcpServers: 'id, name, enabled, createdAt',
+      browserBookmarks: 'id, position, createdAt',
+      browserScripts: 'id, name, autoRun, createdAt',
+      musicCredentials: 'id',
+      musicHistory: 'id, songId, playedAt',
+      healthCache: 'id, type, date, updatedAt, [type+date]',
+      circlePosts: 'id, createdAt',
+      circleReactions: 'id, postId, personaId, kind, createdAt, [postId+personaId]',
+      healthComments: 'id, date, personaId, createdAt, [date+personaId]',
+      healthDaily: 'id, date',
       kv: 'key',
     });
 

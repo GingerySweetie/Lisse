@@ -20,6 +20,7 @@ import { availableTools, type Tool } from './tools';
 import { runToolLoop } from './tools/loop';
 import { buildGroupTurns, groupAwarenessSnippet } from './group';
 import { formatStatusBlock } from './behavior';
+import { formatHealthContextBlock } from './health-context';
 
 export interface SendOptions {
   conversation: Conversation;
@@ -430,6 +431,14 @@ async function streamAssistant(args: {
   if (persona && persona.systemPrompt.trim()) systemParts.push(persona.systemPrompt);
   if (bookBlock) systemParts.push(bookBlock);
   if (memoryBlock) systemParts.push(memoryBlock);
+  // Health context — 注入今天 db.healthDaily 的快照. persona 知道
+  // 步数 / 心率 / 睡眠, 用户问起时直接答得上. 不主动提起.
+  try {
+    const healthBlock = await formatHealthContextBlock();
+    if (healthBlock) systemParts.push(healthBlock);
+  } catch {
+    // health daily 缺失不影响主流程
+  }
   // Ambient status: device usage timing + manual quick chips. Always-on for
   // now (local data only, no extra cost). If the user disables it later we
   // can guard on settings.behaviorEnabled.
