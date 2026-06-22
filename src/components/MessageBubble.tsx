@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -466,7 +467,12 @@ function ThinkingModal({
         }
       : undefined;
 
-  return (
+  // 渲染到 document.body 而不是消息气泡内部. 否则 chat tree 里
+  // 任何祖先节点带 transform / filter / will-change 都会把
+  // position: fixed 锚到那个祖先而不是 viewport — 这就是「框大小
+  // 随思考链变化, 初始短短思考链居中」那条 bug 的根因. portal
+  // 一发, modal 直接挂在 body 下面, containing block 永远是 viewport.
+  return createPortal(
     <div
       className={`thinking-modal-backdrop ${phase === 'open' ? 'is-open' : ''}`}
       onClick={onClose}
@@ -504,7 +510,8 @@ function ThinkingModal({
           {streaming && <span className="stream-cursor" />}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
