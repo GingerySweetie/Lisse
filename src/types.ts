@@ -385,6 +385,27 @@ export interface MusicHistoryEntry {
 }
 
 /**
+ * Health Connect 读穿透缓存. MIUI 杀后台后 Gadgetbridge 写进 HC 的
+ * 数据可能被清掉, Body 页 pull 时变成 0. 这里按 (type, date) 维度
+ * 存最近一次 HC 实际返回的非空数据, HC 没读到就 fallback 回来.
+ *
+ * type 一类一条 row, put 时按 [type+date] 复合主键覆盖, 不累积
+ * 历史 — 同一天反复刷新只留最新的非空快照。
+ */
+export interface HealthCacheRow {
+  /** "type|YYYY-MM-DD" — 复合 key 自己拼以兼容 Dexie 主键单字段限制. */
+  id: string;
+  /** 数据种类: 'steps' / 'heartRate' / 'heartSeries' / 'sleep' / 'weekSteps'. */
+  type: string;
+  /** 本地日期, YYYY-MM-DD. weekSteps 也按今日日期分桶 (它本身覆盖过去 7 天). */
+  date: string;
+  /** 完整读取结果 JSON 字符串. 反序列化负担放到读路径上, 写时直接 stringify. */
+  data: string;
+  /** 写入时间戳, UI 上显示 "缓存 · N 分钟前". */
+  updatedAt: number;
+}
+
+/**
  * Expense / billing record. Storage for the 账单 room — separate from
  * conversations so it can have its own schema and listing semantics.
  */

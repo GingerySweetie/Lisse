@@ -17,17 +17,19 @@ import StepCounter from '../lib/native/step-counter';
 import Sleep, { type SleepSession } from '../lib/native/sleep';
 import {
   checkHealthAuth,
-  getLastNightSleep,
-  getTodayHeartRate,
-  getTodayHeartRateSeries,
-  getTodaySteps,
-  getWeeklySteps,
   inspectHealthConnect,
   isHealthAvailable,
   requestHealthPermissions,
   type HcDiagReport,
   type SleepSummary,
 } from '../services/health-connect';
+import {
+  cachedHeartRate,
+  cachedHeartRateSeries,
+  cachedLastNightSleep,
+  cachedTodaySteps,
+  cachedWeeklySteps,
+} from '../services/health-cache';
 import { schedulePeriodReminders } from '../lib/native/notifications';
 import {
   addPeriodStart,
@@ -265,26 +267,40 @@ export default function BodyPage() {
 
   // ─── HC data pull ──────────────────────────────────────────────────
   // Pulled out as a callback so it can fire from visibilitychange / focus
-  // listeners AND from the manual pull-to-refresh gesture below. Always
-  // re-fetches everything HC has — small batches, fast.
+  // listeners AND from the manual pull-to-refresh gesture below. Each
+  // sub-call goes through health-cache.ts: HC 给数据就刷缓存写盘,
+  // HC 空就回退到上次盘上的值, 让 MIUI 杀后台导致 HC 蒸发那段时间
+  // UI 不会突然出 0。
+  const [cacheUpdatedAt, setCacheUpdatedAt] = useState<number | null>(null);
+  const [anyFromCache, setAnyFromCache] = useState(false);
   const pullHc = useCallback(async () => {
     if (Capacitor.getPlatform() !== 'android') return;
     const [today, week, sleep, hrSummary, hrSeries] = await Promise.all([
-      getTodaySteps(),
-      getWeeklySteps(),
-      getLastNightSleep(),
-      getTodayHeartRate(),
-      getTodayHeartRateSeries(),
+      cachedTodaySteps(),
+      cachedWeeklySteps(),
+      cachedLastNightSleep(),
+      cachedHeartRate(),
+      cachedHeartRateSeries(),
     ]);
-    setLiveSteps(Math.round(today));
-    if (week.length === 7) setWeeklySteps(week.map((d) => d.steps));
-    if (sleep) setHcSleep(sleep);
+    setLiveSteps(Math.round(today.data));
+    if (week.data.length === 7) setWeeklySteps(week.data.map((d) => d.steps));
+    if (sleep.data) setHcSleep(sleep.data);
     setHr({
-      latest: hrSummary.latest,
-      min: hrSummary.min,
-      max: hrSummary.max,
-      series: hrSeries,
+      latest: hrSummary.data.latest,
+      min: hrSummary.data.min,
+      max: hrSummary.data.max,
+      series: hrSeries.data,
     });
+    // 任意一项走缓存就标, banner 给 "缓存 · N 分钟前" 提示
+    const fromCacheFlags = [today, week, sleep, hrSummary, hrSeries].map(
+      (r) => r.fromCache,
+    );
+    setAnyFromCache(fromCacheFlags.some(Boolean));
+    // updatedAt 取所有命中项里"最新"的一个 (最少陈旧的缓存)
+    const cacheTimes = [today, week, sleep, hrSummary, hrSeries]
+      .filter((r) => r.fromCache)
+      .map((r) => r.updatedAt);
+    setCacheUpdatedAt(cacheTimes.length > 0 ? Math.max(...cacheTimes) : null);
   }, []);
 
   // When HC is authorized: pull today's steps + last 7-day daily totals
@@ -665,7 +681,9 @@ export default function BodyPage() {
               </strong>
               <span style={{ marginLeft: 8 }}>
                 {hcReady
-                  ? '步数 / 睡眠走手环实时数据'
+                  ? anyFromCache && cacheUpdatedAt
+                    ? `缓存 · ${fmtCacheAge(cacheUpdatedAt)}`
+                    : '步数 / 睡眠走手环实时数据'
                   : '真实数据要等接入 Health Connect / 手动日志后才会有'}
               </span>
             </div>
@@ -1374,13 +1392,17 @@ function HcDiagSheet({
 }
 
 function fmtRelative(iso: string): string {
-  const t = new Date(iso).getTime();
-  const dt = Date.now() - t;
+  return fmtCacheAge(new Date(iso).getTime());
+}
+
+/** "刚刚 / N 分钟前 / N 小时前 / N 天前 / M/D HH:mm". 缓存条横幅用. */
+function fmtCacheAge(ts: number): string {
+  const dt = Date.now() - ts;
   if (dt < 60_000) return '刚刚';
   if (dt < 3_600_000) return `${Math.floor(dt / 60_000)} 分钟前`;
   if (dt < 86_400_000) return `${Math.floor(dt / 3_600_000)} 小时前`;
   if (dt < 7 * 86_400_000) return `${Math.floor(dt / 86_400_000)} 天前`;
-  const d = new Date(t);
+  const d = new Date(ts);
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
