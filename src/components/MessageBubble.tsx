@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -431,6 +431,41 @@ function ThinkingModal({
   phase: 'opening' | 'open' | 'closing';
   onClose: () => void;
 }) {
+  // 下滑手势关闭. 触点 Y 在 grip / titlebar 上按下, 沿 Y 拖, 阈值
+  // > 80px 松手 → 关闭. 拖过程中 window 跟手 translateY, 没过阈值
+  // 弹回 0. 用 ref 而不是 state 避免每帧 re-render 卡手.
+  const touchStartY = useRef<number | null>(null);
+  const [dragY, setDragY] = useState(0);
+
+  function onTouchStart(e: React.TouchEvent) {
+    touchStartY.current = e.touches[0].clientY;
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    if (touchStartY.current === null) return;
+    const dy = e.touches[0].clientY - touchStartY.current;
+    if (dy > 0) setDragY(dy);
+  }
+  function onTouchEnd() {
+    if (touchStartY.current === null) return;
+    touchStartY.current = null;
+    if (dragY > 80) {
+      // 触发关闭 — 不重置 dragY, 让 CSS transition 从当前拖位置
+      // 平滑滑回 100%
+      onClose();
+    } else {
+      setDragY(0);
+    }
+  }
+
+  const windowStyle =
+    dragY > 0
+      ? {
+          transform: `translateY(${dragY}px)`,
+          // 拖动时关掉过渡, 跟手才不黏滞
+          transition: 'none' as const,
+        }
+      : undefined;
+
   return (
     <div
       className={`thinking-modal-backdrop ${phase === 'open' ? 'is-open' : ''}`}
@@ -440,10 +475,21 @@ function ThinkingModal({
       <div
         className={`thinking-modal-window ${phase === 'open' ? 'is-open' : ''}`}
         onClick={(e) => e.stopPropagation()}
+        style={windowStyle}
         role="dialog"
         aria-modal="true"
         aria-label="想了想"
       >
+        {/* 顶部 grip 横条 — 视觉上是下滑手势提示, 也是主要拖拽抓点 */}
+        <div
+          className="thinking-modal-grip-area"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onTouchCancel={onTouchEnd}
+        >
+          <span className="thinking-modal-grip" />
+        </div>
         <header className="thinking-modal-bar">
           <span className="thinking-modal-title">
             <Brain size={13} className="opacity-60" />
@@ -452,14 +498,6 @@ function ThinkingModal({
               <span className="ml-2 text-[11px] opacity-60">实时</span>
             )}
           </span>
-          <button
-            type="button"
-            className="thinking-modal-close"
-            onClick={onClose}
-            aria-label="关闭"
-          >
-            <X size={16} />
-          </button>
         </header>
         <div className="thinking-modal-body">
           {text}

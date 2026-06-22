@@ -547,66 +547,83 @@
 }
 .thinking-head:hover { color: var(--accent); }
 
-/* Modal stack — fixed full-screen overlay, z-index above everything else
-   in the chat surface (compose bar / leaf menus sit around 40).         */
+/* v3: 改成 bottom-sheet. backdrop 只覆盖聊天头之下的区域, window
+   贴底从下方上滑铺满 backdrop 全部空间, 只顶部两个角圆. 关闭走
+   下滑手势或点 backdrop (window 占满 backdrop 之后只剩动画过程
+   中那一小段可点). */
+:root {
+  /* 聊天头粗略高度. 不同页 (wis-chat-header padding 13×2 + content
+     ≈ 52px) 都接近这个值. 单独调用方需要可以覆盖. */
+  --thinking-modal-top: 56px;
+}
 .thinking-modal-backdrop {
   position: fixed;
-  inset: 0;
+  top: var(--thinking-modal-top);
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 200;
-  /* v2: 模糊+极轻白色蒙层, 替代之前的黑半透明. 让背后聊天页若
-     隐若现而不是被压黑, 跟皮肤的安静感对齐. */
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
   opacity: 0;
   transition: opacity 200ms ease-out;
   will-change: opacity;
 }
 .thinking-modal-backdrop.is-open { opacity: 1; }
+.thinking-modal-backdrop:not(.is-open) {
+  transition: opacity 200ms ease-in;
+}
 
 .thinking-modal-window {
-  /* v2: 几乎全屏. 上下各留 40px (主要给状态栏 / 导航栏 / safe-area
-     呼吸), 左右各留 16px. 不再用 min(...) 给小屏退回, 直接 calc
-     固定尺寸. */
-  width: calc(100vw - 32px);
-  height: calc(100vh - 80px);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
   background: var(--bg, #fbf9fd);
-  border-radius: 16px;
+  border-radius: 16px 16px 0 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 10px 40px rgba(40, 30, 55, 0.18);
-  opacity: 0;
-  transform: scale(0.95);
-  transition:
-    opacity 250ms ease-out,
-    transform 250ms ease-out;
-  will-change: opacity, transform;
+  box-shadow: 0 -10px 40px rgba(40, 30, 55, 0.18);
+  transform: translateY(100%);
+  transition: transform 250ms ease-out;
+  will-change: transform;
 }
 .thinking-modal-window.is-open {
-  opacity: 1;
-  transform: scale(1);
-}
-/* Close phase uses faster ease-in, matches the spec's open/close split */
-.thinking-modal-backdrop:not(.is-open) {
-  transition: opacity 150ms ease-in;
+  transform: translateY(0);
 }
 .thinking-modal-window:not(.is-open) {
-  transition:
-    opacity 150ms ease-in,
-    transform 150ms ease-in;
+  transition: transform 250ms ease-in;
+}
+
+/* 顶部 grip 横条 — 视觉上提示「可下滑关闭」, 同时本身是手势抓
+   点. 周围 padding 凑大 hit area. */
+.thinking-modal-grip-area {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 0 6px;
+  cursor: grab;
+  touch-action: none;
+}
+.thinking-modal-grip {
+  display: block;
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-2);
+  opacity: 0.2;
 }
 
 .thinking-modal-bar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
+  padding: 6px 16px 12px;
   border-bottom: 1px solid var(--line, rgba(157, 110, 189, 0.08));
 }
 .thinking-modal-title {
@@ -616,21 +633,6 @@
   font-size: 13px;
   color: var(--text-2);
   font-weight: 500;
-}
-.thinking-modal-close {
-  background: none;
-  border: 0;
-  cursor: pointer;
-  color: var(--text-3);
-  padding: 6px;
-  border-radius: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.thinking-modal-close:hover {
-  background: var(--lav-50, rgba(176, 138, 204, 0.08));
-  color: var(--text-2);
 }
 .thinking-modal-body {
   flex: 1;
