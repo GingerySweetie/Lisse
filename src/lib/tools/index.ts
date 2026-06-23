@@ -1,6 +1,7 @@
 import type { ToolDef } from '../../api/types';
 import type { Persona } from '../../types';
 import { memoryTools } from './memory';
+import { musicTools } from './music';
 import { mcpTools } from '../mcp/tools';
 
 /**
@@ -9,7 +10,7 @@ import { mcpTools } from '../mcp/tools';
  * the model emits a tool_use). Adapters in src/api/{openai,anthropic}
  * translate the ToolDef shape to each provider's format.
  *
- * Built-ins: memory (remember / recall).
+ * Built-ins: memory (remember / recall), music (play / search / history).
  * External:  MCP servers registered on /mcp page (streamable HTTP).
  */
 
@@ -31,6 +32,7 @@ export interface Tool {
 export async function availableTools(ctx: ToolContext): Promise<Tool[]> {
   const out: Tool[] = [];
   for (const t of await memoryTools(ctx)) out.push(t);
+  for (const t of await musicTools(ctx)) out.push(t);
   for (const t of await mcpTools(ctx)) out.push(t);
   return out;
 }
