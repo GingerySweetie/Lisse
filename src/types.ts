@@ -395,25 +395,40 @@ export interface CirclePost {
   /** 附图. base64 data URLs (无 prefix), 跟 Attachment.data 同格式。
    *  目前限制最多 9 张. */
   images: string[];
+  /** 用户自己有没有给这条 post 点心. 切换不影响 AI 评论. */
+  userLiked?: boolean;
   createdAt: number;
 }
 
-/** 一条评论 / 点赞反应. 同一 persona 对同一 post 多次反应也存多
- *  条 — 用户可以手动「让 X 再说」追加新评论, 历史保留. */
+/** OnlyCircle 一条反应. 同一 persona 对同一 post 多次反应也存多
+ *  条 — 用户可以手动「让 X 再说」追加新评论, 历史保留.
+ *
+ *  v2 加 parentReactionId: 用户回复某条 AI 评论时, reply row 的
+ *  parentReactionId 指向那条原评论, AI 接着也可以再回复用户的
+ *  reply (形成 thread). 顶层评论 parentReactionId 为空.
+ *
+ *  v2 也支持 personaId = USER_REACTION_PERSONA_ID ('__user__') 表
+ *  示这是用户自己写的回复, 不走 db.personas. */
 export interface CircleReaction {
   id: string;
   postId: string;
-  /** 谁的反应. 用 personaId 关联到 db.personas。 */
+  /** 谁的反应. personaId 关联 db.personas, 或 '__user__' 表用户. */
   personaId: string;
-  /** "comment" — 评论, "like" — 单纯点赞 (text 可空)。 */
+  /** "comment" — 评论 (含用户回复), "like" — 点赞 (text 可空). */
   kind: 'comment' | 'like';
-  /** 评论正文; kind=like 时为空。 */
+  /** 评论正文; kind=like 时为空. */
   text: string;
-  /** 'pending' = 还在生成 / 调用 API 中; 'done' / 'error'。 */
+  /** 'pending' = 还在生成 / 调用 API 中; 'done' / 'error'. 用户
+   *  自己写的 reply 直接进 'done'. */
   status: 'pending' | 'done' | 'error';
   errorMessage?: string;
+  /** thread 用. 设了 = 这条是对哪条 reaction 的回复. */
+  parentReactionId?: string;
   createdAt: number;
 }
+
+/** 用户自己 reaction 的占位 personaId. 跟 db.personas 不重名. */
+export const USER_REACTION_PERSONA_ID = '__user__';
 
 /**
  * Health Connect 读穿透缓存. MIUI 杀后台后 Gadgetbridge 写进 HC 的

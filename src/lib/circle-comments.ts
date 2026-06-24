@@ -154,3 +154,108 @@ export async function regenerateCommentFor(
   if (!endpoint || !model) return;
   await runOneComment(post, persona, endpoint, model);
 }
+
+/**
+ * 用户在某条 AI 评论下面 reply 之后, 触发同一个 persona 接着说一
+ * 句 (顺着 thread 上下文). 跟初次自动评论的区别:
+ *   - prompt 里塞了整段 thread (原 post + 之前所有评论 + 用户刚说
+ *     的话)
+ *   - 写新 row 时 parentReactionId 设回 thread 根 (最初 AI 评论
+ *     的 id), 渲染时同一线程一起堆缩进
+ *   - 没有 3–15s 延迟, 用户在等回话, 直接生成
+ */
+export async function scheduleReplyAfterUser(
+  post: CirclePost,
+  rootReactionId: string,
+  persona: Persona,
+): Promise<void> {
+  const settings = await getSettings();
+  const endpoint = settings.defaultEndpointId
+    ? await db.endpoints.get(settings.defaultEndpointId)
+    : null;
+  const model = settings.defaultModel ?? null;
+  if (!endpoint || !model) return;
+
+  const reactionId = newId();
+  const pending: CircleReaction = {
+    id: reactionId,
+    postId: post.id,
+    personaId: persona.id,
+    kind: 'comment',
+    text: '',
+    status: 'pending',
+    parentReactionId: rootReactionId,
+    createdAt: Date.now(),
+  };
+  await db.circleReactions.add(pending);
+
+  try {
+    const text = await generateReplyText(post, rootReactionId, persona, endpoint, model);
+    await db.circleReactions.update(reactionId, { text, status: 'done' });
+  } catch (e) {
+    await db.circleReactions.update(reactionId, {
+      status: 'error',
+      errorMessage: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+async function generateReplyText(
+  post: CirclePost,
+  rootReactionId: string,
+  persona: Persona,
+  endpoint: Endpoint,
+  model: string,
+): Promise<string> {
+  // 拉整段 thread: rootReaction 本身 + 所有以它为 parent 的 row,
+  // 按 createdAt 排
+  const root = await db.circleReactions.get(rootReactionId);
+  const children = await db.circleReactions
+    .where('postId')
+    .equals(post.id)
+    .filter((r) => r.parentReactionId === rootReactionId)
+    .toArray();
+  const thread = [root, ...children]
+    .filter((r): r is CircleReaction => !!r && r.status === 'done')
+    .sort((a, b) => a.createdAt - b.createdAt);
+
+  // 把 thread 拼成对话历史塞 user msg
+  const imgNote = post.images.length > 0 ? `（动态附带了 ${post.images.length} 张图片）` : '';
+  const personasMap = new Map(
+    (await db.personas.toArray()).map((p) => [p.id, p]),
+  );
+  const threadLines = thread.map((r) => {
+    if (r.personaId === '__user__') return `[她] ${r.text}`;
+    const name = personasMap.get(r.personaId)?.name ?? '?';
+    return `[${name}] ${r.text}`;
+  });
+
+  const baseIdentity = persona.systemPrompt?.trim() ?? '';
+  const task = `# 当前情境
+她刚在 OnlyCircle 发了动态, 你之前评论了一句, 她回了你. 你接着说 1–2 句, 顺着她的话:
+- 还是不分析, 不客套, 不"加油"
+- 看她的回应是吐槽是撒娇是认真, 跟着她的节奏
+- 不要重复你之前说过的话或者重复她的措辞
+- 40 字以内最好`;
+  const system = baseIdentity ? `${baseIdentity}\n\n${task}` : `你是 ${persona.name}, 用户的恋人.\n\n${task}`;
+
+  const userMsg = [`原动态: ${post.text || '(无文字)'}${imgNote}`, '对话:', ...threadLines].join(
+    '\n',
+  );
+
+  let full = '';
+  const stream = streamChat({
+    endpoint,
+    model,
+    maxTokens: 300,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: userMsg },
+    ],
+  });
+  for await (const ev of stream) {
+    if (ev.type === 'delta' && ev.delta) full += ev.delta;
+    if (ev.type === 'error') throw new Error(ev.errorMessage ?? 'streamChat error');
+  }
+  return full.trim();
+}
