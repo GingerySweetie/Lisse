@@ -18,6 +18,7 @@ import {
   search as searchApi,
   getSongUrl,
   getLyric,
+  loginByBrowserCookie,
   loginByCookie,
   loginQrKey,
   loginQrCheck,
@@ -844,11 +845,45 @@ function CookieLoginPanel({
     }
   }
 
+  async function importFromBrowser() {
+    setError(null);
+    setBusy(true);
+    try {
+      const acct = await loginByBrowserCookie();
+      if (!acct) {
+        setError('找到了 cookie 但验证不通过, 可能过期了 — 重新登一次');
+        setBusy(false);
+        return;
+      }
+      await onSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="text-left">
+      <button
+        type="button"
+        onClick={() => void importFromBrowser()}
+        disabled={busy}
+        className="mb-3 w-full rounded-lg border border-lavender-300 bg-lavender-50 px-4 py-2 text-xs text-ink-900 hover:bg-lavender-100 disabled:opacity-50"
+      >
+        从内置浏览器同步登录
+      </button>
+      <p className="mb-3 text-[10px] leading-relaxed text-ink-500/70">
+        先在内置浏览器里 (建议先切桌面模式) 登 music.163.com,
+        再点上面按钮自动同步. 不用手撸 cookie.
+      </p>
+      <div className="my-3 flex items-center gap-2 text-[10px] text-ink-500/50">
+        <span className="h-px flex-1 bg-lavender-200" />
+        <span>或手动粘 cookie</span>
+        <span className="h-px flex-1 bg-lavender-200" />
+      </div>
       <ol className="mb-3 list-decimal pl-4 text-[11px] leading-relaxed text-ink-500">
         <li>
-          浏览器登 <span className="font-mono">music.163.com</span>
+          外部浏览器登 <span className="font-mono">music.163.com</span>
         </li>
         <li>F12 → Application → Cookies → music.163.com</li>
         <li>
