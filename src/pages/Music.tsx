@@ -62,6 +62,42 @@ export default function MusicPage() {
     undefined,
   );
 
+  // AI 在聊天里用 play_song 工具时, tool 把请求写到 db.kv.
+  // 音乐页一 mount / 一拿到新请求就消费并清掉 — 跨页面的 "AI 让
+  // 我放" 桥. 用 ref 记 lastRequestedAt 防止 useLiveQuery 在同次
+  // 请求上回放两次.
+  const lastRequestedAt = useRef<number>(0);
+  const pendingPlay = useLiveQuery(
+    () => db.kv.get('music_pending_play'),
+    [],
+    undefined,
+  );
+  useEffect(() => {
+    if (!pendingPlay?.value) return;
+    const req = pendingPlay.value as {
+      songId: number;
+      name: string;
+      artist: string;
+      album: string;
+      picUrl?: string;
+      requestedAt: number;
+    };
+    if (!req.requestedAt || req.requestedAt <= lastRequestedAt.current) return;
+    lastRequestedAt.current = req.requestedAt;
+    setCurrent({
+      song: {
+        id: req.songId,
+        name: req.name,
+        artists: [{ id: 0, name: req.artist }],
+        album: { id: 0, name: req.album, picUrl: req.picUrl },
+        durationMs: 0,
+        fee: 0,
+      },
+    });
+    // 消费完清掉, 避免下次进页面再触发
+    void db.kv.delete('music_pending_play');
+  }, [pendingPlay]);
+
   // Submit search
   async function runSearch(text: string) {
     const q = text.trim();
