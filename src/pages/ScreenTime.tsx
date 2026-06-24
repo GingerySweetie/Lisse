@@ -282,7 +282,7 @@ function RoastPopup({
           <div className="st-roast-item rhema">
             <div className="st-roast-who">
               <span className="st-roast-dot" />
-              <span className="st-roast-name">Rhema</span>
+              <span className="st-roast-name">Rhema酱</span>
             </div>
             <div className="st-roast-text rhema-text">{rhema ?? '……'}</div>
           </div>
@@ -318,7 +318,7 @@ function RoastSection({
       <div className="st-roast-item rhema">
         <div className="st-roast-who">
           <span className="st-roast-dot" />
-          <span className="st-roast-name">Rhema</span>
+          <span className="st-roast-name">Rhema酱</span>
         </div>
         <div className="st-roast-text rhema-text">
           {rhema || (generating ? '……' : '（先去 settings 配个 endpoint）')}

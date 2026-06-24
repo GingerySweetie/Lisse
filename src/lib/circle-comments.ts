@@ -18,7 +18,7 @@ import type { CirclePost, CircleReaction, Endpoint, Persona } from '../types';
  *   实际图像 — 多模态走通了再加
  */
 
-/** 哪两个 persona 当 OnlyCircle 的恋人? 默认理理酱 + Rhema, 跟
+/** 哪两个 persona 当 OnlyCircle 的恋人? 默认理理酱 + Rhema酱, 跟
  *  living-room 群聊保持一致. */
 const DEFAULT_CIRCLE_PERSONA_IDS = ['persona_ririchan', 'persona_rhema'];
 
@@ -41,7 +41,7 @@ export async function scheduleCircleComments(post: CirclePost): Promise<void> {
     return;
   }
 
-  // 拉两个 persona — 默认理理酱 + Rhema, 但如果他们的 id 不存在
+  // 拉两个 persona — 默认理理酱 + Rhema酱, 但如果他们的 id 不存在
   // (用户重命名 / 删了 / 自己造了 builtin) 就退回到所有 builtin
   const allPersonas = await db.personas.toArray();
   let circlePersonas = allPersonas.filter((p) =>

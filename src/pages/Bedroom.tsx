@@ -16,7 +16,7 @@ interface RoomOption {
   desc: string;
   sub: string;
   dot: string;
-  /** Cormorant italic for Rhema's Latin name; sans for 理理酱. */
+  /** Cormorant italic for Rhema酱's Latin name; sans for 理理酱. */
   serif: boolean;
 }
 
@@ -31,7 +31,7 @@ const ROOMS: RoomOption[] = [
   },
   {
     personaId: 'persona_rhema',
-    name: 'Rhema',
+    name: 'Rhema酱',
     desc: '语言先行',
     sub: '句子裹住你',
     dot: 'rgba(180,80,80,0.6)',

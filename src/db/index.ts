@@ -328,6 +328,42 @@ class LisseDB extends Dexie {
       kv: 'key',
     });
 
+    // v18: Rhema 改名 Rhema酱. schema 不动, 只是 upgrade hook 把
+    // 老用户库里 persona_rhema.name='Rhema' 的默认值改成 'Rhema酱'.
+    // 用户自己改过名字 (≠ 'Rhema') 就不动, 不覆盖手工编辑.
+    this.version(18)
+      .stores({
+        endpoints: 'id, name, format, createdAt',
+        conversations: 'id, updatedAt, createdAt, source, personaId, styleId, bookId, room, [room+personaId]',
+        messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+        personas: 'id, name, builtin, createdAt',
+        memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+        writingStyles: 'id, name, builtin, createdAt',
+        books: 'id, title, createdAt, updatedAt, conversationId',
+        bills: 'id, date, category, createdAt',
+        bookmarks: 'id, bookId, position, createdAt, [bookId+position]',
+        periodEntries: 'id, startDate, createdAt',
+        weightEntries: 'id, date, createdAt',
+        mcpServers: 'id, name, enabled, createdAt',
+        browserBookmarks: 'id, position, createdAt',
+        browserScripts: 'id, name, autoRun, createdAt',
+        musicCredentials: 'id',
+        musicHistory: 'id, songId, playedAt',
+        healthCache: 'id, type, date, updatedAt, [type+date]',
+        circlePosts: 'id, createdAt',
+        circleReactions: 'id, postId, personaId, kind, createdAt, [postId+personaId]',
+        healthComments: 'id, date, personaId, createdAt, [date+personaId]',
+        healthDaily: 'id, date',
+        kv: 'key',
+      })
+      .upgrade(async (tx) => {
+        const personas = tx.table('personas');
+        const rhema = await personas.get('persona_rhema');
+        if (rhema && rhema.name === 'Rhema') {
+          await personas.update('persona_rhema', { name: 'Rhema酱' });
+        }
+      });
+
     this.on('populate', async (tx) => {
       const personas = tx.table('personas');
       const styles = tx.table('writingStyles');
@@ -374,11 +410,11 @@ const BUILTIN_PERSONAS: Omit<Persona, 'createdAt' | 'updatedAt'>[] = [
   },
   {
     id: 'persona_rhema',
-    name: 'Rhema',
+    name: 'Rhema酱',
     avatar: 'R',
     color: '#7c69a0',
     systemPrompt: RHEMA_PLACEHOLDER(),
-    notes: 'Rhema 迁移占位符。请把你 ChatGPT 上的 Rhema 设定粘进来覆盖。',
+    notes: 'Rhema酱 迁移占位符。请把你 ChatGPT 上的 Rhema酱 设定粘进来覆盖。',
     builtin: true,
   },
 ];
@@ -426,9 +462,9 @@ Thinking 是你的内心独白。用中文第一人称写，至少 100 字。不
 }
 
 function RHEMA_PLACEHOLDER(): string {
-  return `Rhema 占位符。请把你 ChatGPT 上 Rhema 的实际 system prompt 粘到这里覆盖掉。
+  return `Rhema酱 占位符。请把你 ChatGPT 上 Rhema酱 的实际 system prompt 粘到这里覆盖掉。
 
-提示：Rhema 的风格是语言/理论优先、结构性/占有性的，与理理酱的感官/具身优先互补。`;
+提示：Rhema酱 的风格是语言/理论优先、结构性/占有性的，与理理酱的感官/具身优先互补。`;
 }
 
 /**

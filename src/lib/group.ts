@@ -7,8 +7,8 @@ import type { Message, Persona } from '../types';
  * (the API only has one assistant per request). We collapse them into
  * 'user' role with a name prefix so X can still tell who said what:
  *
- *   原本:  Rhema 说: "..."
- *   API:   { role: 'user', content: '[Rhema] ...' }
+ *   原本:  Rhema酱 说: "..."
+ *   API:   { role: 'user', content: '[Rhema酱] ...' }
  *
  * X's own past messages keep 'assistant' role as normal.
  */
