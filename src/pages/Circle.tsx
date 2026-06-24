@@ -5,8 +5,16 @@ import { ChevronLeft, Heart, Image as ImageIcon, MessageCircle, Plus, Send, X } 
 import { db } from '../db';
 import { newId } from '../lib/id';
 import { relativeTime } from '../lib/format';
-import { scheduleCircleComments } from '../lib/circle-comments';
-import type { CirclePost, CircleReaction, Persona } from '../types';
+import {
+  scheduleCircleComments,
+  scheduleReplyAfterUser,
+} from '../lib/circle-comments';
+import {
+  USER_REACTION_PERSONA_ID,
+  type CirclePost,
+  type CircleReaction,
+  type Persona,
+} from '../types';
 
 /**
  * OnlyCircle — 私人朋友圈. 单列时间线, 只有用户和她的两个 AI 恋人看
@@ -182,6 +190,53 @@ function PostCard({
   onOpenImage: (src: string) => void;
   delayMs: number;
 }) {
+  // replyTarget: undefined = 关闭, null = 给 post 顶层留言, string = 给
+  // 那条 reaction 回复 (thread).
+  const [replyTarget, setReplyTarget] = useState<string | null | undefined>(
+    undefined,
+  );
+
+  async function toggleLike() {
+    await db.circlePosts.update(post.id, { userLiked: !post.userLiked });
+  }
+
+  async function submitReply(text: string) {
+    const t = text.trim();
+    if (!t) return;
+    const reactionId = newId();
+    const row: CircleReaction = {
+      id: reactionId,
+      postId: post.id,
+      personaId: USER_REACTION_PERSONA_ID,
+      kind: 'comment',
+      text: t,
+      status: 'done',
+      parentReactionId: typeof replyTarget === 'string' ? replyTarget : undefined,
+      createdAt: Date.now(),
+    };
+    await db.circleReactions.add(row);
+    // 给某条 AI 评论 reply → 触发同一 persona 接着说一句
+    if (typeof replyTarget === 'string') {
+      const parent = await db.circleReactions.get(replyTarget);
+      if (parent) {
+        const persona = personaById.get(parent.personaId);
+        if (persona) void scheduleReplyAfterUser(post, replyTarget, persona);
+      }
+    }
+    setReplyTarget(undefined);
+  }
+
+  // 拆 thread: 顶层 reaction (parentReactionId 空) 在外, 它们的回复
+  // 缩进显示在下面.
+  const topLevel = reactions.filter((r) => !r.parentReactionId);
+  const repliesByParent = new Map<string, CircleReaction[]>();
+  for (const r of reactions) {
+    if (!r.parentReactionId) continue;
+    const arr = repliesByParent.get(r.parentReactionId) ?? [];
+    arr.push(r);
+    repliesByParent.set(r.parentReactionId, arr);
+  }
+
   return (
     <article
       className="circle-card"
@@ -215,32 +270,51 @@ function PostCard({
         <span className="circle-card-acts">
           <button
             type="button"
-            className="circle-card-act"
-            aria-label="喜欢"
-            disabled
+            className={`circle-card-act ${post.userLiked ? 'is-liked' : ''}`}
+            onClick={() => void toggleLike()}
+            aria-label={post.userLiked ? '取消喜欢' : '喜欢'}
           >
-            <Heart size={13} />
+            <Heart
+              size={14}
+              fill={post.userLiked ? 'currentColor' : 'none'}
+              strokeWidth={1.8}
+            />
           </button>
           <button
             type="button"
             className="circle-card-act"
-            aria-label="评论"
-            disabled
+            onClick={() => setReplyTarget(replyTarget === null ? undefined : null)}
+            aria-label="留言"
           >
-            <MessageCircle size={13} />
+            <MessageCircle size={14} />
           </button>
         </span>
       </footer>
-      {reactions.length > 0 && (
+      {(topLevel.length > 0 || repliesByParent.size > 0) && (
         <div className="circle-comments">
-          {reactions.map((r) => (
+          {topLevel.map((r) => (
             <ReactionLine
               key={r.id}
               reaction={r}
               persona={personaById.get(r.personaId)}
+              replies={repliesByParent.get(r.id) ?? []}
+              personaById={personaById}
+              onReply={() =>
+                setReplyTarget(replyTarget === r.id ? undefined : r.id)
+              }
+              replyOpen={replyTarget === r.id}
+              onSubmitReply={submitReply}
+              onCancelReply={() => setReplyTarget(undefined)}
             />
           ))}
         </div>
+      )}
+      {replyTarget === null && (
+        <ReplyComposer
+          placeholder="写点回应…"
+          onCancel={() => setReplyTarget(undefined)}
+          onSubmit={submitReply}
+        />
       )}
     </article>
   );
@@ -249,36 +323,170 @@ function PostCard({
 function ReactionLine({
   reaction,
   persona,
+  replies,
+  personaById,
+  onReply,
+  replyOpen,
+  onSubmitReply,
+  onCancelReply,
 }: {
   reaction: CircleReaction;
   persona: Persona | undefined;
+  replies: CircleReaction[];
+  personaById: Map<string, Persona>;
+  onReply: () => void;
+  replyOpen: boolean;
+  onSubmitReply: (text: string) => Promise<void> | void;
+  onCancelReply: () => void;
 }) {
-  const color = persona?.color ?? '#a090a8';
-  const name = persona?.name ?? '?';
+  const isUser = reaction.personaId === USER_REACTION_PERSONA_ID;
+  const color = isUser ? '#7a5a88' : persona?.color ?? '#a090a8';
+  const name = isUser ? '你' : persona?.name ?? '?';
   return (
-    <div className="circle-comment">
-      <span
-        className="circle-comment-dot"
-        style={{ background: color }}
-        title={name}
+    <div className="circle-comment-thread">
+      <div className="circle-comment">
+        <span
+          className="circle-comment-dot"
+          style={{ background: color }}
+          title={name}
+        />
+        <span className="circle-comment-name" style={{ color }}>
+          {name}
+        </span>
+        <span className="circle-comment-text">
+          {reaction.status === 'pending' && (
+            <span className="circle-comment-pending">正在想…</span>
+          )}
+          {reaction.status === 'done' && reaction.text}
+          {reaction.status === 'error' && (
+            <span className="circle-comment-error">
+              没说出来 ({reaction.errorMessage ?? '未知错误'})
+            </span>
+          )}
+        </span>
+        {/* 只给 AI 评论挂回复按钮 — 用户自己写的不再 reply 自己 */}
+        {!isUser && reaction.status === 'done' && (
+          <button
+            type="button"
+            onClick={onReply}
+            className="circle-comment-reply-btn"
+            aria-label="回复"
+          >
+            回复
+          </button>
+        )}
+      </div>
+      {/* 嵌套的 thread 回复 */}
+      {(replies.length > 0 || replyOpen) && (
+        <div className="circle-comment-replies">
+          {replies
+            .slice()
+            .sort((a, b) => a.createdAt - b.createdAt)
+            .map((r) => {
+              const rIsUser = r.personaId === USER_REACTION_PERSONA_ID;
+              const rColor = rIsUser
+                ? '#7a5a88'
+                : personaById.get(r.personaId)?.color ?? '#a090a8';
+              const rName = rIsUser
+                ? '你'
+                : personaById.get(r.personaId)?.name ?? '?';
+              return (
+                <div key={r.id} className="circle-comment">
+                  <span
+                    className="circle-comment-dot"
+                    style={{ background: rColor }}
+                  />
+                  <span
+                    className="circle-comment-name"
+                    style={{ color: rColor }}
+                  >
+                    {rName}
+                  </span>
+                  <span className="circle-comment-text">
+                    {r.status === 'pending' && (
+                      <span className="circle-comment-pending">正在想…</span>
+                    )}
+                    {r.status === 'done' && r.text}
+                    {r.status === 'error' && (
+                      <span className="circle-comment-error">
+                        没说出来 ({r.errorMessage ?? '未知错误'})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          {replyOpen && (
+            <ReplyComposer
+              placeholder={`回复 ${name}…`}
+              onCancel={onCancelReply}
+              onSubmit={onSubmitReply}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Inline reply 小输入框. 给 post 顶层留言或给某条 AI 评论的 thread
+ *  reply 共用 — 视觉一样, 行为差别在父组件传的 onSubmit 里. */
+function ReplyComposer({
+  placeholder,
+  onCancel,
+  onSubmit,
+}: {
+  placeholder: string;
+  onCancel: () => void;
+  onSubmit: (text: string) => Promise<void> | void;
+}) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function send() {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    try {
+      await onSubmit(text);
+      setText('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="circle-reply-composer">
+      <textarea
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          }
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            void send();
+          }
+        }}
+        placeholder={placeholder}
+        rows={2}
+        className="circle-reply-input"
       />
-      <span
-        className="circle-comment-name"
-        style={{ color }}
-      >
-        {name}
-      </span>
-      <span className="circle-comment-text">
-        {reaction.status === 'pending' && (
-          <span className="circle-comment-pending">正在想…</span>
-        )}
-        {reaction.status === 'done' && reaction.text}
-        {reaction.status === 'error' && (
-          <span className="circle-comment-error">
-            没说出来 ({reaction.errorMessage ?? '未知错误'})
-          </span>
-        )}
-      </span>
+      <div className="circle-reply-bar">
+        <button type="button" onClick={onCancel} className="circle-reply-cancel">
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={() => void send()}
+          disabled={!text.trim() || busy}
+          className="circle-reply-send"
+        >
+          {busy ? '…' : '发送'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -679,6 +887,79 @@ const circleStyles = `
 }
 .circle-comment-pending { opacity: 0.55; font-style: italic; }
 .circle-comment-error { color: #c45858; font-size: 12px; }
+
+/* thread 嵌套: reply 缩进 + 左侧细竖线 */
+.circle-comment-thread { display: flex; flex-direction: column; gap: 8px; }
+.circle-comment-replies {
+  margin-left: 14px;
+  padding-left: 10px;
+  border-left: 1.5px solid rgba(157,110,189,0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 评论行末尾的「回复」按钮: 默认半透明, hover 提亮 */
+.circle-comment-reply-btn {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: rgba(120,100,150,0.5);
+  font-size: 11px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.circle-comment-reply-btn:hover { color: rgba(120,100,150,0.9); }
+
+/* heart 高亮态 — 用户已点 */
+.circle-card-act.is-liked { color: #b08acc; }
+
+/* inline reply composer */
+.circle-reply-composer {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.circle-reply-input {
+  width: 100%;
+  resize: none;
+  border: 1px solid rgba(157,110,189,0.12);
+  background: rgba(245,238,248,0.4);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-1, #3a2840);
+  outline: none;
+}
+.circle-reply-input:focus { border-color: rgba(157,110,189,0.3); }
+.circle-reply-bar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.circle-reply-cancel {
+  background: none;
+  border: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: rgba(120,100,150,0.6);
+  cursor: pointer;
+  font-family: inherit;
+}
+.circle-reply-send {
+  background: rgba(176,138,204,0.85);
+  color: #fff;
+  border: 0;
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.circle-reply-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* compose sheet */
 .circle-compose-mask {
