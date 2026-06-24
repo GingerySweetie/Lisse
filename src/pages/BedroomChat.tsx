@@ -790,7 +790,7 @@ function BedroomColorPicker({
   personaName: string;
   onPick: (themeId: string) => void;
 }) {
-  const isRhema = personaName === 'Rhema';
+  const isRhema = personaName === 'Rhema酱';
   return (
     <div
       style={{

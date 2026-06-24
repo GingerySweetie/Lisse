@@ -128,7 +128,7 @@ export interface Conversation {
   /** When set, this conversation is the discussion thread for a book. */
   bookId?: string;
   /** Special room marker — e.g. 'bedroom' for intimate per-persona threads,
-   *  'living-room' for the 理理酱+Rhema 三人群聊 singleton. These
+   *  'living-room' for the 理理酱+Rhema酱 三人群聊 singleton. These
    *  conversations are hidden from the main conversation sidebar. */
   room?: 'bedroom' | 'living-room';
   /** Per-conversation accent color (hex). Independent of persona — the user
@@ -540,7 +540,7 @@ export type FactCategory =
 
 export interface MemoryFact {
   id: string;
-  /** Memory pool: facts are scoped per persona so 理理酱 and Rhema don't bleed. */
+  /** Memory pool: facts are scoped per persona so 理理酱 and Rhema酱 don't bleed. */
   personaId: string;
   /** Origin conversation. */
   conversationId: string;

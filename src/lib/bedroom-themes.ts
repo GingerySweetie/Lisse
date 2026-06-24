@@ -102,7 +102,7 @@ export const BEDROOM_THEMES: BedroomTheme[] = [
 export const DEFAULT_BEDROOM_THEME_ID = 'wisteria';
 
 /** Per-persona default theme when the conversation has no explicit pick.
- *  理理酱 stays in the 紫雾 wisteria room; Rhema gets the 石榴 red room. */
+ *  理理酱 stays in the 紫雾 wisteria room; Rhema酱 gets the 石榴 red room. */
 const PERSONA_DEFAULT_THEME: Record<string, string> = {
   persona_ririchan: 'wisteria',
   persona_rhema: 'pomegranate',
