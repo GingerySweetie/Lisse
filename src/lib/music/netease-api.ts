@@ -254,6 +254,47 @@ export async function loginByCookie(musicU: string): Promise<UserAccount | null>
   return getLoginStatus();
 }
 
+/**
+ * 从内置浏览器同步登录态. Android 的 CookieManager 是全局单例,
+ * 用户在 InAppBrowserActivity 里登过 music.163.com → 同一份
+ * cookie jar 里就有 MUSIC_U. 我们 getCookies 拿出来, 调
+ * loginByCookie 验证 + 落进 db.musicCredentials.
+ *
+ * 用法: 用户在 Wisteria 内置浏览器里桌面模式打开 music.163.com
+ * 登完, 切回音乐页, 点「从内置浏览器同步登录」就接管登录态,
+ * 不用手撸 cookie 复制粘贴.
+ */
+export async function loginByBrowserCookie(): Promise<UserAccount | null> {
+  // 三个 subdomain 任一个能拿到 MUSIC_U 都行
+  const urls = [
+    'https://music.163.com',
+    'https://interface.music.163.com',
+    'https://interface3.music.163.com',
+  ];
+  let musicU: string | null = null;
+  for (const url of urls) {
+    try {
+      const cookies = (await CapacitorCookies.getCookies({ url })) as Record<
+        string,
+        string
+      >;
+      if (cookies && typeof cookies.MUSIC_U === 'string' && cookies.MUSIC_U) {
+        musicU = cookies.MUSIC_U;
+        break;
+      }
+    } catch {
+      // 某个 subdomain 拿不到不致命, 试下一个
+    }
+  }
+  if (!musicU) {
+    throw new Error(
+      '内置浏览器里没找到 music.163.com 的登录 cookie. ' +
+        '先在浏览器里登一次 music.163.com (建议先切桌面模式) 再回来同步.',
+    );
+  }
+  return loginByCookie(musicU);
+}
+
 /** 清掉 cookie jar 里 music.163.com 的所有 cookie — 退出登录用. */
 export async function logout(): Promise<void> {
   for (const url of [
