@@ -54,6 +54,11 @@ class InAppBrowserActivity : AppCompatActivity() {
     private lateinit var progressBar: ProgressBar
     private var autoInjects: JSONArray = JSONArray()
     private var savedScripts: JSONArray = JSONArray()
+    /** 用户 / 调用方传过来的初始 UA. 切桌面模式时记着, 切回手机
+     *  态可以还原. null = 用 WebView 自带的默认手机 UA. */
+    private var defaultUa: String? = null
+    private var desktopMode: Boolean = false
+    private lateinit var desktopToggleBtn: TextView
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,7 +85,10 @@ class InAppBrowserActivity : AppCompatActivity() {
 
         // Parse intent extras.
         val initialUrl = intent.getStringExtra("url") ?: "about:blank"
-        intent.getStringExtra("ua")?.let { webView.settings.userAgentString = it }
+        intent.getStringExtra("ua")?.let {
+            webView.settings.userAgentString = it
+            defaultUa = it
+        }
         intent.getStringExtra("autoInjects")?.let {
             try { autoInjects = JSONArray(it) } catch (_: JSONException) {}
         }
@@ -157,6 +165,18 @@ class InAppBrowserActivity : AppCompatActivity() {
         }
         row.addView(urlBar)
 
+        // 桌面模式 toggle. 用 "PC" / "手" 两态 label 直观显示当前态.
+        desktopToggleBtn = TextView(this).apply {
+            text = "PC"
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#6f5990"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { toggleDesktopMode() }
+        }
+        row.addView(desktopToggleBtn)
         row.addView(iconBtn("</>") { showInjectMenu() })
         row.addView(iconBtn("✕") { finish() })
         return row
@@ -306,6 +326,37 @@ class InAppBrowserActivity : AppCompatActivity() {
                       else "✓ 返回: ${result.take(60)}"
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /** PC 桌面 UA — Chrome 120 on Linux x86_64. 站点用 UA 嗅探判断
+     *  是不是 desktop 时这串能骗过去. */
+    private val desktopUserAgent: String =
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    /** 在桌面模式 / 手机模式之间切换. 改 UA + useWideViewPort +
+     *  loadWithOverviewMode + reload, 让站点重新走一遍 desktop UI
+     *  的 layout 选择. */
+    private fun toggleDesktopMode() {
+        desktopMode = !desktopMode
+        val s = webView.settings
+        if (desktopMode) {
+            s.userAgentString = desktopUserAgent
+            s.useWideViewPort = true
+            s.loadWithOverviewMode = true
+            // initialScale 0 = 自动适应, 桌面页缩到屏宽看全貌
+            webView.setInitialScale(1)
+            desktopToggleBtn.text = "手"
+        } else {
+            // null = WebView 回到内置默认手机 UA. 调用方原本传过来
+            // 自定义 UA 的话还原回去.
+            s.userAgentString = defaultUa
+            s.useWideViewPort = true
+            s.loadWithOverviewMode = true
+            webView.setInitialScale(0)
+            desktopToggleBtn.text = "PC"
+        }
+        webView.reload()
     }
 
     private fun iconBtn(label: String, onClick: () -> Unit): View {
