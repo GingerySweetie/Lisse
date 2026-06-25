@@ -98,44 +98,113 @@ export async function getTodaySteps(): Promise<number> {
   return samples.reduce((sum, s) => sum + (s.value || 0), 0);
 }
 
-/** 今日心率 (最新一笔 + 范围). */
+/** 今日心率 (最新一笔 + 范围).
+ *
+ *  历史教训: 之前 readSamples('heartRate', startOfDay, now, 500),
+ *  手环连续戴一天 Health Connect 里一条 HeartRateRecord 内嵌的
+ *  series 数组能上千 sub-point, 500 条 record × ~1000 series →
+ *  IPC binder 反序列化 SeriesValue proto 时直接 OOM, 整个 app
+ *  进程被 system_server 杀掉 (堆栈是 IReadDataRangeCallback 的
+ *  parseFrom).
+ *
+ *  现在 min / max / average 走 queryAggregated, HC 端就聚合好,
+ *  传过来三个 double; latest 用 readSamples 但窗口缩到最近 30 分
+ *  钟 + limit 5, payload 顶天几 KB. 不会再炸. */
 export async function getTodayHeartRate(): Promise<{
   latest: number | null;
   min: number | null;
   max: number | null;
   count: number;
 }> {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const samples = await readSamples('heartRate', startOfDay, now, 500);
-  if (samples.length === 0) {
+  if (!isAndroid()) {
     return { latest: null, min: null, max: null, count: 0 };
   }
-  const values = samples.map((s) => s.value).filter((v) => v > 0);
-  if (values.length === 0) return { latest: null, min: null, max: null, count: 0 };
-  // Latest = sample with largest endDate.
-  const latestSample = samples.reduce((a, b) =>
-    new Date(a.endDate).getTime() > new Date(b.endDate).getTime() ? a : b,
-  );
-  return {
-    latest: Math.round(latestSample.value),
-    min: Math.round(Math.min(...values)),
-    max: Math.round(Math.max(...values)),
-    count: samples.length,
-  };
-}
-
-/** 今日心率时间序列 (按时间升序, 用于迷你折线). 限制 200 点; 手环常按
- *  5–10 分钟采样一次, 一天 ~150 点, 不会爆. */
-export async function getTodayHeartRateSeries(): Promise<number[]> {
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const samples = await readSamples('heartRate', startOfDay, now, 500);
-  return samples
-    .filter((s) => s.value > 0)
-    .sort((a, b) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime())
-    .map((s) => Math.round(s.value))
-    .slice(-200);
+
+  const aggKinds: Array<'min' | 'max' | 'average'> = ['min', 'max', 'average'];
+  let min: number | null = null;
+  let max: number | null = null;
+  let hasAny = false;
+  await Promise.all(
+    aggKinds.map(async (kind) => {
+      try {
+        const r = await Health.queryAggregated({
+          dataType: 'heartRate',
+          startDate: startOfDay.toISOString(),
+          endDate: now.toISOString(),
+          bucket: 'day',
+          aggregation: kind,
+        });
+        const v = r.samples[0]?.value;
+        if (typeof v === 'number' && v > 0) {
+          hasAny = true;
+          if (kind === 'min') min = Math.round(v);
+          else if (kind === 'max') max = Math.round(v);
+        }
+      } catch {
+        // 单个 aggregation 失败就当没数据, 不致命
+      }
+    }),
+  );
+
+  // 最新一笔走小窗口的 readSamples — 只要最近 30 分钟最多 5 条,
+  // 避开全天大批 series 解码
+  let latest: number | null = null;
+  try {
+    const recent = await readSamples(
+      'heartRate',
+      new Date(now.getTime() - 30 * 60_000),
+      now,
+      5,
+    );
+    if (recent.length > 0) {
+      const last = recent.reduce((a, b) =>
+        new Date(a.endDate).getTime() > new Date(b.endDate).getTime() ? a : b,
+      );
+      if (last.value > 0) latest = Math.round(last.value);
+    }
+  } catch {
+    // ignore
+  }
+
+  if (!hasAny && latest === null) {
+    return { latest: null, min: null, max: null, count: 0 };
+  }
+  return { latest, min, max, count: hasAny || latest !== null ? 1 : 0 };
+}
+
+/** 今日心率时间序列 (24 个 hourly bucket, 缺数据的小时为 0). 之前
+ *  readSamples 500 条每条 series 数千点 → OOM. 改成 queryAggregated
+ *  bucket=hour, HC 端聚合好 24 个 average BPM, 传过来 24 个 double,
+ *  payload 极小。 */
+export async function getTodayHeartRateSeries(): Promise<number[]> {
+  if (!isAndroid()) return [];
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  try {
+    const r = await Health.queryAggregated({
+      dataType: 'heartRate',
+      startDate: startOfDay.toISOString(),
+      endDate: now.toISOString(),
+      bucket: 'hour',
+      aggregation: 'average',
+    });
+    // 把不连续的 bucket 摊到 24 个槽, 缺的填 0. bucket startDate 是
+    // 各小时的整点.
+    const byHour = new Map<number, number>();
+    for (const s of r.samples) {
+      const h = new Date(s.startDate).getHours();
+      if (s.value > 0) byHour.set(h, Math.round(s.value));
+    }
+    const out: number[] = [];
+    const upToHour = now.getHours();
+    for (let h = 0; h <= upToHour; h++) out.push(byHour.get(h) ?? 0);
+    return out;
+  } catch (e) {
+    console.warn('Health Connect heartRate hourly aggregated failed:', e);
+    return [];
+  }
 }
 
 /** 最近 7 天每天的步数, 顺序: 6 天前 → 今天. queryAggregated bucket=day
@@ -248,7 +317,9 @@ export async function getRecentWeight(
 ): Promise<{ date: string; kg: number }[]> {
   const now = new Date();
   const start = new Date(now.getTime() - days * 24 * 3600 * 1000);
-  const samples = await readSamples('weight', start, now, 90);
+  // weight 没有 series sub-points, 比较安全, 但 limit 还是给 60
+  // (一天测一次 30 天也才 30 条, 60 已经富裕).
+  const samples = await readSamples('weight', start, now, 60);
   return samples
     .filter((s) => s.value > 0)
     .map((s) => ({
@@ -301,7 +372,9 @@ export async function inspectHealthConnect(): Promise<HcDiagReport> {
   }
 
   const now = new Date();
-  const since24h = new Date(now.getTime() - 24 * 3600 * 1000);
+  // 心率窗口缩到最近 30 分钟避开整天 series proto 把 binder 反序列
+  // 化 OOM 掉. 步数 24h. sleep / weight 7 天兜底. limit 整体砍到
+  // 20 (诊断只看时间戳 + sourceName, 不需要全量).
   const entries: HcDiagEntry[] = [];
   for (const t of types) {
     const authorized = auth.readAuthorized.includes(t);
@@ -309,16 +382,21 @@ export async function inspectHealthConnect(): Promise<HcDiagReport> {
     let latestAt: string | null = null;
     const sourcesSet = new Set<string>();
     if (authorized) {
-      // 睡眠 / 体重: 24h 窗口太短可能没数据, 拉 7 天兜底.
-      const longWindow = t === 'sleep' || t === 'weight';
-      const start = longWindow
-        ? new Date(now.getTime() - 7 * 24 * 3600 * 1000)
-        : since24h;
-      const samples = await readSamples(t, start, now, 500);
-      sampleCount = samples.length;
-      for (const s of samples) {
-        if (s.sourceName) sourcesSet.add(s.sourceName);
-        if (!latestAt || s.endDate > latestAt) latestAt = s.endDate;
+      const start =
+        t === 'heartRate'
+          ? new Date(now.getTime() - 30 * 60_000)
+          : t === 'sleep' || t === 'weight'
+            ? new Date(now.getTime() - 7 * 24 * 3600 * 1000)
+            : new Date(now.getTime() - 24 * 3600 * 1000);
+      try {
+        const samples = await readSamples(t, start, now, 20);
+        sampleCount = samples.length;
+        for (const s of samples) {
+          if (s.sourceName) sourcesSet.add(s.sourceName);
+          if (!latestAt || s.endDate > latestAt) latestAt = s.endDate;
+        }
+      } catch {
+        // 诊断不该把 app 炸了 — 失败就当无数据
       }
     }
     entries.push({
