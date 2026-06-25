@@ -1,6 +1,7 @@
 package com.gingery.wisteria.plugins
 
 import android.content.Intent
+import android.webkit.CookieManager
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -48,6 +49,46 @@ class InAppBrowserPlugin : Plugin() {
             call.resolve(ret)
         } catch (e: Exception) {
             call.reject("打不开浏览器: ${e.message}")
+        }
+    }
+
+    /**
+     * 读 CookieManager 全局单例里某 URL 的 cookie. CapacitorCookies
+     * 在某些 Android / OEM WebView 上跟内置浏览器 Activity 的 jar
+     * 不是同一份 (用户在 InAppBrowserActivity 登录拿到的 MUSIC_U 那
+     * 边读不到), 这条直通 android.webkit.CookieManager.getInstance()
+     * 兜底, 进程级单例无论哪个 WebView 写的都看得到.
+     *
+     * 返回 cookieString (原 header) + cookies (name → value map),
+     * 调用方拿其中的 MUSIC_U 接管登录态。
+     */
+    @PluginMethod
+    fun getCookies(call: PluginCall) {
+        val url = call.getString("url") ?: run {
+            call.reject("url 不能空")
+            return
+        }
+        try {
+            val mgr = CookieManager.getInstance()
+            // 强制 flush 一下 — 刚登录的 cookie 偶尔还在内存没落地
+            try { mgr.flush() } catch (_: Exception) {}
+            val cookieString = mgr.getCookie(url) ?: ""
+            val parsed = JSObject()
+            if (cookieString.isNotEmpty()) {
+                for (kv in cookieString.split(";")) {
+                    val eq = kv.indexOf('=')
+                    if (eq < 0) continue
+                    val k = kv.substring(0, eq).trim()
+                    val v = kv.substring(eq + 1).trim()
+                    if (k.isNotEmpty()) parsed.put(k, v)
+                }
+            }
+            val ret = JSObject()
+            ret.put("cookieString", cookieString)
+            ret.put("cookies", parsed)
+            call.resolve(ret)
+        } catch (e: Exception) {
+            call.reject("读 cookie 失败: ${e.message}")
         }
     }
 }
