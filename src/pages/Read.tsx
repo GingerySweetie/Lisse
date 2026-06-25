@@ -72,11 +72,16 @@ export default function ReadPage() {
         : ep.chatModels[0] ?? null;
     setModel(m);
     setPersonaId(conversation?.personaId ?? settings.defaultPersonaId);
-    // Single source of truth: settings.defaultStyleId. The old
-    // conversation.styleId fallback pinned the first style ever used
-    // in this conversation forever.
-    setStyleId(settings.defaultStyleId);
   }, [endpoints, settings, conversation]);
+
+  useEffect(() => {
+    if (!settings) return;
+    // Style is per-persona: each persona keeps its own writing style. The
+    // global settings.defaultStyleId is only the persona-less fallback.
+    const persona = personaId ? personas?.find((p) => p.id === personaId) : null;
+    if (personaId && !persona) return; // personas not loaded yet — keep current
+    setStyleId(persona ? persona.styleId ?? null : settings.defaultStyleId);
+  }, [settings, personaId, personas]);
 
   function selectedPersona() {
     if (!personaId) return undefined;
@@ -221,7 +226,9 @@ export default function ReadPage() {
       defaultEndpointId: ep.id,
       defaultModel: model,
       defaultPersonaId: personaId,
-      defaultStyleId: styleId,
+      // Per-persona styles are persisted as the user picks them; only the
+      // persona-less default belongs in global settings.
+      ...(personaId ? {} : { defaultStyleId: styleId }),
     });
 
     setComposer('');
@@ -355,7 +362,14 @@ export default function ReadPage() {
             styleId={styleId}
             onChange={async (id) => {
               setStyleId(id);
-              await saveSettings({ defaultStyleId: id });
+              if (personaId) {
+                await db.personas.update(personaId, {
+                  styleId: id ?? undefined,
+                  updatedAt: Date.now(),
+                });
+              } else {
+                await saveSettings({ defaultStyleId: id });
+              }
             }}
           />
           <EndpointPicker

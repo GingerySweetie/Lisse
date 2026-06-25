@@ -157,6 +157,13 @@ function PersonaEditor({
   const [color, setColor] = useState(persona?.color ?? COLORS[0]);
   const [systemPrompt, setSystemPrompt] = useState(persona?.systemPrompt ?? '');
   const [notes, setNotes] = useState(persona?.notes ?? '');
+  const [styleId, setStyleId] = useState(persona?.styleId ?? '');
+
+  const styles = useLiveQuery(
+    () => db.writingStyles.orderBy('createdAt').toArray(),
+    [],
+    [],
+  );
 
   async function handleSave() {
     if (!name.trim()) {
@@ -171,6 +178,7 @@ function PersonaEditor({
       color,
       systemPrompt,
       notes: notes.trim() || undefined,
+      styleId: styleId || undefined,
       builtin: persona?.builtin,
       createdAt: persona?.createdAt ?? now,
       updatedAt: now,
@@ -242,6 +250,27 @@ function PersonaEditor({
               placeholder="她希望你是怎样的人……"
               className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed focus:border-lavender-300"
             />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-ink-500">
+              风格
+            </span>
+            <select
+              value={styleId}
+              onChange={(e) => setStyleId(e.target.value)}
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 text-ink-700 focus:border-lavender-300"
+            >
+              <option value="">默认（不加风格）</option>
+              {styles?.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-ink-500/70">
+              这个人格说话的写作风格，每个人格各自独立。
+            </span>
           </label>
 
           <label className="flex flex-col gap-1">

@@ -104,12 +104,13 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!settings) return;
-    // settings.defaultStyleId is the single source of truth.
-    // We used to fall back to conversation.styleId, but that pinned the
-    // first style she ever used in this conversation forever — changing
-    // the global default on /styles wouldn't visibly do anything in chat.
-    setStyleId(settings.defaultStyleId);
-  }, [settings]);
+    // Style is per-persona: each persona remembers its own writing style.
+    // The global settings.defaultStyleId is only the fallback used when no
+    // persona is selected (无人格).
+    const persona = personaId ? personas?.find((p) => p.id === personaId) : null;
+    if (personaId && !persona) return; // personas not loaded yet — keep current
+    setStyleId(persona ? persona.styleId ?? null : settings.defaultStyleId);
+  }, [settings, personaId, personas]);
 
   const [streamingId, setStreamingId] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
@@ -266,7 +267,9 @@ export default function ChatPage() {
       defaultEndpointId: ep.id,
       defaultModel: model,
       defaultPersonaId: personaId,
-      defaultStyleId: styleId,
+      // Per-persona styles are persisted as the user picks them; only the
+      // persona-less default belongs in global settings.
+      ...(personaId ? {} : { defaultStyleId: styleId }),
     });
 
     setStreamingId(null);
@@ -510,9 +513,17 @@ export default function ChatPage() {
               styleId={styleId}
               onChange={async (id) => {
                 setStyleId(id);
-                // Single source of truth: writing here updates everywhere
-                // (Styles page UseStyle dropdown, every other chat tab).
-                await saveSettings({ defaultStyleId: id });
+                if (personaId) {
+                  // Per-persona style: pin it to the current persona so it
+                  // sticks when you switch back to them later.
+                  await db.personas.update(personaId, {
+                    styleId: id ?? undefined,
+                    updatedAt: Date.now(),
+                  });
+                } else {
+                  // 无人格: fall back to the global default style.
+                  await saveSettings({ defaultStyleId: id });
+                }
               }}
             />
           </MenuRow>

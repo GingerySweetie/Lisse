@@ -208,6 +208,11 @@ export interface Persona {
   systemPrompt: string;
   /** Free-form notes for the user; not sent to the model. */
   notes?: string;
+  /** Per-persona writing style — id into writingStyles. Each persona
+   *  remembers its own style; undefined / '' means 默认 (no style block).
+   *  The global settings.defaultStyleId now only applies to persona-less
+   *  chats, not to personas. */
+  styleId?: string;
   /** Built-in personas can't be deleted, only edited. */
   builtin?: boolean;
   createdAt: number;
