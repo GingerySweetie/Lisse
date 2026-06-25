@@ -1,4 +1,5 @@
 import { CapacitorCookies, CapacitorHttp, type HttpHeaders } from '@capacitor/core';
+import InAppBrowser from '../native/in-app-browser';
 import { weapi } from './netease-crypto';
 
 /**
@@ -265,31 +266,62 @@ export async function loginByCookie(musicU: string): Promise<UserAccount | null>
  * 不用手撸 cookie 复制粘贴.
  */
 export async function loginByBrowserCookie(): Promise<UserAccount | null> {
-  // 三个 subdomain 任一个能拿到 MUSIC_U 都行
+  // 两条路径都试一下:
+  //   1. InAppBrowser.getCookies — 直通 android.webkit.CookieManager
+  //      .getInstance(), 内置浏览器 Activity 写的 jar 一定看得见
+  //   2. CapacitorCookies.getCookies — 通常也是同一份, 但部分 OEM
+  //      WebView 上跟 1 不是同一份, 备份兜底
+  //
+  // 之前只走 2, 用户反馈"登了但读不到 MUSIC_U" 就是这条路径在那
+  // 些设备上看不到内置浏览器 Activity 的 jar 导致的.
   const urls = [
     'https://music.163.com',
     'https://interface.music.163.com',
     'https://interface3.music.163.com',
   ];
   let musicU: string | null = null;
-  for (const url of urls) {
+  // 收集所有找到的 cookie name, 给错误文案用 — 用户看到「找到了
+  // 这些 cookie 但没 MUSIC_U」就知道是不是 NetEase 换了 cookie 名 /
+  // 还没登成功
+  const foundKeys = new Set<string>();
+
+  outer: for (const url of urls) {
+    // path 1: 我们自己的 InAppBrowser.getCookies
+    try {
+      const r = await InAppBrowser.getCookies({ url });
+      for (const k of Object.keys(r.cookies)) foundKeys.add(k);
+      if (typeof r.cookies.MUSIC_U === 'string' && r.cookies.MUSIC_U) {
+        musicU = r.cookies.MUSIC_U;
+        break outer;
+      }
+    } catch {
+      // ignore, 试 path 2
+    }
+    // path 2: CapacitorCookies fallback
     try {
       const cookies = (await CapacitorCookies.getCookies({ url })) as Record<
         string,
         string
       >;
-      if (cookies && typeof cookies.MUSIC_U === 'string' && cookies.MUSIC_U) {
+      for (const k of Object.keys(cookies)) foundKeys.add(k);
+      if (typeof cookies.MUSIC_U === 'string' && cookies.MUSIC_U) {
         musicU = cookies.MUSIC_U;
-        break;
+        break outer;
       }
     } catch {
-      // 某个 subdomain 拿不到不致命, 试下一个
+      // ignore
     }
   }
+
   if (!musicU) {
+    const found =
+      foundKeys.size > 0
+        ? ` 当前 jar 里有: ${Array.from(foundKeys).join(', ').slice(0, 200)}.`
+        : ' (cookie jar 是空的, 内置浏览器可能还没登过.)';
     throw new Error(
-      '内置浏览器里没找到 music.163.com 的登录 cookie. ' +
-        '先在浏览器里登一次 music.163.com (建议先切桌面模式) 再回来同步.',
+      '没拿到 MUSIC_U.' +
+        found +
+        ' 先在内置浏览器里切桌面模式 → 登 music.163.com → 等几秒让 cookie 落地 → 再回来同步.',
     );
   }
   return loginByCookie(musicU);

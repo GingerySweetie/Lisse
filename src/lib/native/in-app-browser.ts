@@ -28,6 +28,16 @@ export interface InAppBrowserPlugin {
     autoInjects?: AutoInjectRule[];
     savedScripts?: SavedScript[];
   }): Promise<{ ok: boolean }>;
+
+  /** 直通 android.webkit.CookieManager.getInstance().getCookie(url)
+   *  读 cookie. 兜底 CapacitorCookies 在某些 OEM WebView 上读不到
+   *  内置浏览器 Activity 写入的 jar 的问题 — 进程级单例无论谁写
+   *  的都看得到。
+   *
+   *  返回原 cookie header 字符串 + 解析好的 name → value 映射. */
+  getCookies(args: {
+    url: string;
+  }): Promise<{ cookieString: string; cookies: Record<string, string> }>;
 }
 
 const InAppBrowser = registerPlugin<InAppBrowserPlugin>('InAppBrowser');
