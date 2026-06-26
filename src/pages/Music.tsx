@@ -23,7 +23,10 @@ import {
   loginQrKey,
   loginQrCheck,
   getLoginStatus,
+  getUserPlaylists,
+  getPlaylistTracks,
   type Song,
+  type UserPlaylist,
 } from '../lib/music/netease-api';
 import { activeLineIndex, parseLrc, type LrcLine } from '../lib/music/lrc';
 
@@ -39,6 +42,15 @@ import { activeLineIndex, parseLrc, type LrcLine } from '../lib/music/lrc';
 
 interface QueueItem {
   song: Song;
+}
+
+/** 旧的 db.musicHistory 行可能存的还是 http:// 的封面 URL — 网易云
+ *  CDN 早期那一批. Capacitor WebView 跑在 https origin 上, 大部分
+ *  ROM 不让混合内容图片加载, 显示成裂图. 走前一律强转 https. */
+function httpsify(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith('http://')) return 'https://' + url.slice(7);
+  return url;
 }
 
 export default function MusicPage() {
@@ -57,11 +69,75 @@ export default function MusicPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
 
+  // 用户的网易云歌单, 登录后拉. 选中其中一个 → 展开看 tracks.
+  const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
+  const [playlistsLoading, setPlaylistsLoading] = useState(false);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<UserPlaylist | null>(
+    null,
+  );
+  const [playlistTracks, setPlaylistTracks] = useState<Song[]>([]);
+  const [playlistTracksLoading, setPlaylistTracksLoading] = useState(false);
+
   const creds = useLiveQuery(
     () => db.musicCredentials.get('netease'),
     [],
     undefined,
   );
+
+  // 登录后拉歌单列表; 登出清空.
+  useEffect(() => {
+    if (!creds) {
+      setPlaylists([]);
+      setSelectedPlaylist(null);
+      setPlaylistTracks([]);
+      return;
+    }
+    let cancelled = false;
+    setPlaylistsLoading(true);
+    (async () => {
+      try {
+        const lists = await getUserPlaylists(creds.userId);
+        if (!cancelled) setPlaylists(lists);
+      } catch (e) {
+        if (!cancelled) {
+          console.warn('getUserPlaylists failed:', e);
+        }
+      } finally {
+        if (!cancelled) setPlaylistsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [creds]);
+
+  // 选中歌单 → 拉它的曲目.
+  useEffect(() => {
+    if (!selectedPlaylist) {
+      setPlaylistTracks([]);
+      return;
+    }
+    let cancelled = false;
+    setPlaylistTracksLoading(true);
+    setPlaylistTracks([]);
+    (async () => {
+      try {
+        const tracks = await getPlaylistTracks(selectedPlaylist.id);
+        if (!cancelled) setPlaylistTracks(tracks);
+      } catch (e) {
+        if (!cancelled) {
+          setError(
+            '加载歌单失败: ' + (e instanceof Error ? e.message : String(e)),
+          );
+        }
+      } finally {
+        if (!cancelled) setPlaylistTracksLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlaylist]);
 
   // AI 在聊天里用 play_song 工具时, tool 把请求写到 db.kv.
   // 音乐页一 mount / 一拿到新请求就消费并清掉 — 跨页面的 "AI 让
@@ -121,6 +197,7 @@ export default function MusicPage() {
     let cancelled = false;
     setStreamUrl(null);
     setLrc([]);
+    setError(null);
     (async () => {
       try {
         const [stream, lyric] = await Promise.all([
@@ -129,7 +206,20 @@ export default function MusicPage() {
         ]);
         if (cancelled) return;
         if (!stream?.url) {
-          setError('拿不到播放地址，可能是 VIP 歌曲，先登录。');
+          // 区分一下: fee=1 是 VIP, fee=4 是专辑付费, 其他通常是版权
+          // / 地区限制. 没登录 + VIP 提示登录, 已登录但是 VIP / 专辑
+          // 付费提示要会员.
+          let msg = '拿不到这首歌的播放地址';
+          if (current.song.fee === 1) {
+            msg = creds
+              ? 'VIP 歌曲, 当前账号不是 VIP 会员, 没法解析'
+              : 'VIP 歌曲, 先登录网易云账号';
+          } else if (current.song.fee === 4) {
+            msg = '专辑付费歌曲, 网易云这边没卖给我们解析权';
+          } else {
+            msg = '没拿到播放地址 (可能下架 / 区域限制 / 版权问题)';
+          }
+          setError(msg);
           return;
         }
         setStreamUrl(stream.url);
@@ -150,7 +240,7 @@ export default function MusicPage() {
     return () => {
       cancelled = true;
     };
-  }, [current]);
+  }, [current, creds]);
 
   // Drive HTMLAudioElement.
   useEffect(() => {
@@ -207,12 +297,30 @@ export default function MusicPage() {
           />
 
           {error && (
-            <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              {error}
+            <div className="flex items-start gap-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              <span className="flex-1">{error}</span>
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="rounded-full p-0.5 text-rose-500/70 hover:bg-rose-100"
+                aria-label="关闭"
+              >
+                <X size={12} />
+              </button>
             </div>
           )}
 
-          {results.length > 0 ? (
+          {selectedPlaylist ? (
+            <PlaylistDetail
+              playlist={selectedPlaylist}
+              tracks={playlistTracks}
+              loading={playlistTracksLoading}
+              currentId={current?.song.id ?? null}
+              playing={playing}
+              onBack={() => setSelectedPlaylist(null)}
+              onPlay={(s) => setCurrent({ song: s })}
+            />
+          ) : results.length > 0 ? (
             <ul className="flex flex-col gap-2">
               {results.map((s) => (
                 <li key={s.id}>
@@ -224,9 +332,19 @@ export default function MusicPage() {
                 </li>
               ))}
             </ul>
-          ) : !searching && (
-            <RecentlyPlayed onPlay={(s) => setCurrent({ song: s })} />
-          )}
+          ) : !searching ? (
+            <>
+              {creds && (
+                <UserPlaylists
+                  playlists={playlists}
+                  loading={playlistsLoading}
+                  myUserId={creds.userId}
+                  onPick={(p) => setSelectedPlaylist(p)}
+                />
+              )}
+              <RecentlyPlayed onPlay={(s) => setCurrent({ song: s })} />
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -239,6 +357,23 @@ export default function MusicPage() {
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
+        onError={(e) => {
+          // MediaError code 4 = MEDIA_ERR_SRC_NOT_SUPPORTED — 几乎都
+          // 是 mixed-content (http stream 被 https WebView 拦) 或
+          // ROM 不支持 mp3 容器. 之前提示「The element has no
+          // supported sources」就是这条, 完全没救场指引 — 现在告诉
+          // 用户具体什么糊掉了.
+          const me = e.currentTarget.error;
+          const codes: Record<number, string> = {
+            1: '播放被中止',
+            2: '网络错误, 拉流失败',
+            3: '解码失败 (格式不支持)',
+            4: '流格式不支持 / 加载失败 (大概率混合内容拦截)',
+          };
+          const msg = me ? codes[me.code] ?? `MediaError ${me.code}` : '播放出错';
+          setError(`${msg}${streamUrl ? ' — ' + streamUrl.slice(0, 60) + '…' : ''}`);
+          setPlaying(false);
+        }}
       />
 
       {current && (
@@ -349,9 +484,8 @@ function SongRow({
   onPlay: () => void;
 }) {
   const artists = song.artists.map((a) => a.name).join(' / ');
-  const cover = song.album.picUrl
-    ? `${song.album.picUrl}?param=60y60`
-    : null;
+  const safe = httpsify(song.album.picUrl);
+  const cover = safe ? `${safe}?param=60y60` : null;
   return (
     <button
       type="button"
@@ -421,9 +555,9 @@ function RecentlyPlayed({ onPlay }: { onPlay: (s: Song) => void }) {
           }
           className="flex items-center gap-3 rounded-lg border border-lavender-100 bg-white/60 px-3 py-2 text-left"
         >
-          {h.picUrl ? (
+          {httpsify(h.picUrl) ? (
             <img
-              src={`${h.picUrl}?param=60y60`}
+              src={`${httpsify(h.picUrl)}?param=60y60`}
               alt=""
               className="h-10 w-10 shrink-0 rounded-md object-cover"
               referrerPolicy="no-referrer"
@@ -456,9 +590,8 @@ function MiniPlayer({
   positionMs: number;
   durationMs: number;
 }) {
-  const cover = song.album.picUrl
-    ? `${song.album.picUrl}?param=80y80`
-    : null;
+  const safe = httpsify(song.album.picUrl);
+  const cover = safe ? `${safe}?param=80y80` : null;
   const pct = durationMs > 0 ? (positionMs / durationMs) * 100 : 0;
   return (
     <div
@@ -528,9 +661,8 @@ function FullPlayer({
   onToggle: () => void;
   onSeek: (ms: number) => void;
 }) {
-  const cover = song.album.picUrl
-    ? `${song.album.picUrl}?param=600y600`
-    : null;
+  const safe = httpsify(song.album.picUrl);
+  const cover = safe ? `${safe}?param=600y600` : null;
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col"
@@ -672,6 +804,164 @@ function ProgressBar({
       <span className="font-mono text-[10px] text-ink-500">
         {fmt(durationMs)}
       </span>
+    </div>
+  );
+}
+
+function UserPlaylists({
+  playlists,
+  loading,
+  myUserId,
+  onPick,
+}: {
+  playlists: UserPlaylist[];
+  loading: boolean;
+  myUserId: number;
+  onPick: (p: UserPlaylist) => void;
+}) {
+  if (loading && playlists.length === 0) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="text-xs text-ink-500/80">我的歌单</div>
+        <div className="text-xs text-ink-500/60">拉歌单中…</div>
+      </div>
+    );
+  }
+  if (playlists.length === 0) return null;
+  // 自建在前 (含「我喜欢的音乐」), 收藏在后. 网易云 UI 也是这个顺序.
+  const owned = playlists.filter((p) => p.ownedByMe);
+  const fav = playlists.filter((p) => !p.ownedByMe);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-xs text-ink-500/80">
+        我的歌单
+        <span className="ml-1.5 text-ink-500/50">({playlists.length})</span>
+      </div>
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+        {[...owned, ...fav].map((p) => (
+          <PlaylistTile
+            key={p.id}
+            playlist={p}
+            isMine={p.creatorId === myUserId}
+            onClick={() => onPick(p)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PlaylistTile({
+  playlist,
+  isMine,
+  onClick,
+}: {
+  playlist: UserPlaylist;
+  isMine: boolean;
+  onClick: () => void;
+}) {
+  const safe = httpsify(playlist.picUrl);
+  const cover = safe ? `${safe}?param=200y200` : null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex flex-col gap-1.5 text-left"
+    >
+      <div className="relative aspect-square overflow-hidden rounded-lg border border-lavender-100 bg-lavender-100">
+        {cover ? (
+          <img
+            src={cover}
+            alt=""
+            className="h-full w-full object-cover transition group-hover:scale-105"
+            referrerPolicy="no-referrer"
+          />
+        ) : null}
+        {!isMine && (
+          <span className="absolute right-1.5 top-1.5 rounded-full bg-white/80 px-1.5 py-0.5 text-[9px] text-ink-700 backdrop-blur">
+            收藏
+          </span>
+        )}
+        <span className="absolute bottom-1 right-1.5 text-[10px] font-medium text-white drop-shadow">
+          {playlist.trackCount}
+        </span>
+      </div>
+      <div className="line-clamp-2 text-[11px] leading-tight text-ink-700">
+        {playlist.name}
+      </div>
+    </button>
+  );
+}
+
+function PlaylistDetail({
+  playlist,
+  tracks,
+  loading,
+  currentId,
+  playing,
+  onBack,
+  onPlay,
+}: {
+  playlist: UserPlaylist;
+  tracks: Song[];
+  loading: boolean;
+  currentId: number | null;
+  playing: boolean;
+  onBack: () => void;
+  onPlay: (s: Song) => void;
+}) {
+  const safe = httpsify(playlist.picUrl);
+  const cover = safe ? `${safe}?param=200y200` : null;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-500 transition hover:bg-lavender-50"
+        >
+          <ChevronLeft size={14} />
+          歌单列表
+        </button>
+      </div>
+      <div className="flex items-center gap-3 rounded-lg border border-lavender-100 bg-white/80 p-3">
+        {cover ? (
+          <img
+            src={cover}
+            alt=""
+            className="h-16 w-16 shrink-0 rounded-lg object-cover"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="h-16 w-16 shrink-0 rounded-lg bg-lavender-100" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-ink-900">
+            {playlist.name}
+          </div>
+          <div className="mt-0.5 text-[11px] text-ink-500">
+            {playlist.trackCount} 首
+            {!playlist.ownedByMe ? ' · 收藏' : ''}
+          </div>
+        </div>
+      </div>
+      {loading && tracks.length === 0 ? (
+        <div className="text-center text-xs text-ink-500/60">加载曲目中…</div>
+      ) : tracks.length === 0 ? (
+        <div className="text-center text-xs text-ink-500/60">空歌单</div>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {tracks.map((s) => (
+            <li key={s.id}>
+              <SongRow
+                song={s}
+                playing={currentId === s.id && playing}
+                onPlay={() => onPlay(s)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

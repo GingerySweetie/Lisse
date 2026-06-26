@@ -25,6 +25,15 @@ const COMMON_HEADERS: HttpHeaders = {
     'NeteaseMusic/9.0.65.240522182511(9000065);Dalvik/2.1.0 (Linux; U; Android 14)',
 };
 
+/** NetEase 服务返回的图片 / 流 URL 经常是 http://, 我们 WebView
+ *  跑在 https 上 + 国产 OEM ROM 的 mixed-content 处理不一致, 一律
+ *  强制 https. 站点都接受 https 不会断. */
+function forceHttps(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://')) return 'https://' + url.slice(7);
+  return url;
+}
+
 async function post(path: string, payload: object): Promise<unknown> {
   const enc = await weapi(payload);
   const body =
@@ -89,7 +98,11 @@ export async function search(keyword: string): Promise<Song[]> {
     id: s.id,
     name: s.name,
     artists: s.ar.map((a) => ({ id: a.id, name: a.name })),
-    album: { id: s.al.id, name: s.al.name, picUrl: s.al.picUrl },
+    album: {
+      id: s.al.id,
+      name: s.al.name,
+      picUrl: forceHttps(s.al.picUrl) ?? undefined,
+    },
     durationMs: s.dt,
     fee: s.fee ?? 0,
   }));
@@ -119,7 +132,7 @@ export async function getSongUrl(songId: number): Promise<SongStream | null> {
   const item = data.data?.[0];
   if (!item) return null;
   return {
-    url: item.url,
+    url: forceHttps(item.url),
     br: item.br ?? 0,
     level: item.level ?? '',
     expi: item.expi,
@@ -340,4 +353,110 @@ export async function logout(): Promise<void> {
       // ignore
     }
   }
+}
+
+/* ─── User playlists (logged-in only) ───────────────────────────────── */
+
+export interface UserPlaylist {
+  id: number;
+  name: string;
+  /** 封面图. */
+  picUrl?: string;
+  /** 歌曲数. */
+  trackCount: number;
+  /** "我喜欢的音乐" / 创建的 / 收藏的 — UI 自己分类. */
+  creatorId: number;
+  /** 是不是用户自己创建的 (vs 收藏别人的). */
+  ownedByMe: boolean;
+}
+
+export async function getUserPlaylists(
+  userId: number,
+  limit = 50,
+): Promise<UserPlaylist[]> {
+  const data = (await post('/weapi/user/playlist', {
+    uid: userId,
+    limit,
+    offset: 0,
+    includeVideo: false,
+  })) as {
+    code: number;
+    playlist?: Array<{
+      id: number;
+      name: string;
+      coverImgUrl?: string;
+      trackCount: number;
+      userId: number;
+      creator?: { userId: number };
+    }>;
+  };
+  const list = data.playlist ?? [];
+  return list.map((p) => ({
+    id: p.id,
+    name: p.name,
+    picUrl: forceHttps(p.coverImgUrl) ?? undefined,
+    trackCount: p.trackCount,
+    creatorId: p.creator?.userId ?? p.userId,
+    ownedByMe: (p.creator?.userId ?? p.userId) === userId,
+  }));
+}
+
+/* ─── Playlist tracks ────────────────────────────────────────────── */
+
+/** 一个 playlist 的曲目列表. 默认拉全量 trackIds 然后用
+ *  getSongsByIds 补全 — playlist/detail 自带的 tracks 字段在 > 1000
+ *  首时会被截断, 走 trackIds + song/detail 才能拿全。 */
+export async function getPlaylistTracks(playlistId: number): Promise<Song[]> {
+  // step 1: 拿 trackIds
+  const meta = (await post('/weapi/v6/playlist/detail', {
+    id: playlistId,
+    n: 100000,
+    csrf_token: '',
+  })) as {
+    code: number;
+    playlist?: {
+      trackIds?: Array<{ id: number }>;
+      tracks?: unknown[];
+    };
+  };
+  const ids = meta.playlist?.trackIds?.map((x) => x.id) ?? [];
+  if (ids.length === 0) return [];
+  // NetEase song/detail 一次最多 1000 个 id, 分批查
+  const out: Song[] = [];
+  for (let i = 0; i < ids.length; i += 1000) {
+    const chunk = ids.slice(i, i + 1000);
+    const songs = await getSongsByIds(chunk);
+    out.push(...songs);
+  }
+  return out;
+}
+
+export async function getSongsByIds(ids: number[]): Promise<Song[]> {
+  if (ids.length === 0) return [];
+  const data = (await post('/weapi/v3/song/detail', {
+    c: JSON.stringify(ids.map((id) => ({ id }))),
+  })) as {
+    code: number;
+    songs?: Array<{
+      id: number;
+      name: string;
+      ar: Array<{ id: number; name: string }>;
+      al: { id: number; name: string; picUrl?: string };
+      dt: number;
+      fee?: number;
+    }>;
+  };
+  const songs = data.songs ?? [];
+  return songs.map((s) => ({
+    id: s.id,
+    name: s.name,
+    artists: s.ar.map((a) => ({ id: a.id, name: a.name })),
+    album: {
+      id: s.al.id,
+      name: s.al.name,
+      picUrl: forceHttps(s.al.picUrl) ?? undefined,
+    },
+    durationMs: s.dt,
+    fee: s.fee ?? 0,
+  }));
 }
