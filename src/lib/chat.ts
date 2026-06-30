@@ -428,38 +428,41 @@ async function streamAssistant(args: {
 
   const turns: ChatTurn[] = [];
 
-  // ─── BP1 system prompt (cached) ──────────────────────────────────
-  // BP1 (stable, cached): persona + style. Barely change → cache_control.
-  // BP2 (volatile): memory / health / status / book / group.
-  //   CRITICAL: BP2 MUST live AFTER the BP4 cache breakpoint, not before.
-  //   Anthropic cache keys include everything from byte 0 to the marker.
-  //   If BP2 is between BP1 and BP4, it invalidates BP4 every turn.
-  //   Solution: prepend BP2 to the LAST user message (after BP4's marker).
-  const bp1Parts: string[] = [];
-  const bp2Parts: string[] = [];
+  // ─── Layered system prompt caching (BP1–BP3) ────────────────────────
+  // Each system layer gets its own cache_control breakpoint in anthropic.ts.
+  // Ordered most-stable → least-stable so inner layers don't invalidate outer.
+  //
+  // BP1 (stable, almost never changes): persona + style
+  // BP2 (per-day volatile): book / memory / health / status / group
+  // BP3 (per-session): session summary (reserved for future use)
+  //
+  // Important: each layer is a SEPARATE `role:'system'` message so that
+  // anthropic.ts's buildSystemBlocks can assign independent cache_control
+  // breakpoints. The old approach merged everything into one system turn
+  // and only the first got tagged — the rest were naked.
 
-  if (persona && persona.systemPrompt.trim()) bp1Parts.push(persona.systemPrompt);
-  if (style && style.prompt.trim()) bp1Parts.push(`# 写作风格\n${style.prompt.trim()}`);
-  if (bookBlock) bp2Parts.push(bookBlock);
-  if (memoryBlock) bp2Parts.push(memoryBlock);
+  // BP1: persona + style (separate system messages for maximum cache granularity)
+  if (persona && persona.systemPrompt.trim()) {
+    turns.push({ role: 'system', content: persona.systemPrompt });
+  }
+  if (style && style.prompt.trim()) {
+    turns.push({ role: 'system', content: `# 写作风格\n${style.prompt.trim()}` });
+  }
+
+  // BP2: volatile context — each as a separate system message with its own
+  // cache_control breakpoint. When one changes (e.g. memory recall), only
+  // that layer's cache is rebuilt; BP1 and the other BP2 layers still hit.
+  if (bookBlock) turns.push({ role: 'system', content: bookBlock });
+  if (memoryBlock) turns.push({ role: 'system', content: memoryBlock });
   try {
     const healthBlock = await formatHealthContextBlock();
-    if (healthBlock) bp2Parts.push(healthBlock);
+    if (healthBlock) turns.push({ role: 'system', content: healthBlock });
   } catch { /* health daily 缺失不影响主流程 */ }
   const statusBlock = formatStatusBlock();
-  if (statusBlock) bp2Parts.push(statusBlock);
+  if (statusBlock) turns.push({ role: 'system', content: statusBlock });
   if (persona && groupOthers && groupOthers.length > 0) {
-    bp2Parts.push(groupAwarenessSnippet(persona, groupOthers));
+    turns.push({ role: 'system', content: groupAwarenessSnippet(persona, groupOthers) });
   }
-  const bp2Text = bp2Parts.length > 0 ? bp2Parts.join('\n\n---\n\n') : '';
-
-  // BP1 is the ONLY system turn → anthropic.ts tags it with cache_control.
-  if (bp1Parts.length > 0) {
-    turns.push({ role: 'system', content: bp1Parts.join('\n\n') });
-  }
-
-  // BP2 is NOT a system turn. It will be prepended to the last user
-  // message (after BP4's cache_control breakpoint) — see below.
 
   // Apply short-memory window: keep only the last 2*N messages so the API
   // doesn't replay the entire conversation each turn. Null = unlimited.
@@ -494,24 +497,6 @@ async function streamAssistant(args: {
 
   const convId = branch[0]?.conversationId ?? '';
 
-  // BP2 volatile context: prepend to the LAST user message so it lives
-  // AFTER BP4's cache_control breakpoint. This way BP4 (historical
-  // messages) can hit cache even though BP2 changes every turn.
-  if (bp2Text) {
-    let found = false;
-    for (let i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].role === 'user') {
-        const base = turns[i].content ?? '';
-        turns[i] = { ...turns[i], content: `${bp2Text}\n\n---\n\n${base}` };
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      console.warn('[BP2] No user turn found for BP2 injection; falling back to system turn');
-      turns.push({ role: 'system', content: bp2Text });
-    }
-  }
   let tools: Tool[] = [];
   if (settings.toolsEnabled && convId) {
     tools = await availableTools({ persona, conversationId: convId });
