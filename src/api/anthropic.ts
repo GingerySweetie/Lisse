@@ -130,9 +130,7 @@ export async function* streamAnthropic(
     const extraText = systemMsgs
       .slice(1)
       .map((m) => m.content)
-      .join('
-
-');
+      .join('\n\n');
     if (extraText) {
       system.push({ type: 'text', text: extraText });
     }
@@ -152,13 +150,11 @@ export async function* streamAnthropic(
   // to this turn is cached" — the main driver of 96% hit rates.
   if (messages.length >= 2) {
     const target = messages[messages.length - 2];
-    if (
-      target.role === 'user' &&
-      Array.isArray(target.content) &&
-      target.content.length > 0
-    ) {
+    // FIX: Ensure target is a user message with valid content array
+    // (prevents crashes when target is assistant with tool_use)
+    if (target.role === 'user' && Array.isArray(target.content) && target.content.length > 0) {
       const last = target.content[target.content.length - 1];
-      if (last && typeof last === 'object' && last !== null) {
+      if (last && typeof last === 'object') {
         (last as Record<string, unknown>).cache_control = cacheControl;
       }
     }
@@ -178,9 +174,14 @@ export async function* streamAnthropic(
     model: req.model,
     max_tokens: maxTokens,
     stream: true,
-    metadata: { user_id: 'lisse-stable-user' },
     ...(system.length > 0 && { system }),
     messages,
+    // CRITICAL FIX: Fixed user_id ensures sticky routing to same backend node.
+    // Without this, AIHubMix load balancer distributes requests randomly:
+    //   - Turn 1: Node A creates cache
+    //   - Turn 2: Node B has no cache → 0% hit rate
+    // This is THE most important fix for cache to work on proxied endpoints.
+    metadata: { user_id: 'lisse-stable-user' },
     ...(thinkingEnabled
       ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget } }
       : req.temperature !== undefined && { temperature: req.temperature }),
