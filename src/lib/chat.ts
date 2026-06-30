@@ -498,17 +498,25 @@ async function streamAssistant(args: {
   // AFTER BP4's cache_control breakpoint. This way BP4 (historical
   // messages) can hit cache even though BP2 changes every turn.
   if (bp2Text) {
+    let found = false;
     for (let i = turns.length - 1; i >= 0; i--) {
       if (turns[i].role === 'user') {
         const base = turns[i].content ?? '';
         turns[i] = { ...turns[i], content: `${bp2Text}\n\n---\n\n${base}` };
+        found = true;
         break;
       }
+    }
+    if (!found) {
+      console.warn('[BP2] No user turn found for BP2 injection; falling back to system turn');
+      turns.push({ role: 'system', content: bp2Text });
     }
   }
   let tools: Tool[] = [];
   if (settings.toolsEnabled && convId) {
     tools = await availableTools({ persona, conversationId: convId });
+    // Stable ordering: cache prefix must not be invalidated by tool-list shuffling
+    tools.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   const liveToolCalls: ToolCallRecord[] = [];
