@@ -6,6 +6,23 @@ type OpenAIContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } };
 
+// ─── Cache-control helpers (shared with anthropic.ts logic) ──────────
+
+function getCacheControl(endpoint: { cacheLongTTL?: boolean }) {
+  return endpoint.cacheLongTTL === true
+    ? { type: 'ephemeral' as const, ttl: '1h' as const }
+    : { type: 'ephemeral' as const };
+}
+
+/** Endpoints that returned 4xx when we sent cache_control; skip next time. */
+const noCacheControlEndpoints = new Set<string>();
+
+function ensureBlockArray(content: unknown): Array<Record<string, unknown>> {
+  if (Array.isArray(content)) return content as Array<Record<string, unknown>>;
+  if (typeof content === 'string') return content ? [{ type: 'text', text: content }] : [];
+  return [];
+}
+
 function buildOpenAIContent(
   text: string,
   attachments: Attachment[] | undefined,
@@ -80,9 +97,53 @@ export async function* streamOpenAI(
     headers.Authorization = `Bearer ${req.endpoint.apiKey}`;
   }
 
+  const endpointKey = req.endpoint.baseUrl;
+  const cachingSupported = !noCacheControlEndpoints.has(endpointKey);
+  const cacheControl = getCacheControl(req.endpoint);
+
+  const systemMessages = req.messages.filter((m) => m.role === 'system');
+  const otherMessages = req.messages.filter((m) => m.role !== 'system');
+
+  const oaiMessages: Record<string, unknown>[] = [];
+
+  // System: merge into one (OAI spec only supports a single system message),
+  // convert to content-block array so we can attach cache_control.
+  if (systemMessages.length > 0) {
+    const mergedText = systemMessages
+      .map((m) => m.content)
+      .filter(Boolean)
+      .join('\n\n');
+    oaiMessages.push({
+      role: 'system',
+      content:
+        cachingSupported && mergedText
+          ? [{ type: 'text', text: mergedText, cache_control: cacheControl }]
+          : mergedText,
+    });
+  }
+
+  const mapped = otherMessages.map(buildOpenAIMessage);
+
+  // Rolling breakpoint: second-to-last user message, same logic as Anthropic branch.
+  if (cachingSupported && mapped.length >= 2) {
+    const target = mapped[mapped.length - 2];
+    if (target.role === 'user') {
+      const blocks = ensureBlockArray(target.content);
+      if (blocks.length > 0) {
+        blocks[blocks.length - 1] = {
+          ...blocks[blocks.length - 1],
+          cache_control: cacheControl,
+        };
+        target.content = blocks;
+      }
+    }
+  }
+
+  oaiMessages.push(...mapped);
+
   const body: Record<string, unknown> = {
     model: req.model,
-    messages: req.messages.map(buildOpenAIMessage),
+    messages: oaiMessages,
     stream: true,
     stream_options: { include_usage: true },
     ...(req.temperature !== undefined && { temperature: req.temperature }),
@@ -113,6 +174,19 @@ export async function* streamOpenAI(
       type: 'error',
       errorMessage: err instanceof Error ? err.message : String(err),
     };
+    return;
+  }
+
+  // 4xx auto-degrade: if we sent cache_control and got 4xx, the endpoint
+  // likely doesn't accept unknown fields. Retry without cache_control and
+  // remember this endpoint so we skip it next time.
+  if (!response.ok && response.status >= 400 && response.status < 500 && cachingSupported) {
+    noCacheControlEndpoints.add(endpointKey);
+    console.warn(
+      `⚠️ ${endpointKey} returned ${response.status} with cache_control — ` +
+        `auto-degraded: this endpoint will skip cache hints from now on.`,
+    );
+    yield* streamOpenAI(req); // recursive retry (cachingSupported will be false now)
     return;
   }
 
