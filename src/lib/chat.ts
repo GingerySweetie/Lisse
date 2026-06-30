@@ -427,30 +427,36 @@ async function streamAssistant(args: {
   }
 
   const turns: ChatTurn[] = [];
-  const systemParts: string[] = [];
-  if (persona && persona.systemPrompt.trim()) systemParts.push(persona.systemPrompt);
-  if (bookBlock) systemParts.push(bookBlock);
-  if (memoryBlock) systemParts.push(memoryBlock);
-  // Health context — 注入今天 db.healthDaily 的快照. persona 知道
-  // 步数 / 心率 / 睡眠, 用户问起时直接答得上. 不主动提起.
+
+  // ─── BP1+BP2 system prompt split ──────────────────────────────────
+  // BP1 (stable): persona prompt + style — almost never changes, cached.
+  // BP2 (volatile): memory / health / status / book / group — per-turn,
+  //   must live AFTER BP1's cache_control so it doesn't break the prefix.
+  const bp1Parts: string[] = [];
+  const bp2Parts: string[] = [];
+
+  if (persona && persona.systemPrompt.trim()) bp1Parts.push(persona.systemPrompt);
+  if (bookBlock) bp2Parts.push(bookBlock);
+  if (memoryBlock) bp2Parts.push(memoryBlock);
   try {
     const healthBlock = await formatHealthContextBlock();
-    if (healthBlock) systemParts.push(healthBlock);
-  } catch {
-    // health daily 缺失不影响主流程
-  }
-  // Ambient status: device usage timing + manual quick chips. Always-on for
-  // now (local data only, no extra cost). If the user disables it later we
-  // can guard on settings.behaviorEnabled.
+    if (healthBlock) bp2Parts.push(healthBlock);
+  } catch { /* health daily 缺失不影响主流程 */ }
   const statusBlock = formatStatusBlock();
-  if (statusBlock) systemParts.push(statusBlock);
-  // In group mode, tell the responder about the other AIs in the room.
+  if (statusBlock) bp2Parts.push(statusBlock);
   if (persona && groupOthers && groupOthers.length > 0) {
-    systemParts.push(groupAwarenessSnippet(persona, groupOthers));
+    bp2Parts.push(groupAwarenessSnippet(persona, groupOthers));
   }
-  if (systemParts.length > 0) {
-    turns.push({ role: 'system', content: systemParts.join('\n\n---\n\n') });
+
+  // BP1 goes as a separate system turn → anthropic.ts tags it with cache_control.
+  if (bp1Parts.length > 0) {
+    turns.push({ role: 'system', content: bp1Parts.join('\n\n') });
   }
+  // BP2 goes as a second system turn → anthropic.ts leaves it untagged.
+  if (bp2Parts.length > 0) {
+    turns.push({ role: 'system', content: bp2Parts.join('\n\n---\n\n') });
+  }
+
   // Apply short-memory window: keep only the last 2*N messages so the API
   // doesn't replay the entire conversation each turn. Null = unlimited.
   const settings = await getSettings();

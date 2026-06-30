@@ -84,27 +84,57 @@ export async function* streamAnthropic(
     headers['x-api-key'] = req.endpoint.apiKey;
   }
 
-  // Anthropic separates system from messages. Use the array form so we can
-  // attach cache_control breakpoints (90% discount on prefix re-use).
-  // Default 5-minute TTL; '1h' costs 2x to write but lives an hour — good
-  // for chats with long human pauses (away from keyboard / on a shift).
-  const cacheControl = req.endpoint.cacheLongTTL
+  // ─── Prompt Caching (BP1–BP4 strategy) ───────────────────────────
+  // Aligned with NyraSeithhh/cache layout. The key insight:
+  // Anthropic cache is prefix-matched byte-for-byte. Anything that can
+  // change between turns MUST live after the cache breakpoints.
+  //
+  // BP1: persona system prompt (almost never changes) → cache_control
+  // BP2: memory / health / status / book / group (per-turn volatile) → no tag
+  // BP3+BP4: rolling message cache on second-to-last user message
+  //
+  // Default 5-minute TTL (1.25× write, 0.1× read).
+  // When cacheLongTTL is on: use 1h TTL (2× write, 0.1× read).
+  // AIHubMix requires the anthropic-beta header for 1h TTL.
+  const use1h = req.endpoint.cacheLongTTL === true;
+  const cacheControl = use1h
     ? { type: 'ephemeral' as const, ttl: '1h' as const }
     : { type: 'ephemeral' as const };
 
-  const systemText = req.messages
-    .filter((m) => m.role === 'system')
-    .map((m) => m.content)
-    .join('\n\n');
-  const system = systemText
-    ? [
-        {
-          type: 'text',
-          text: systemText,
-          cache_control: cacheControl,
-        },
-      ]
-    : undefined;
+  // AIHubMix 1h TTL requires this beta header (per their docs).
+  if (use1h) {
+    headers['anthropic-beta'] = 'extended-cache-ttl-2025-04-11';
+  }
+
+  // Build system blocks.
+  // Convention: chat.ts sends TWO system turns when prompt caching matters:
+  //   [0] = BP1: persona + style (stable, gets cache_control)
+  //   [1] = BP2: memory + health + status + book + group (volatile, no tag)
+  // If only one system turn arrives, treat it as BP1 (backwards compat).
+  const systemMsgs = req.messages.filter((m) => m.role === 'system');
+  const system: Array<{
+    type: 'text';
+    text: string;
+    cache_control?: { type: 'ephemeral'; ttl?: '5m' | '1h' };
+  }> = [];
+
+  if (systemMsgs.length > 0) {
+    // BP1 — stable persona prompt, cached
+    system.push({
+      type: 'text',
+      text: systemMsgs[0].content,
+      cache_control: cacheControl,
+    });
+    // BP2 — everything else: memory, health, status, book, group.
+    // These change every turn, so they MUST NOT carry cache_control.
+    const volatileText = systemMsgs
+      .slice(1)
+      .map((m) => m.content)
+      .join('\n\n');
+    if (volatileText) {
+      system.push({ type: 'text', text: volatileText });
+    }
+  }
 
   // Collapse our flat ChatTurn list into Anthropic messages. Runs of
   // consecutive `tool` turns following an assistant's tool_use become a
@@ -112,9 +142,18 @@ export async function* streamAnthropic(
   const messages = buildAnthropicMessages(
     req.messages.filter((m) => m.role !== 'system'),
   );
+
+  // BP4 — rolling breakpoint on second-to-last user message.
+  // This extends the cache boundary to cover all prior history. The
+  // last user message is the current question (always new), so tagging
+  // it would never hit. Tagging the one before it means "everything up
+  // to this turn is cached" — the main driver of 96% hit rates.
   if (messages.length >= 2) {
     const target = messages[messages.length - 2];
-    const last = target.content[target.content.length - 1] as Record<string, unknown>;
+    const last = target.content[target.content.length - 1] as Record<
+      string,
+      unknown
+    >;
     if (last) last.cache_control = cacheControl;
   }
 
@@ -132,7 +171,7 @@ export async function* streamAnthropic(
     model: req.model,
     max_tokens: maxTokens,
     stream: true,
-    ...(system && { system }),
+    ...(system.length > 0 && { system }),
     messages,
     ...(thinkingEnabled
       ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget } }
@@ -201,9 +240,15 @@ export async function* streamAnthropic(
         }
         case 'content_block_delta': {
           const dt = evt.delta?.type;
-          if (dt === 'thinking_delta' && typeof evt.delta?.thinking === 'string') {
+          if (
+            dt === 'thinking_delta' &&
+            typeof evt.delta?.thinking === 'string'
+          ) {
             yield { type: 'thinking_delta', thinkingDelta: evt.delta.thinking };
-          } else if (dt === 'input_json_delta' && typeof evt.delta?.partial_json === 'string') {
+          } else if (
+            dt === 'input_json_delta' &&
+            typeof evt.delta?.partial_json === 'string'
+          ) {
             const idx = evt.index ?? -1;
             const id = blockToolId[idx];
             if (id) {
