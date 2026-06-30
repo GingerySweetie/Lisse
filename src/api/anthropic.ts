@@ -9,6 +9,10 @@ import { parseSSE } from './sse';
 
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01';
 
+// Anthropic allows at most 4 cache_control breakpoints per request.
+// Reserve 1 for messages rolling breakpoint (BP4), leaving 3 for system layers.
+const MAX_SYSTEM_BREAKPOINTS = 3;
+
 type AnthropicContentPart =
   | { type: 'text'; text: string }
   | {
@@ -69,6 +73,83 @@ function buildAnthropicContent(
   return parts;
 }
 
+/**
+ * Build system content blocks with layered cache_control breakpoints.
+ *
+ * Anthropic allows up to 4 breakpoints per request. We reserve 1 for the
+ * messages rolling breakpoint (BP4), so at most 3 go to system layers.
+ *
+ * Expected ordering from chat.ts (most-stable → least-stable):
+ *   [0] BP1: persona + style             (almost never changes)
+ *   [1] BP2: daily content / book / etc  (per-day volatile)
+ *   [2] BP3: session summary             (per-session, ~80K tokens)
+ *
+ * Each of the first 3 system messages gets its own cache_control.
+ * Any extra messages (≥4th) are merged without a tag — same as before.
+ */
+function buildSystemBlocks(
+  systemMessages: ChatTurn[],
+  cacheControl: { type: 'ephemeral'; ttl?: '5m' | '1h' },
+): Array<{
+  type: 'text';
+  text: string;
+  cache_control?: { type: 'ephemeral'; ttl?: '5m' | '1h' };
+}> {
+  if (systemMessages.length === 0) return [];
+
+  const blocks: Array<{
+    type: 'text';
+    text: string;
+    cache_control?: { type: 'ephemeral'; ttl?: '5m' | '1h' };
+  }> = [];
+
+  const breakpointCount = Math.min(systemMessages.length, MAX_SYSTEM_BREAKPOINTS);
+
+  for (let i = 0; i < breakpointCount; i++) {
+    const content = systemMessages[i].content;
+    if (!content) continue;
+    blocks.push({ type: 'text', text: content, cache_control: cacheControl });
+  }
+
+  // Layers beyond the 3 breakpoints: merge into one untagged block (safety net).
+  if (systemMessages.length > breakpointCount) {
+    const rest = systemMessages
+      .slice(breakpointCount)
+      .map((m) => m.content)
+      .filter(Boolean)
+      .join('\n\n');
+    if (rest) blocks.push({ type: 'text', text: rest });
+  }
+
+  return blocks;
+}
+
+/**
+ * Attach a rolling cache_control breakpoint to the second-to-last user
+ * message's last content block. This extends the cache boundary over all
+ * prior conversation history — the main driver of 85%+ hit rates.
+ */
+function attachRollingBreakpoint(
+  messages: Array<{ role: string; content: unknown }>,
+  cacheControl: { type: 'ephemeral'; ttl?: '5m' | '1h' },
+) {
+  if (messages.length < 2) return;
+  const target = messages[messages.length - 2];
+  if (target.role !== 'user') return;
+
+  if (Array.isArray(target.content) && target.content.length > 0) {
+    const last = target.content[target.content.length - 1];
+    if (last && typeof last === 'object') {
+      (last as Record<string, unknown>).cache_control = cacheControl;
+    }
+  } else if (typeof target.content === 'string' && target.content) {
+    // Defensive: if upstream passed a plain string instead of block array
+    target.content = [
+      { type: 'text', text: target.content as string, cache_control: cacheControl },
+    ];
+  }
+}
+
 export async function* streamAnthropic(
   req: ChatRequest,
 ): AsyncGenerator<ChatStreamEvent, void, void> {
@@ -89,9 +170,10 @@ export async function* streamAnthropic(
   // Anthropic cache is prefix-matched byte-for-byte. Anything that can
   // change between turns MUST live after the cache breakpoints.
   //
-  // BP1: persona system prompt (almost never changes) → cache_control
-  // BP2: memory / health / status / book / group (per-turn volatile) → no tag
-  // BP3+BP4: rolling message cache on second-to-last user message
+  // BP1: persona + style (almost never changes) → cache_control
+  // BP2: daily content / book / health / status (per-day volatile) → cache_control
+  // BP3: session summary (per-session, ~80K tokens) → cache_control
+  // BP4: rolling message cache on second-to-last user message
   //
   // Default 5-minute TTL (1.25× write, 0.1× read).
   // When cacheLongTTL is on: use 1h TTL (2× write, 0.1× read).
@@ -106,35 +188,14 @@ export async function* streamAnthropic(
     headers['anthropic-beta'] = 'extended-cache-ttl-2025-04-11';
   }
 
-  // Build system blocks.
-  // Convention: chat.ts sends ONE system turn:
-  //   system = BP1: persona + style (stable, gets cache_control)
-  // BP2 (memory/health/status) is injected AFTER the BP4 breakpoint
-  // (prepended to the last user message) so it doesn't invalidate BP4.
-  // If multiple system turns arrive, treat first as BP1, rest as extra.
+  // Build system blocks with layered cache_control (BP1–BP3).
+  // Convention: chat.ts now sends multiple system turns, one per layer:
+  //   [0] = BP1: persona + style (stable, gets cache_control)
+  //   [1] = BP2: daily content (per-day, gets cache_control)
+  //   [2] = BP3: session summary (per-session, gets cache_control)
+  // First 3 system messages each get their own cache_control breakpoint.
   const systemMsgs = req.messages.filter((m) => m.role === 'system');
-  const system: Array<{
-    type: 'text';
-    text: string;
-    cache_control?: { type: 'ephemeral'; ttl?: '5m' | '1h' };
-  }> = [];
-
-  if (systemMsgs.length > 0) {
-    // BP1 — stable persona + style, cached
-    system.push({
-      type: 'text',
-      text: systemMsgs[0].content,
-      cache_control: cacheControl,
-    });
-    // Any extra system turns (shouldn't happen in current design, but safe)
-    const extraText = systemMsgs
-      .slice(1)
-      .map((m) => m.content)
-      .join('\n\n');
-    if (extraText) {
-      system.push({ type: 'text', text: extraText });
-    }
-  }
+  const system = buildSystemBlocks(systemMsgs, cacheControl);
 
   // Collapse our flat ChatTurn list into Anthropic messages. Runs of
   // consecutive `tool` turns following an assistant's tool_use become a
@@ -148,17 +209,7 @@ export async function* streamAnthropic(
   // last user message is the current question (always new), so tagging
   // it would never hit. Tagging the one before it means "everything up
   // to this turn is cached" — the main driver of 96% hit rates.
-  if (messages.length >= 2) {
-    const target = messages[messages.length - 2];
-    // FIX: Ensure target is a user message with valid content array
-    // (prevents crashes when target is assistant with tool_use)
-    if (target.role === 'user' && Array.isArray(target.content) && target.content.length > 0) {
-      const last = target.content[target.content.length - 1];
-      if (last && typeof last === 'object') {
-        (last as Record<string, unknown>).cache_control = cacheControl;
-      }
-    }
-  }
+  attachRollingBreakpoint(messages, cacheControl);
 
   // Extended thinking: when enabled, thinking deltas come in their own block
   // type and the model has a separate budget. Temperature must be 1 (or unset)
@@ -176,11 +227,9 @@ export async function* streamAnthropic(
     stream: true,
     ...(system.length > 0 && { system }),
     messages,
-    // CRITICAL FIX: Fixed user_id ensures sticky routing to same backend node.
+    // CRITICAL: Fixed user_id ensures sticky routing to same backend node.
     // Without this, AIHubMix load balancer distributes requests randomly:
-    //   - Turn 1: Node A creates cache
-    //   - Turn 2: Node B has no cache → 0% hit rate
-    // This is THE most important fix for cache to work on proxied endpoints.
+    //   Turn 1: Node A creates cache → Turn 2: Node B has no cache → 0% hit.
     metadata: { user_id: 'lisse-stable-user' },
     ...(thinkingEnabled
       ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget } }
@@ -322,9 +371,6 @@ export async function* streamAnthropic(
   }
 
   // ─── Cache Hit-Rate Diagnostic Logging ─────────────────────────────
-  // Logs cache performance so you can see whether the metadata.user_id
-  // fix is working on your proxy (e.g. AIHubMix). Look for this in the
-  // browser DevTools console.
   const creation = usage.cacheCreationTokens ?? 0;
   const read = usage.cacheReadTokens ?? 0;
   const input = usage.inputTokens ?? 0;
@@ -336,12 +382,13 @@ export async function* streamAnthropic(
     `💾 Cache | model=${req.model} | ${hitRate}% hit | ${cachedPct}% cached`,
   );
   console.log('input_tokens                  =', input);
-  console.log('cache_read_input_tokens        =', read, read > 0 ? '✅ HIT' : '❌ MISS (0 means cache never hit)');
+  console.log('cache_read_input_tokens        =', read, read > 0 ? '✅ HIT' : '❌ MISS');
   console.log('cache_creation_input_tokens    =', creation, creation > 0 ? '(writing new cache)' : '');
   console.log('cache coverage                 =', `${cachedPct}%`, `(${cached} / ${input})`);
   console.log('hit rate                       =', `${hitRate}%`);
   console.log('TTL mode                       =', use1h ? '1h long TTL' : '5m default TTL');
   console.log('sticky user_id                 =', 'lisse-stable-user');
+  console.log('system breakpoints             =', system.filter((b) => b.cache_control).length);
   if (read === 0 && input > 1000) {
     console.warn(
       '⚠️  Cache never hit! Possible causes:\n' +
