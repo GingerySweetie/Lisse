@@ -429,13 +429,16 @@ async function streamAssistant(args: {
   const turns: ChatTurn[] = [];
 
   // ─── BP1+BP2 system prompt split ──────────────────────────────────
-  // BP1 (stable): persona prompt + style — almost never changes, cached.
-  // BP2 (volatile): memory / health / status / book / group — per-turn,
-  //   must live AFTER BP1's cache_control so it doesn't break the prefix.
+  // BP1 (stable, cached): persona prompt + style.
+  //   These barely change between turns → cache_control = big savings.
+  // BP2 (volatile, no tag): memory / health / status / book / group.
+  //   These change every turn → MUST live after cache boundary.
   const bp1Parts: string[] = [];
   const bp2Parts: string[] = [];
 
   if (persona && persona.systemPrompt.trim()) bp1Parts.push(persona.systemPrompt);
+  // Style is stable per-conversation → cache it with BP1.
+  if (style && style.prompt.trim()) bp1Parts.push(`# 写作风格\n${style.prompt.trim()}`);
   if (bookBlock) bp2Parts.push(bookBlock);
   if (memoryBlock) bp2Parts.push(memoryBlock);
   try {
@@ -485,22 +488,6 @@ async function streamAssistant(args: {
         content: m.content,
         attachments: m.attachments,
       });
-    }
-  }
-
-  // Style: appended to the most recent user turn (highest recency = highest
-  // attention). Persisted message content stays clean — only the outgoing
-  // turn carries the addendum. Empty style prompts (e.g. 默认) are skipped.
-  if (style && style.prompt.trim()) {
-    for (let i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].role === 'user') {
-        const base = turns[i].content ?? '';
-        turns[i] = {
-          ...turns[i],
-          content: `${base}\n\n# 写作风格\n${style.prompt.trim()}`,
-        };
-        break;
-      }
     }
   }
 
