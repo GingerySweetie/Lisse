@@ -130,7 +130,9 @@ export async function* streamAnthropic(
     const extraText = systemMsgs
       .slice(1)
       .map((m) => m.content)
-      .join('\n\n');
+      .join('
+
+');
     if (extraText) {
       system.push({ type: 'text', text: extraText });
     }
@@ -150,11 +152,16 @@ export async function* streamAnthropic(
   // to this turn is cached" — the main driver of 96% hit rates.
   if (messages.length >= 2) {
     const target = messages[messages.length - 2];
-    const last = target.content[target.content.length - 1] as Record<
-      string,
-      unknown
-    >;
-    if (last) last.cache_control = cacheControl;
+    if (
+      target.role === 'user' &&
+      Array.isArray(target.content) &&
+      target.content.length > 0
+    ) {
+      const last = target.content[target.content.length - 1];
+      if (last && typeof last === 'object' && last !== null) {
+        (last as Record<string, unknown>).cache_control = cacheControl;
+      }
+    }
   }
 
   // Extended thinking: when enabled, thinking deltas come in their own block
@@ -171,6 +178,7 @@ export async function* streamAnthropic(
     model: req.model,
     max_tokens: maxTokens,
     stream: true,
+    metadata: { user_id: 'lisse-stable-user' },
     ...(system.length > 0 && { system }),
     messages,
     ...(thinkingEnabled
