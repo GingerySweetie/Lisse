@@ -516,7 +516,7 @@ async function streamAssistant(args: {
   if (settings.toolsEnabled && convId) {
     tools = await availableTools({ persona, conversationId: convId });
     // Stable ordering: cache prefix must not be invalidated by tool-list shuffling
-    tools.sort((a, b) => a.name.localeCompare(b.name));
+    tools.sort((a, b) => a.def.name.localeCompare(b.def.name));
   }
 
   const liveToolCalls: ToolCallRecord[] = [];

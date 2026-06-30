@@ -321,6 +321,39 @@ export async function* streamAnthropic(
     return;
   }
 
+  // ─── Cache Hit-Rate Diagnostic Logging ─────────────────────────────
+  // Logs cache performance so you can see whether the metadata.user_id
+  // fix is working on your proxy (e.g. AIHubMix). Look for this in the
+  // browser DevTools console.
+  const creation = usage.cacheCreationTokens ?? 0;
+  const read = usage.cacheReadTokens ?? 0;
+  const input = usage.inputTokens ?? 0;
+  const cached = creation + read;
+  const hitRate = input > 0 ? Math.round((read / input) * 100) : 0;
+  const cachedPct = input > 0 ? Math.round((cached / input) * 100) : 0;
+
+  console.groupCollapsed(
+    `💾 Cache | model=${req.model} | ${hitRate}% hit | ${cachedPct}% cached`,
+  );
+  console.log('input_tokens                  =', input);
+  console.log('cache_read_input_tokens        =', read, read > 0 ? '✅ HIT' : '❌ MISS (0 means cache never hit)');
+  console.log('cache_creation_input_tokens    =', creation, creation > 0 ? '(writing new cache)' : '');
+  console.log('cache coverage                 =', `${cachedPct}%`, `(${cached} / ${input})`);
+  console.log('hit rate                       =', `${hitRate}%`);
+  console.log('TTL mode                       =', use1h ? '1h long TTL' : '5m default TTL');
+  console.log('sticky user_id                 =', 'lisse-stable-user');
+  if (read === 0 && input > 1000) {
+    console.warn(
+      '⚠️  Cache never hit! Possible causes:\n' +
+        '  1. Proxy (AIHubMix) does not support prompt caching\n' +
+        '  2. Running old code — verify you deployed the latest build\n' +
+        '  3. Persona/system prompt changed, invalidating BP1\n' +
+        '  4. Tools order changes each request\n' +
+        '  → Try with official Anthropic API key to isolate the issue.',
+    );
+  }
+  console.groupEnd();
+
   yield { type: 'done', usage, stopReason };
 }
 
