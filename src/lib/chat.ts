@@ -429,16 +429,16 @@ async function streamAssistant(args: {
   const turns: ChatTurn[] = [];
 
   // ─── BP1+BP2 system prompt split ──────────────────────────────────
-  // BP1 (stable, cached): persona prompt. Barely changes → cache_control.
+  // BP1 (stable, cached): persona + style. Both barely change → cache_control.
   // BP2 (volatile, no tag): memory / health / status / book / group.
   //   These change every turn → MUST live after cache boundary.
-  // Style intentionally lives OUTSIDE both — appended per-turn to the
-  // last user message (see below). This keeps the model anchored to the
-  // style every round; putting it in BP1 would cause drift over long context.
+  // Style lives in BP1 alongside persona per the NyraSeithhh/cache layout:
+  // [profile/人格/固定格式规则] are "固定不动的" and go first in the prefix.
   const bp1Parts: string[] = [];
   const bp2Parts: string[] = [];
 
   if (persona && persona.systemPrompt.trim()) bp1Parts.push(persona.systemPrompt);
+  if (style && style.prompt.trim()) bp1Parts.push(`# 写作风格\n${style.prompt.trim()}`);
   if (bookBlock) bp2Parts.push(bookBlock);
   if (memoryBlock) bp2Parts.push(memoryBlock);
   try {
@@ -488,22 +488,6 @@ async function streamAssistant(args: {
         content: m.content,
         attachments: m.attachments,
       });
-    }
-  }
-
-  // Style: appended to the most recent user turn (highest recency = highest
-  // attention). Persisted message content stays clean — only the outgoing
-  // turn carries the addendum. Empty style prompts (e.g. 默认) are skipped.
-  if (style && style.prompt.trim()) {
-    for (let i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].role === 'user') {
-        const base = turns[i].content ?? '';
-        turns[i] = {
-          ...turns[i],
-          content: `${base}\n\n# 写作风格\n${style.prompt.trim()}`,
-        };
-        break;
-      }
     }
   }
 
