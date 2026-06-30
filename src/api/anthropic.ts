@@ -107,13 +107,11 @@ export async function* streamAnthropic(
   }
 
   // Build system blocks.
-  // Convention: chat.ts sends TWO system turns when prompt caching matters:
-  //   [0] = BP1: persona + style (stable, gets cache_control)
-  //   [1] = BP2: memory + health + status + book + group (volatile)
-  // Each cache_control creates an independent cache breakpoint.
-  // BP2 MUST carry cache_control even though it changes every turn —
-  // without it, BP4 (historical messages) prefix is broken by BP2's delta.
-  // If only one system turn arrives, treat it as BP1 (backwards compat).
+  // Convention: chat.ts sends ONE system turn:
+  //   system = BP1: persona + style (stable, gets cache_control)
+  // BP2 (memory/health/status) is injected AFTER the BP4 breakpoint
+  // (prepended to the last user message) so it doesn't invalidate BP4.
+  // If multiple system turns arrive, treat first as BP1, rest as extra.
   const systemMsgs = req.messages.filter((m) => m.role === 'system');
   const system: Array<{
     type: 'text';
@@ -128,19 +126,13 @@ export async function* streamAnthropic(
       text: systemMsgs[0].content,
       cache_control: cacheControl,
     });
-    // BP2 — memory, health, status, book, group.
-    // Volatile per-turn, but cache_control creates an independent
-    // breakpoint so BP4 can still hit its own cache segment.
-    const volatileText = systemMsgs
+    // Any extra system turns (shouldn't happen in current design, but safe)
+    const extraText = systemMsgs
       .slice(1)
       .map((m) => m.content)
       .join('\n\n');
-    if (volatileText) {
-      system.push({
-        type: 'text',
-        text: volatileText,
-        cache_control: cacheControl,
-      });
+    if (extraText) {
+      system.push({ type: 'text', text: extraText });
     }
   }
 

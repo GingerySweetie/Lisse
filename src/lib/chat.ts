@@ -428,12 +428,13 @@ async function streamAssistant(args: {
 
   const turns: ChatTurn[] = [];
 
-  // ─── BP1+BP2 system prompt split ──────────────────────────────────
-  // BP1 (stable, cached): persona + style. Both barely change → cache_control.
-  // BP2 (volatile, no tag): memory / health / status / book / group.
-  //   These change every turn → MUST live after cache boundary.
-  // Style lives in BP1 alongside persona per the NyraSeithhh/cache layout:
-  // [profile/人格/固定格式规则] are "固定不动的" and go first in the prefix.
+  // ─── BP1 system prompt (cached) ──────────────────────────────────
+  // BP1 (stable, cached): persona + style. Barely change → cache_control.
+  // BP2 (volatile): memory / health / status / book / group.
+  //   CRITICAL: BP2 MUST live AFTER the BP4 cache breakpoint, not before.
+  //   Anthropic cache keys include everything from byte 0 to the marker.
+  //   If BP2 is between BP1 and BP4, it invalidates BP4 every turn.
+  //   Solution: prepend BP2 to the LAST user message (after BP4's marker).
   const bp1Parts: string[] = [];
   const bp2Parts: string[] = [];
 
@@ -450,15 +451,15 @@ async function streamAssistant(args: {
   if (persona && groupOthers && groupOthers.length > 0) {
     bp2Parts.push(groupAwarenessSnippet(persona, groupOthers));
   }
+  const bp2Text = bp2Parts.length > 0 ? bp2Parts.join('\n\n---\n\n') : '';
 
-  // BP1 goes as a separate system turn → anthropic.ts tags it with cache_control.
+  // BP1 is the ONLY system turn → anthropic.ts tags it with cache_control.
   if (bp1Parts.length > 0) {
     turns.push({ role: 'system', content: bp1Parts.join('\n\n') });
   }
-  // BP2 goes as a second system turn → anthropic.ts leaves it untagged.
-  if (bp2Parts.length > 0) {
-    turns.push({ role: 'system', content: bp2Parts.join('\n\n---\n\n') });
-  }
+
+  // BP2 is NOT a system turn. It will be prepended to the last user
+  // message (after BP4's cache_control breakpoint) — see below.
 
   // Apply short-memory window: keep only the last 2*N messages so the API
   // doesn't replay the entire conversation each turn. Null = unlimited.
@@ -492,6 +493,19 @@ async function streamAssistant(args: {
   }
 
   const convId = branch[0]?.conversationId ?? '';
+
+  // BP2 volatile context: prepend to the LAST user message so it lives
+  // AFTER BP4's cache_control breakpoint. This way BP4 (historical
+  // messages) can hit cache even though BP2 changes every turn.
+  if (bp2Text) {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i].role === 'user') {
+        const base = turns[i].content ?? '';
+        turns[i] = { ...turns[i], content: `${bp2Text}\n\n---\n\n${base}` };
+        break;
+      }
+    }
+  }
   let tools: Tool[] = [];
   if (settings.toolsEnabled && convId) {
     tools = await availableTools({ persona, conversationId: convId });
