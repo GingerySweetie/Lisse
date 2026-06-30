@@ -429,9 +429,12 @@ async function streamAssistant(args: {
   const turns: ChatTurn[] = [];
 
   // ─── BP1+BP2 system prompt split ──────────────────────────────────
-  // BP1 (stable): persona prompt + style — almost never changes, cached.
-  // BP2 (volatile): memory / health / status / book / group — per-turn,
-  //   must live AFTER BP1's cache_control so it doesn't break the prefix.
+  // BP1 (stable, cached): persona prompt. Barely changes → cache_control.
+  // BP2 (volatile, no tag): memory / health / status / book / group.
+  //   These change every turn → MUST live after cache boundary.
+  // Style intentionally lives OUTSIDE both — appended per-turn to the
+  // last user message (see below). This keeps the model anchored to the
+  // style every round; putting it in BP1 would cause drift over long context.
   const bp1Parts: string[] = [];
   const bp2Parts: string[] = [];
 
