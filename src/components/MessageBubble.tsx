@@ -169,6 +169,10 @@ export default function MessageBubble({
                     message.usage.cacheReadTokens > 0 && (
                       <span className="text-sky-500">
                         缓存命中 {message.usage.cacheReadTokens}
+                        {(() => {
+                          const pct = cacheHitPercent(message.usage);
+                          return pct !== null ? ` (${pct}%)` : '';
+                        })()}
                       </span>
                     )}
                 </div>
@@ -640,6 +644,25 @@ function truncate(s: string, n: number): string {
  *  in-paragraph single \n into spaces so prose reflows at the container
  *  edge instead of breaking where the model emitted its newlines.
  *  Lists / headings / quotes / fenced code keep their structural \n. */
+/**
+ * Cache hit rate as a whole percent (0–100), or null when not computable.
+ *
+ * inputTokens is the total prompt size for messages written after the usage
+ * normalization (Anthropic adapter sums input + cache_creation + cache_read;
+ * OpenAI prompt_tokens already includes cached_tokens). Older Anthropic
+ * messages stored the raw uncached-only input_tokens, so read+creation can
+ * exceed inputTokens — detect that and reconstruct the true total instead of
+ * showing a >100% rate.
+ */
+function cacheHitPercent(usage: NonNullable<Message['usage']>): number | null {
+  const read = usage.cacheReadTokens ?? 0;
+  const creation = usage.cacheCreationTokens ?? 0;
+  const input = usage.inputTokens ?? 0;
+  const total = input >= read + creation ? input : input + read + creation;
+  if (total <= 0 || read <= 0) return null;
+  return Math.min(100, Math.round((read / total) * 100));
+}
+
 function mergeShortParagraphs(raw: string): string {
   // Don't touch fenced code blocks
   const parts = raw.split(/(```[\s\S]*?```)/);

@@ -347,7 +347,16 @@ export async function* streamAnthropic(
         case 'message_start': {
           const u = evt.message?.usage;
           if (u) {
-            usage.inputTokens = u.input_tokens;
+            // Anthropic's input_tokens EXCLUDES cached tokens: the real prompt
+            // size is input + cache_creation + cache_read. Normalize
+            // inputTokens to the TOTAL so it matches OpenAI's prompt_tokens
+            // semantics (which already includes cached_tokens) — downstream
+            // consumers (UI, pricing, hit-rate) can then treat both providers
+            // uniformly.
+            const raw = u.input_tokens ?? 0;
+            const cc = u.cache_creation_input_tokens ?? 0;
+            const cr = u.cache_read_input_tokens ?? 0;
+            usage.inputTokens = raw + cc + cr;
             usage.cacheCreationTokens = u.cache_creation_input_tokens;
             usage.cacheReadTokens = u.cache_read_input_tokens;
           }
@@ -383,12 +392,16 @@ export async function* streamAnthropic(
   }
 
   // ─── Cache Hit-Rate Diagnostic Logging ─────────────────────────────
+  // usage.inputTokens is already normalized to the TOTAL prompt size
+  // (uncached + cache_creation + cache_read). Hit rate = read / total —
+  // same definition as the tutorial's "47354/49310 = 96%".
   const creation = usage.cacheCreationTokens ?? 0;
   const read = usage.cacheReadTokens ?? 0;
-  const input = usage.inputTokens ?? 0;
+  const total = usage.inputTokens ?? 0;
+  const uncached = Math.max(0, total - creation - read);
   const cached = creation + read;
-  const hitRate = input > 0 ? Math.round((read / input) * 100) : 0;
-  const cachedPct = input > 0 ? Math.round((cached / input) * 100) : 0;
+  const hitRate = total > 0 ? Math.round((read / total) * 100) : 0;
+  const cachedPct = total > 0 ? Math.round((cached / total) * 100) : 0;
 
   // Count user messages to determine if BP4 fired.
   const userMsgCount = messages.filter((m) => m.role === 'user').length;
@@ -397,16 +410,17 @@ export async function* streamAnthropic(
   console.groupCollapsed(
     `💾 Cache | model=${req.model} | ${hitRate}% hit | ${cachedPct}% cached`,
   );
-  console.log('input_tokens                  =', input);
+  console.log('total prompt tokens            =', total);
+  console.log('uncached input_tokens          =', uncached);
   console.log('cache_read_input_tokens        =', read, read > 0 ? '✅ HIT' : '❌ MISS');
   console.log('cache_creation_input_tokens    =', creation, creation > 0 ? '(writing new cache)' : '');
-  console.log('cache coverage                 =', `${cachedPct}%`, `(${cached} / ${input})`);
-  console.log('hit rate                       =', `${hitRate}%`);
+  console.log('cache coverage                 =', `${cachedPct}%`, `(${cached} / ${total})`);
+  console.log('hit rate                       =', `${hitRate}%`, `(${read} / ${total})`);
   console.log('TTL mode                       =', use1h ? '1h long TTL' : '5m default TTL');
   console.log('sticky user_id                 =', 'lisse-stable-user');
   console.log('system breakpoints (BP1–BP3)   =', system.filter((b) => b.cache_control).length);
   console.log('BP4 rolling breakpoint         =', bp4Applied ? `✅ applied (${userMsgCount} user msgs)` : '⏭ skipped (first turn)');
-  if (read === 0 && input > 1000) {
+  if (read === 0 && total > 1000) {
     console.warn(
       '⚠️  Cache never hit! Possible causes:\n' +
         '  1. Proxy (AIHubMix) does not support prompt caching\n' +
