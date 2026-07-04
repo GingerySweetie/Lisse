@@ -64,18 +64,23 @@ export function estimateMessageCostUSD(message: Message): number {
   if (!u || !message.model) return 0;
   const p = lookupPrice(message.model);
   if (!p) return 0;
+  // inputTokens is the TOTAL prompt size for both providers (the Anthropic
+  // adapter normalizes input + cache_creation + cache_read; OpenAI's
+  // prompt_tokens already includes cached_tokens).
   const input = u.inputTokens ?? 0;
   const output = u.outputTokens ?? 0;
   const cacheRead = u.cacheReadTokens ?? 0;
   const cacheCreation = u.cacheCreationTokens ?? 0;
-  // Standard input minus cached portion (which is billed at the cheaper rate)
-  const billedInput = Math.max(0, input - cacheRead);
+  // Uncached portion billed at the full input rate.
+  const billedInput = Math.max(0, input - cacheRead - cacheCreation);
   const cacheReadPrice = p.cacheRead ?? p.input * 0.5;
-  // Anthropic charges 1.25x input for cache writes (already counted in 'input')
-  // so we don't double-bill. Cache writes are part of inputTokens by spec.
-  void cacheCreation;
+  // Cache writes are billed at a premium (Anthropic: 1.25x for 5m TTL).
+  const cacheWritePrice = p.input * 1.25;
   return (
-    (billedInput * p.input + cacheRead * cacheReadPrice + output * p.output) /
+    (billedInput * p.input +
+      cacheRead * cacheReadPrice +
+      cacheCreation * cacheWritePrice +
+      output * p.output) /
     1_000_000
   );
 }

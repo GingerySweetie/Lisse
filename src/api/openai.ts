@@ -124,10 +124,16 @@ export async function* streamOpenAI(
 
   const mapped = otherMessages.map(buildOpenAIMessage);
 
-  // Rolling breakpoint: second-to-last user message, same logic as Anthropic branch.
-  if (cachingSupported && mapped.length >= 2) {
-    const target = mapped[mapped.length - 2];
-    if (target.role === 'user') {
+  // Rolling breakpoint (BP4): tag the second-to-last USER message.
+  // In a normal conversation mapped looks like [..., user_prev, assistant, user_current]
+  // so mapped[-2] is the assistant turn — we must scan backwards for the second user.
+  if (cachingSupported) {
+    let userCount = 0;
+    for (let i = mapped.length - 1; i >= 0; i--) {
+      if (mapped[i].role !== 'user') continue;
+      userCount++;
+      if (userCount < 2) continue;
+      const target = mapped[i];
       const blocks = ensureBlockArray(target.content);
       if (blocks.length > 0) {
         blocks[blocks.length - 1] = {
@@ -136,6 +142,7 @@ export async function* streamOpenAI(
         };
         target.content = blocks;
       }
+      break;
     }
   }
 

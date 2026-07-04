@@ -428,49 +428,77 @@ async function streamAssistant(args: {
 
   const turns: ChatTurn[] = [];
 
-  // ─── Layered system prompt caching (BP1–BP3) ────────────────────────
-  // Each system layer gets its own cache_control breakpoint in anthropic.ts.
-  // Ordered most-stable → least-stable so inner layers don't invalidate outer.
+  // ─── Layered system prompt caching (BP1–BP2) ────────────────────────
+  // Anthropic cache is prefix-matched byte-for-byte. ANY byte that changes
+  // between turns invalidates the cache from that point forward.
   //
-  // BP1 (stable, almost never changes): persona + style
-  // BP2 (per-day volatile): book / memory / health / status / group
-  // BP3 (per-session): session summary (reserved for future use)
+  // Rule: ONLY truly stable content goes in system blocks (gets cache_control).
+  //       Everything that can change per-turn goes into gateway_volatile_context
+  //       which is injected AFTER BP4 (the rolling messages breakpoint) so it
+  //       never touches the cached prefix.
   //
-  // Important: each layer is a SEPARATE `role:'system'` message so that
-  // anthropic.ts's buildSystemBlocks can assign independent cache_control
-  // breakpoints. The old approach merged everything into one system turn
-  // and only the first got tagged — the rest were naked.
+  // BP1: persona system prompt — almost never changes
+  // BP2: group awareness snippet — stable for the duration of a group session
+  //
+  // Writing style is NOT a system block: it's appended to the END of the
+  // current user message every turn (strongest recency position, style takes
+  // full effect) — see the injection step below. Because that message sits
+  // after all breakpoints, switching styles mid-conversation costs zero cache.
+  //
+  // bookBlock, memoryBlock, healthBlock, statusBlock are ALL per-turn volatile:
+  //   • bookBlock   — selection/excerpt changes every reading message
+  //   • memoryBlock — retrieved via semantic search on the current user query
+  //   • healthBlock — step count / heart rate / sync timestamp change throughout the day
+  //   • statusBlock — includes current clock time (changes every minute!)
+  // These are collected into gateway_volatile_context below and prepended to the
+  // last user message (after BP4), so they never bust any cached prefix.
 
-  // BP1: persona + style (separate system messages for maximum cache granularity)
+  // BP1: persona (stable — almost never changes)
   if (persona && persona.systemPrompt.trim()) {
     turns.push({ role: 'system', content: persona.systemPrompt });
   }
-  if (style && style.prompt.trim()) {
-    turns.push({ role: 'system', content: `# 写作风格\n${style.prompt.trim()}` });
-  }
-
-  // BP2: volatile context — each as a separate system message with its own
-  // cache_control breakpoint. When one changes (e.g. memory recall), only
-  // that layer's cache is rebuilt; BP1 and the other BP2 layers still hit.
-  if (bookBlock) turns.push({ role: 'system', content: bookBlock });
-  if (memoryBlock) turns.push({ role: 'system', content: memoryBlock });
-  try {
-    const healthBlock = await formatHealthContextBlock();
-    if (healthBlock) turns.push({ role: 'system', content: healthBlock });
-  } catch { /* health daily 缺失不影响主流程 */ }
-  const statusBlock = formatStatusBlock();
-  if (statusBlock) turns.push({ role: 'system', content: statusBlock });
+  // BP2: group-awareness — stable for the duration of a group session.
   if (persona && groupOthers && groupOthers.length > 0) {
     turns.push({ role: 'system', content: groupAwarenessSnippet(persona, groupOthers) });
   }
 
-  // Apply short-memory window: keep only the last 2*N messages so the API
-  // doesn't replay the entire conversation each turn. Null = unlimited.
+  // Style tail: appended after the current user's text so the model reads it
+  // immediately before responding. Re-sent fresh every request (每次都读到),
+  // never part of the cached prefix, and never persisted to the DB message.
+  const styleTail =
+    style && style.prompt.trim()
+      ? `<style_reminder>本轮写作风格要求（务必遵守，勿复述）：\n${style.prompt.trim()}\n</style_reminder>`
+      : '';
+
+  // ─── Collect volatile context (injected after BP4, not in system) ───
+  const volatileParts: string[] = [];
+  if (bookBlock) volatileParts.push(bookBlock);
+  if (memoryBlock) volatileParts.push(memoryBlock);
+  try {
+    const healthBlock = await formatHealthContextBlock();
+    if (healthBlock) volatileParts.push(healthBlock);
+  } catch { /* health data missing — skip silently */ }
+  const statusBlock = formatStatusBlock();
+  if (statusBlock) volatileParts.push(statusBlock);
+
+  // Apply short-memory window: keep only recent messages so the API doesn't
+  // replay the entire conversation each turn. Null = unlimited.
+  //
+  // Cache note: a naive sliding window (slice(-keep)) shifts the window start
+  // by 2 messages EVERY turn — the first history message changes each request,
+  // which invalidates the cached prefix right after the system blocks and
+  // makes BP4 useless. Instead we drop the oldest messages in CHUNKS of half
+  // the window: the window start then stays byte-identical for keep/2 turns
+  // between rebuilds, so the rolling cache keeps hitting in between.
   const settings = await getSettings();
   let trimmed: Message[] = branch;
   if (settings.maxHistoryTurns && settings.maxHistoryTurns > 0) {
     const keep = settings.maxHistoryTurns * 2;
-    if (branch.length > keep) trimmed = branch.slice(-keep);
+    if (branch.length > keep) {
+      const chunk = Math.max(2, Math.floor(keep / 2));
+      const drop = Math.ceil((branch.length - keep) / chunk) * chunk;
+      trimmed = branch.slice(drop);
+    }
   }
 
   if (persona && groupOthers && groupOthers.length > 0) {
@@ -491,6 +519,45 @@ async function streamAssistant(args: {
         role: m.role,
         content: m.content,
         attachments: m.attachments,
+      });
+    }
+  }
+
+  // ─── Inject volatile context + style tail into the last user message ─
+  // Per-turn volatile data (memory recall, current time, health stats,
+  // reading anchor) is prepended BEFORE the user's text, and the writing
+  // style reminder is appended AFTER it — the very end of the request, the
+  // strongest recency position, so the style takes full effect every turn.
+  //
+  // Both live inside the CURRENT user message, which sits AFTER the BP4
+  // rolling breakpoint, so neither ever touches the cached prefix. When this
+  // turn becomes history next request, the raw DB content (without any
+  // injection) is re-sent — byte-identical across turns — so BP4 still hits.
+  //
+  //   BP1 (persona)  → always hits  ✓
+  //   BP2 (group)    → always hits  ✓
+  //   BP4 (history)  → always hits  ✓
+  //   volatile+style → uncached, changes freely without any cache miss penalty
+  const vcText =
+    volatileParts.length > 0
+      ? '<gateway_volatile_context>仅供参考，勿复述：\n' +
+        volatileParts.join('\n\n') +
+        '\n</gateway_volatile_context>'
+      : '';
+  if (vcText || styleTail) {
+    const last = turns[turns.length - 1];
+    if (last && last.role === 'user') {
+      // Normal turn: volatile before the user's text, style at the very end.
+      const merged = [vcText, last.content, styleTail].filter(Boolean).join('\n\n');
+      turns[turns.length - 1] = { ...last, content: merged };
+    } else {
+      // Conversation ends on an assistant turn (e.g. letPersonaSpeak): append
+      // a pseudo-user turn so volatile context and style aren't dropped, and
+      // aren't spliced into an older history message (which would rewrite
+      // history semantics). It sits after all breakpoints — cache-neutral.
+      turns.push({
+        role: 'user',
+        content: [vcText, styleTail].filter(Boolean).join('\n\n'),
       });
     }
   }

@@ -80,9 +80,11 @@ function buildAnthropicContent(
  * messages rolling breakpoint (BP4), so at most 3 go to system layers.
  *
  * Expected ordering from chat.ts (most-stable → least-stable):
- *   [0] BP1: persona + style             (almost never changes)
- *   [1] BP2: daily content / book / etc  (per-day volatile)
- *   [2] BP3: session summary             (per-session, ~80K tokens)
+ *   [0] BP1: persona                     (almost never changes)
+ *   [1] BP2: group awareness             (stable per group session)
+ *   [2] BP3: reserved (session summary)
+ * All volatile content (style tail, memory recall, current time, health)
+ * lives inside the current user message — after every breakpoint.
  *
  * Each of the first 3 system messages gets its own cache_control.
  * Any extra messages (≥4th) are merged without a tag — same as before.
@@ -125,28 +127,39 @@ function buildSystemBlocks(
 }
 
 /**
- * Attach a rolling cache_control breakpoint to the second-to-last user
+ * Attach a rolling cache_control breakpoint to the second-to-last USER
  * message's last content block. This extends the cache boundary over all
- * prior conversation history — the main driver of 85%+ hit rates.
+ * prior conversation history — the main driver of high hit rates.
+ *
+ * We scan backwards to find the second user message from the end because in a
+ * normal conversation the array looks like:
+ *   [..., user_prev, assistant_last, user_current]
+ * messages[-2] is the assistant turn, not a user message — so a simple index
+ * check would silently skip BP4 on every multi-turn conversation.
  */
 function attachRollingBreakpoint(
   messages: Array<{ role: string; content: unknown }>,
   cacheControl: { type: 'ephemeral'; ttl?: '5m' | '1h' },
 ) {
-  if (messages.length < 2) return;
-  const target = messages[messages.length - 2];
-  if (target.role !== 'user') return;
+  let userCount = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role !== 'user') continue;
+    userCount++;
+    if (userCount < 2) continue;
 
-  if (Array.isArray(target.content) && target.content.length > 0) {
-    const last = target.content[target.content.length - 1];
-    if (last && typeof last === 'object') {
-      (last as Record<string, unknown>).cache_control = cacheControl;
+    // This is the second-to-last user message — attach BP4 here.
+    const target = messages[i];
+    if (Array.isArray(target.content) && target.content.length > 0) {
+      const last = target.content[target.content.length - 1];
+      if (last && typeof last === 'object') {
+        (last as Record<string, unknown>).cache_control = cacheControl;
+      }
+    } else if (typeof target.content === 'string' && target.content) {
+      target.content = [
+        { type: 'text', text: target.content as string, cache_control: cacheControl },
+      ];
     }
-  } else if (typeof target.content === 'string' && target.content) {
-    // Defensive: if upstream passed a plain string instead of block array
-    target.content = [
-      { type: 'text', text: target.content as string, cache_control: cacheControl },
-    ];
+    return;
   }
 }
 
@@ -170,10 +183,12 @@ export async function* streamAnthropic(
   // Anthropic cache is prefix-matched byte-for-byte. Anything that can
   // change between turns MUST live after the cache breakpoints.
   //
-  // BP1: persona + style (almost never changes) → cache_control
-  // BP2: daily content / book / health / status (per-day volatile) → cache_control
-  // BP3: session summary (per-session, ~80K tokens) → cache_control
+  // BP1: persona (almost never changes) → cache_control
+  // BP2: group awareness (stable per group session) → cache_control
+  // BP3: reserved (session summary) → cache_control
   // BP4: rolling message cache on second-to-last user message
+  // Volatile data (style tail, memory, time, health) rides inside the
+  // CURRENT user message — after all breakpoints, never cached.
   //
   // Default 5-minute TTL (1.25× write, 0.1× read).
   // When cacheLongTTL is on: use 1h TTL (2× write, 0.1× read).
@@ -189,11 +204,8 @@ export async function* streamAnthropic(
   }
 
   // Build system blocks with layered cache_control (BP1–BP3).
-  // Convention: chat.ts now sends multiple system turns, one per layer:
-  //   [0] = BP1: persona + style (stable, gets cache_control)
-  //   [1] = BP2: daily content (per-day, gets cache_control)
-  //   [2] = BP3: session summary (per-session, gets cache_control)
-  // First 3 system messages each get their own cache_control breakpoint.
+  // chat.ts only sends STABLE layers as system turns (persona, group
+  // awareness); first 3 each get their own cache_control breakpoint.
   const systemMsgs = req.messages.filter((m) => m.role === 'system');
   const system = buildSystemBlocks(systemMsgs, cacheControl);
 
@@ -335,7 +347,16 @@ export async function* streamAnthropic(
         case 'message_start': {
           const u = evt.message?.usage;
           if (u) {
-            usage.inputTokens = u.input_tokens;
+            // Anthropic's input_tokens EXCLUDES cached tokens: the real prompt
+            // size is input + cache_creation + cache_read. Normalize
+            // inputTokens to the TOTAL so it matches OpenAI's prompt_tokens
+            // semantics (which already includes cached_tokens) — downstream
+            // consumers (UI, pricing, hit-rate) can then treat both providers
+            // uniformly.
+            const raw = u.input_tokens ?? 0;
+            const cc = u.cache_creation_input_tokens ?? 0;
+            const cr = u.cache_read_input_tokens ?? 0;
+            usage.inputTokens = raw + cc + cr;
             usage.cacheCreationTokens = u.cache_creation_input_tokens;
             usage.cacheReadTokens = u.cache_read_input_tokens;
           }
@@ -371,25 +392,35 @@ export async function* streamAnthropic(
   }
 
   // ─── Cache Hit-Rate Diagnostic Logging ─────────────────────────────
+  // usage.inputTokens is already normalized to the TOTAL prompt size
+  // (uncached + cache_creation + cache_read). Hit rate = read / total —
+  // same definition as the tutorial's "47354/49310 = 96%".
   const creation = usage.cacheCreationTokens ?? 0;
   const read = usage.cacheReadTokens ?? 0;
-  const input = usage.inputTokens ?? 0;
+  const total = usage.inputTokens ?? 0;
+  const uncached = Math.max(0, total - creation - read);
   const cached = creation + read;
-  const hitRate = input > 0 ? Math.round((read / input) * 100) : 0;
-  const cachedPct = input > 0 ? Math.round((cached / input) * 100) : 0;
+  const hitRate = total > 0 ? Math.round((read / total) * 100) : 0;
+  const cachedPct = total > 0 ? Math.round((cached / total) * 100) : 0;
+
+  // Count user messages to determine if BP4 fired.
+  const userMsgCount = messages.filter((m) => m.role === 'user').length;
+  const bp4Applied = userMsgCount >= 2;
 
   console.groupCollapsed(
     `💾 Cache | model=${req.model} | ${hitRate}% hit | ${cachedPct}% cached`,
   );
-  console.log('input_tokens                  =', input);
+  console.log('total prompt tokens            =', total);
+  console.log('uncached input_tokens          =', uncached);
   console.log('cache_read_input_tokens        =', read, read > 0 ? '✅ HIT' : '❌ MISS');
   console.log('cache_creation_input_tokens    =', creation, creation > 0 ? '(writing new cache)' : '');
-  console.log('cache coverage                 =', `${cachedPct}%`, `(${cached} / ${input})`);
-  console.log('hit rate                       =', `${hitRate}%`);
+  console.log('cache coverage                 =', `${cachedPct}%`, `(${cached} / ${total})`);
+  console.log('hit rate                       =', `${hitRate}%`, `(${read} / ${total})`);
   console.log('TTL mode                       =', use1h ? '1h long TTL' : '5m default TTL');
   console.log('sticky user_id                 =', 'lisse-stable-user');
-  console.log('system breakpoints             =', system.filter((b) => b.cache_control).length);
-  if (read === 0 && input > 1000) {
+  console.log('system breakpoints (BP1–BP3)   =', system.filter((b) => b.cache_control).length);
+  console.log('BP4 rolling breakpoint         =', bp4Applied ? `✅ applied (${userMsgCount} user msgs)` : '⏭ skipped (first turn)');
+  if (read === 0 && total > 1000) {
     console.warn(
       '⚠️  Cache never hit! Possible causes:\n' +
         '  1. Proxy (AIHubMix) does not support prompt caching\n' +
