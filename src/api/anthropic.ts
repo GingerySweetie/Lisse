@@ -80,9 +80,11 @@ function buildAnthropicContent(
  * messages rolling breakpoint (BP4), so at most 3 go to system layers.
  *
  * Expected ordering from chat.ts (most-stable → least-stable):
- *   [0] BP1: persona + style             (almost never changes)
- *   [1] BP2: daily content / book / etc  (per-day volatile)
- *   [2] BP3: session summary             (per-session, ~80K tokens)
+ *   [0] BP1: persona                     (almost never changes)
+ *   [1] BP2: group awareness             (stable per group session)
+ *   [2] BP3: reserved (session summary)
+ * All volatile content (style tail, memory recall, current time, health)
+ * lives inside the current user message — after every breakpoint.
  *
  * Each of the first 3 system messages gets its own cache_control.
  * Any extra messages (≥4th) are merged without a tag — same as before.
@@ -181,10 +183,12 @@ export async function* streamAnthropic(
   // Anthropic cache is prefix-matched byte-for-byte. Anything that can
   // change between turns MUST live after the cache breakpoints.
   //
-  // BP1: persona + style (almost never changes) → cache_control
-  // BP2: daily content / book / health / status (per-day volatile) → cache_control
-  // BP3: session summary (per-session, ~80K tokens) → cache_control
+  // BP1: persona (almost never changes) → cache_control
+  // BP2: group awareness (stable per group session) → cache_control
+  // BP3: reserved (session summary) → cache_control
   // BP4: rolling message cache on second-to-last user message
+  // Volatile data (style tail, memory, time, health) rides inside the
+  // CURRENT user message — after all breakpoints, never cached.
   //
   // Default 5-minute TTL (1.25× write, 0.1× read).
   // When cacheLongTTL is on: use 1h TTL (2× write, 0.1× read).
@@ -200,11 +204,8 @@ export async function* streamAnthropic(
   }
 
   // Build system blocks with layered cache_control (BP1–BP3).
-  // Convention: chat.ts now sends multiple system turns, one per layer:
-  //   [0] = BP1: persona + style (stable, gets cache_control)
-  //   [1] = BP2: daily content (per-day, gets cache_control)
-  //   [2] = BP3: session summary (per-session, gets cache_control)
-  // First 3 system messages each get their own cache_control breakpoint.
+  // chat.ts only sends STABLE layers as system turns (persona, group
+  // awareness); first 3 each get their own cache_control breakpoint.
   const systemMsgs = req.messages.filter((m) => m.role === 'system');
   const system = buildSystemBlocks(systemMsgs, cacheControl);
 
