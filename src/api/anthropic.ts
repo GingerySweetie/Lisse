@@ -125,28 +125,39 @@ function buildSystemBlocks(
 }
 
 /**
- * Attach a rolling cache_control breakpoint to the second-to-last user
+ * Attach a rolling cache_control breakpoint to the second-to-last USER
  * message's last content block. This extends the cache boundary over all
- * prior conversation history — the main driver of 85%+ hit rates.
+ * prior conversation history — the main driver of high hit rates.
+ *
+ * We scan backwards to find the second user message from the end because in a
+ * normal conversation the array looks like:
+ *   [..., user_prev, assistant_last, user_current]
+ * messages[-2] is the assistant turn, not a user message — so a simple index
+ * check would silently skip BP4 on every multi-turn conversation.
  */
 function attachRollingBreakpoint(
   messages: Array<{ role: string; content: unknown }>,
   cacheControl: { type: 'ephemeral'; ttl?: '5m' | '1h' },
 ) {
-  if (messages.length < 2) return;
-  const target = messages[messages.length - 2];
-  if (target.role !== 'user') return;
+  let userCount = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role !== 'user') continue;
+    userCount++;
+    if (userCount < 2) continue;
 
-  if (Array.isArray(target.content) && target.content.length > 0) {
-    const last = target.content[target.content.length - 1];
-    if (last && typeof last === 'object') {
-      (last as Record<string, unknown>).cache_control = cacheControl;
+    // This is the second-to-last user message — attach BP4 here.
+    const target = messages[i];
+    if (Array.isArray(target.content) && target.content.length > 0) {
+      const last = target.content[target.content.length - 1];
+      if (last && typeof last === 'object') {
+        (last as Record<string, unknown>).cache_control = cacheControl;
+      }
+    } else if (typeof target.content === 'string' && target.content) {
+      target.content = [
+        { type: 'text', text: target.content as string, cache_control: cacheControl },
+      ];
     }
-  } else if (typeof target.content === 'string' && target.content) {
-    // Defensive: if upstream passed a plain string instead of block array
-    target.content = [
-      { type: 'text', text: target.content as string, cache_control: cacheControl },
-    ];
+    return;
   }
 }
 
@@ -378,6 +389,10 @@ export async function* streamAnthropic(
   const hitRate = input > 0 ? Math.round((read / input) * 100) : 0;
   const cachedPct = input > 0 ? Math.round((cached / input) * 100) : 0;
 
+  // Count user messages to determine if BP4 fired.
+  const userMsgCount = messages.filter((m) => m.role === 'user').length;
+  const bp4Applied = userMsgCount >= 2;
+
   console.groupCollapsed(
     `💾 Cache | model=${req.model} | ${hitRate}% hit | ${cachedPct}% cached`,
   );
@@ -388,7 +403,8 @@ export async function* streamAnthropic(
   console.log('hit rate                       =', `${hitRate}%`);
   console.log('TTL mode                       =', use1h ? '1h long TTL' : '5m default TTL');
   console.log('sticky user_id                 =', 'lisse-stable-user');
-  console.log('system breakpoints             =', system.filter((b) => b.cache_control).length);
+  console.log('system breakpoints (BP1–BP3)   =', system.filter((b) => b.cache_control).length);
+  console.log('BP4 rolling breakpoint         =', bp4Applied ? `✅ applied (${userMsgCount} user msgs)` : '⏭ skipped (first turn)');
   if (read === 0 && input > 1000) {
     console.warn(
       '⚠️  Cache never hit! Possible causes:\n' +
