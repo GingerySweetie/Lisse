@@ -895,12 +895,12 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
           </Field>
 
           {/aihubmix\.com/i.test(baseUrl) && (
-            <Field label="管理 Key（仅 AIHubMix · 查余额用）">
+            <Field label="访问令牌 Access Key（AIHubMix · 查余额用，格式 fd***）">
               <input
                 type="password"
                 value={manageKey}
                 onChange={(e) => setManageKey(e.target.value)}
-                placeholder="AIHubMix 后台「令牌→管理密钥」复制"
+                placeholder="AIHubMix 后台「设置→生成系统访问令牌」，格式 fd-..."
                 className="rounded-lg border border-lavender-200 bg-white px-3 py-2 font-mono text-xs focus:border-lavender-300"
               />
             </Field>

@@ -109,23 +109,36 @@ async function jsonGet(
 }
 
 /**
- * AIHubMix's balance lives on the Manage API at /api/v1/user/self and
- * requires the dashboard's Manage Key, NOT the chat API key. The quota
- * value is integer "quota units" — divide by 500_000 for USD.
+ * AIHubMix's balance lives on the Manage API at /api/user/self and
+ * requires the System Access Token (Access Key, format fd***), NOT the
+ * chat API key (sk-***). The quota value is integer "quota units" —
+ * divide by 500_000 for USD.
+ *
+ * The Manage API uses a bare token in the Authorization header (no
+ * "Bearer" prefix), as documented at docs.aihubmix.com/en/api/Cli.
+ *
+ * Fallback: if manageKey is empty we try apiKey — useful when the user
+ * has pasted their fd*** Access Key into the main API Key field.
  */
 async function aihubmix(endpoint: Endpoint): Promise<BalanceResult> {
-  if (!endpoint.manageKey) {
+  const key = endpoint.manageKey || endpoint.apiKey;
+  if (!key) {
     throw new Error(
-      'AIHubMix 余额查询需要 Manage Key（在 AIHubMix 后台「令牌→管理密钥」处获取），请在 endpoint 编辑里填入「管理 Key」字段',
+      'AIHubMix 余额查询需要访问令牌 Access Key（格式 fd***，在 AIHubMix 后台「设置→生成系统访问令牌」处获取），请填入「访问令牌 Access Key」字段',
     );
   }
   const root = endpoint.baseUrl.replace(/\/+$/, '');
   const base = root.replace(/\/v1$/, '');
-  const data = (await jsonGet(
-    `${base}/api/v1/user/self`,
-    endpoint,
-    endpoint.manageKey,
-  )) as {
+  // AIHubMix Manage API uses a bare token — no "Bearer" prefix.
+  const res = await fetch(`${base}/api/user/self`, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json', Authorization: key },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`${res.status} ${res.statusText}${text ? `: ${text.slice(0, 200)}` : ''}`);
+  }
+  const data = (await res.json()) as {
     success?: boolean;
     message?: string;
     data?: { quota?: number; used_quota?: number };
