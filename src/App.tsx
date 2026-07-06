@@ -18,6 +18,7 @@ const ImportExportPage = lazy(() => import('./pages/ImportExport'));
 const MemoryPage = lazy(() => import('./pages/Memory'));
 const StylesPage = lazy(() => import('./pages/Styles'));
 const McpPage = lazy(() => import('./pages/Mcp'));
+const McpCallbackPage = lazy(() => import('./pages/McpCallback'));
 const ScreenTimePage = lazy(() => import('./pages/ScreenTime'));
 const BillSourcesPage = lazy(() => import('./pages/BillSources'));
 const BrowserPage = lazy(() => import('./pages/Browser'));
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="/personas" element={<PersonasPage />} />
             <Route path="/styles" element={<StylesPage />} />
             <Route path="/mcp" element={<McpPage />} />
+            <Route path="/mcp/callback" element={<McpCallbackPage />} />
             <Route path="/screen-time" element={<ScreenTimePage />} />
             <Route path="/books" element={<BooksPage />} />
             <Route
