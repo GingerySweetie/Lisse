@@ -1,14 +1,20 @@
 import { useMemo, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ChevronRight, Trash2 } from 'lucide-react';
+import { ChevronRight, PanelLeftClose, Trash2 } from 'lucide-react';
 import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
 import { relativeTime } from '../lib/format';
 import type { Conversation, Persona } from '../types';
 import WisteriaMark from './WisteriaMark';
 
-export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export default function Sidebar({
+  onNavigate,
+  onCollapse,
+}: {
+  onNavigate?: () => void;
+  onCollapse?: () => void;
+}) {
   const navigate = useNavigate();
   const { conversationId: activeId } = useParams();
 
@@ -64,14 +70,27 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               Wisteria
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => onNavigate?.()}
-            className="text-lg text-ink-500/80 transition hover:text-ink-700 md:hidden"
-            aria-label="关闭"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-1">
+            {onCollapse && (
+              <button
+                type="button"
+                onClick={onCollapse}
+                className="hidden rounded-lg p-1.5 text-ink-500/60 transition hover:bg-[rgba(176,138,204,0.15)] hover:text-[#5a4060] md:flex"
+                aria-label="收起侧边栏"
+                title="收起侧边栏"
+              >
+                <PanelLeftClose size={16} strokeWidth={1.5} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onNavigate?.()}
+              className="text-lg text-ink-500/80 transition hover:text-ink-700 md:hidden"
+              aria-label="关闭"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <button
