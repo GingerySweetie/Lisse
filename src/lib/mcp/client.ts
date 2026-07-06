@@ -110,7 +110,7 @@ export class McpSession {
       {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: 'wisteria', version: '1.0' },
+        clientInfo: { name: 'lisse', version: '1.0' },
       },
       signal,
     );
@@ -167,7 +167,8 @@ async function safeText(res: Response): Promise<string> {
 }
 
 /** Parse SSE frames from a stream until one with `data: { id: <id>, ... }`
- *  arrives, then return it. Other notifications / pings are skipped. */
+ *  arrives, then return it. Other notifications / pings are skipped.
+ *  Handles both LF (\n\n) and CRLF (\r\n\r\n) event separators. */
 async function readSseUntilId(
   body: ReadableStream<Uint8Array>,
   id: number,
@@ -181,7 +182,8 @@ async function readSseUntilId(
       if (signal?.aborted) throw new Error('aborted');
       const { done, value } = await reader.read();
       if (done) throw new Error('MCP SSE stream ended before response');
-      buf += decoder.decode(value, { stream: true });
+      // Normalize CRLF to LF so frame detection works uniformly.
+      buf += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
       let sep: number;
       while ((sep = buf.indexOf('\n\n')) !== -1) {
         const frame = buf.slice(0, sep);

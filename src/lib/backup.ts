@@ -4,6 +4,7 @@ import type {
   Book,
   Conversation,
   Endpoint,
+  McpServer,
   MemoryFact,
   Message,
   Persona,
@@ -24,6 +25,7 @@ export interface BackupBundle {
   memoryFacts?: MemoryFact[];
   writingStyles?: WritingStyle[];
   books?: Book[];
+  mcpServers?: McpServer[];
 }
 
 export async function exportBackup(): Promise<BackupBundle> {
@@ -36,6 +38,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     memoryFacts,
     writingStyles,
     books,
+    mcpServers,
   ] = await Promise.all([
     getSettings(),
     db.endpoints.toArray(),
@@ -45,6 +48,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     db.memoryFacts.toArray(),
     db.writingStyles.toArray(),
     db.books.toArray(),
+    db.mcpServers.toArray(),
   ]);
   return {
     __lisse: 'backup',
@@ -58,6 +62,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     memoryFacts,
     writingStyles,
     books,
+    mcpServers,
   };
 }
 
@@ -74,6 +79,7 @@ export interface ImportBackupResult {
   memoryFactsAdded: number;
   writingStylesAdded: number;
   booksAdded: number;
+  mcpServersAdded: number;
   settingsApplied: boolean;
 }
 
@@ -109,6 +115,7 @@ export async function importBackup(
         db.memoryFacts,
         db.writingStyles,
         db.books,
+        db.mcpServers,
         db.kv,
       ],
       async () => {
@@ -119,6 +126,7 @@ export async function importBackup(
         await db.memoryFacts.clear();
         await db.writingStyles.clear();
         await db.books.clear();
+        await db.mcpServers.clear();
         await db.kv.clear();
       },
     );
@@ -132,6 +140,7 @@ export async function importBackup(
     memoryFactsAdded: 0,
     writingStylesAdded: 0,
     booksAdded: 0,
+    mcpServersAdded: 0,
     settingsApplied: false,
   };
 
@@ -145,6 +154,7 @@ export async function importBackup(
       db.memoryFacts,
       db.writingStyles,
       db.books,
+      db.mcpServers,
     ],
     async () => {
       for (const e of bundle.endpoints ?? []) {
@@ -188,6 +198,12 @@ export async function importBackup(
         if (exists && opts.mode === 'merge') continue;
         await db.books.put(b);
         result.booksAdded++;
+      }
+      for (const mcp of bundle.mcpServers ?? []) {
+        const exists = await db.mcpServers.get(mcp.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.mcpServers.put(mcp);
+        result.mcpServersAdded++;
       }
     },
   );

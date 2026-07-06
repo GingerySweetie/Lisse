@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, Plus, RefreshCw, Trash2, X } from 'lucide-react';
-import { db } from '../db';
+import { db, getSettings } from '../db';
 import { newId } from '../lib/id';
 import { invalidateSession } from '../lib/mcp/client';
 import { refreshServerTools } from '../lib/mcp/tools';
@@ -24,6 +24,7 @@ export default function McpPage() {
     [],
     [],
   );
+  const settings = useLiveQuery(() => getSettings(), []);
   const [editing, setEditing] = useState<McpServer | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -42,11 +43,20 @@ export default function McpPage() {
 
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
         <div className="mx-auto max-w-3xl">
+          {settings && !settings.toolsEnabled && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              ⚠️ 工具调用未开启。请先前往{' '}
+              <Link to="/settings" className="underline underline-offset-2">
+                设置
+              </Link>{' '}
+              开启「启用工具调用」，MCP 工具才会生效。
+            </div>
+          )}
           <div className="mb-4 flex items-start justify-between gap-3">
             <p className="text-sm text-ink-500">
-              添加 MCP 服务器，其工具会自动汇入小机可调用的 tool 列表。
+              添加 MCP 服务器，其工具会自动汇入对话可调用的 tool 列表。
               <br />
-              支持 Streamable HTTP transport。需要先在 /settings 里打开 tools 开关。
+              支持 Streamable HTTP transport（单端点 POST JSON-RPC）。
             </p>
             <button
               type="button"
@@ -191,16 +201,23 @@ function ServerCard({
       </div>
 
       {server.cachedTools && server.cachedTools.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {server.cachedTools.map((t) => (
-            <span
-              key={t.name}
-              title={t.description}
-              className="rounded-full border border-lavender-200 bg-lavender-50 px-2 py-0.5 text-[10px] text-ink-600"
-            >
-              {t.name}
-            </span>
-          ))}
+        <div className="mt-1">
+          <div className="flex flex-wrap gap-1.5">
+            {server.cachedTools.map((t) => (
+              <span
+                key={t.name}
+                title={t.description}
+                className="rounded-full border border-lavender-200 bg-lavender-50 px-2 py-0.5 text-[10px] text-ink-600"
+              >
+                {t.name}
+              </span>
+            ))}
+          </div>
+          {server.cachedAt && (
+            <p className="mt-1 text-[10px] text-ink-400">
+              缓存于 {new Date(server.cachedAt).toLocaleString()}
+            </p>
+          )}
         </div>
       )}
 
@@ -236,14 +253,21 @@ function ServerEditor({
     }
     const now = Date.now();
     const id = server?.id ?? newId();
+    const newUrl = url.trim();
+    const newAuth = authHeader.trim() || undefined;
+    // Clear tool cache if the endpoint or credentials changed.
+    const endpointChanged =
+      server == null ||
+      newUrl !== server.url ||
+      newAuth !== server.authHeader;
     const next: McpServer = {
       id,
       name: name.trim(),
-      url: url.trim(),
-      authHeader: authHeader.trim() || undefined,
+      url: newUrl,
+      authHeader: newAuth,
       enabled,
-      cachedTools: server?.cachedTools,
-      cachedAt: server?.cachedAt,
+      cachedTools: endpointChanged ? undefined : server?.cachedTools,
+      cachedAt: endpointChanged ? undefined : server?.cachedAt,
       createdAt: server?.createdAt ?? now,
       updatedAt: now,
     };

@@ -1,5 +1,5 @@
 import { db } from '../../db';
-import type { McpServer } from '../../types';
+import type { McpServer, McpToolDef } from '../../types';
 import type { Tool, ToolContext } from '../tools';
 import { flattenContent, getSession } from './client';
 
@@ -22,10 +22,6 @@ function makeToolName(serverName: string, toolName: string): string {
   return `${safe(serverName)}${NAMESPACE_SEP}${safe(toolName)}`;
 }
 
-function stripNamespace(toolName: string): string {
-  const idx = toolName.indexOf(NAMESPACE_SEP);
-  return idx === -1 ? toolName : toolName.slice(idx + NAMESPACE_SEP.length);
-}
 
 export async function mcpTools(_ctx: ToolContext): Promise<Tool[]> {
   const servers = await db.mcpServers.toArray();
@@ -34,9 +30,18 @@ export async function mcpTools(_ctx: ToolContext): Promise<Tool[]> {
 
   const out: Tool[] = [];
   for (const server of enabled) {
-    const tools = await ensureToolList(server);
+    let tools: McpToolDef[];
+    try {
+      tools = await ensureToolList(server);
+    } catch (err) {
+      console.warn(`[MCP] Failed to load tools from "${server.name}":`, err);
+      continue;
+    }
     for (const t of tools) {
       const namespaced = makeToolName(server.name, t.name);
+      // Capture original name in closure — the namespaced form has characters
+      // sanitised, so we must pass the server's original tool name to callTool.
+      const originalName = t.name;
       out.push({
         def: {
           name: namespaced,
@@ -46,7 +51,7 @@ export async function mcpTools(_ctx: ToolContext): Promise<Tool[]> {
         handler: async (input) => {
           const session = getSession(server);
           const result = await session.callTool(
-            stripNamespace(namespaced),
+            originalName,
             (input as Record<string, unknown>) ?? {},
           );
           if (result.isError) {
@@ -60,23 +65,20 @@ export async function mcpTools(_ctx: ToolContext): Promise<Tool[]> {
   return out;
 }
 
-/** Returns the cached tools list, or fetches + caches if missing. */
+/** Returns the cached tools list, or fetches + caches if missing.
+ *  Throws if the server is unreachable and no cache is available. */
 async function ensureToolList(server: McpServer) {
   if (server.cachedTools && server.cachedTools.length > 0) {
     return server.cachedTools;
   }
-  try {
-    const session = getSession(server);
-    const tools = await session.listTools();
-    await db.mcpServers.update(server.id, {
-      cachedTools: tools,
-      cachedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    return tools;
-  } catch {
-    return [];
-  }
+  const session = getSession(server);
+  const tools = await session.listTools();
+  await db.mcpServers.update(server.id, {
+    cachedTools: tools,
+    cachedAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+  return tools;
 }
 
 /** Force-refresh the cached tools list. Called from the management UI's
