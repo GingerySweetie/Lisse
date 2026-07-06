@@ -1,11 +1,20 @@
+import { db } from '../../db';
 import type { McpServer, McpToolDef } from '../../types';
+import { getValidAccessToken, refreshTokens } from './oauth';
 
 /**
  * Model Context Protocol client — Streamable HTTP transport.
  *
- * Modern MCP transport per the 2024-11-05 spec: single endpoint, POST
- * JSON-RPC, response is either application/json (one-shot) or
- * text/event-stream (streamed) carrying matching id messages.
+ * Modern MCP transport: single endpoint, POST JSON-RPC, response is either
+ * application/json (one-shot) or text/event-stream (streamed) carrying
+ * matching id messages.
+ *
+ * Auth priority:
+ *   1. server.oauth (OAuth 2.1 + PKCE, refreshed on demand)
+ *   2. server.authHeader (raw static bearer / integration token)
+ *   3. no Authorization header
+ *
+ * A 401 with a valid refresh token triggers one automatic refresh + retry.
  *
  * The session caches:
  *   - Mcp-Session-Id header value once the server hands us one
@@ -14,11 +23,9 @@ import type { McpServer, McpToolDef } from '../../types';
  *
  * We don't keep persistent sessions across page navigations; each
  * availableTools() call constructs a fresh session keyed by server id.
- * For long-running servers this means a tiny initialize round trip per
- * conversation start, which is fine.
  */
 
-const PROTOCOL_VERSION = '2024-11-05';
+const PROTOCOL_VERSION = '2025-06-18';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -44,13 +51,23 @@ export class McpSession {
     this.server = server;
   }
 
-  private headers(): Record<string, string> {
+  private async authHeaderValue(): Promise<string | null> {
+    if (this.server.oauth) {
+      const token = await getValidAccessToken(this.server);
+      return token ? `Bearer ${token}` : null;
+    }
+    return this.server.authHeader ?? null;
+  }
+
+  private async headers(): Promise<Record<string, string>> {
     const h: Record<string, string> = {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
+      'MCP-Protocol-Version': PROTOCOL_VERSION,
     };
     if (this.sessionId) h['Mcp-Session-Id'] = this.sessionId;
-    if (this.server.authHeader) h['Authorization'] = this.server.authHeader;
+    const auth = await this.authHeaderValue();
+    if (auth) h['Authorization'] = auth;
     return h;
   }
 
@@ -58,17 +75,39 @@ export class McpSession {
     method: string,
     params?: unknown,
     signal?: AbortSignal,
+    isRetry = false,
   ): Promise<T> {
     const id = this.nextId++;
     const body: JsonRpcRequest = { jsonrpc: '2.0', id, method, params };
     const res = await fetch(this.server.url, {
       method: 'POST',
-      headers: this.headers(),
+      headers: await this.headers(),
       body: JSON.stringify(body),
       signal,
     });
     const newSession = res.headers.get('Mcp-Session-Id');
     if (newSession) this.sessionId = newSession;
+
+    // OAuth token expired / revoked — try one refresh + retry.
+    if (res.status === 401 && !isRetry && this.server.oauth?.refreshToken) {
+      try {
+        const updated = await refreshTokens(this.server);
+        this.server = { ...this.server, oauth: updated };
+        // Reset session state — server may have dropped it on 401.
+        this.sessionId = null;
+        this.initialized = false;
+        return await this.rpc<T>(method, params, signal, true);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg === 'REAUTH_REQUIRED') {
+          throw new Error(
+            `MCP ${method}: 授权已失效，请在 MCP 设置里重新授权 "${this.server.name}"`,
+          );
+        }
+        throw err;
+      }
+    }
+
     if (!res.ok) {
       throw new Error(
         `MCP ${method} HTTP ${res.status}: ${await safeText(res)}`,
@@ -98,7 +137,7 @@ export class McpSession {
     const body = { jsonrpc: '2.0' as const, method, params };
     await fetch(this.server.url, {
       method: 'POST',
-      headers: this.headers(),
+      headers: await this.headers(),
       body: JSON.stringify(body),
     });
   }
@@ -182,7 +221,6 @@ async function readSseUntilId(
       if (signal?.aborted) throw new Error('aborted');
       const { done, value } = await reader.read();
       if (done) throw new Error('MCP SSE stream ended before response');
-      // Normalize CRLF to LF so frame detection works uniformly.
       buf += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
       let sep: number;
       while ((sep = buf.indexOf('\n\n')) !== -1) {
@@ -218,15 +256,30 @@ async function readSseUntilId(
 const SESSION_CACHE = new Map<string, McpSession>();
 
 export function getSession(server: McpServer): McpSession {
-  let s = SESSION_CACHE.get(server.id);
-  if (s && s.server.url === server.url && s.server.authHeader === server.authHeader) {
-    return s;
+  const cached = SESSION_CACHE.get(server.id);
+  if (
+    cached &&
+    cached.server.url === server.url &&
+    cached.server.authHeader === server.authHeader &&
+    cached.server.oauth?.accessToken === server.oauth?.accessToken &&
+    cached.server.oauth?.clientId === server.oauth?.clientId
+  ) {
+    return cached;
   }
-  s = new McpSession(server);
+  const s = new McpSession(server);
   SESSION_CACHE.set(server.id, s);
   return s;
 }
 
 export function invalidateSession(serverId: string): void {
   SESSION_CACHE.delete(serverId);
+}
+
+/** Reload a server from DB and return a fresh session for it. Useful after
+ *  the OAuth callback finishes writing new tokens. */
+export async function reloadSession(serverId: string): Promise<McpSession | null> {
+  const server = await db.mcpServers.get(serverId);
+  if (!server) return null;
+  invalidateSession(serverId);
+  return getSession(server);
 }

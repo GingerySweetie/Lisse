@@ -300,6 +300,35 @@ export interface McpToolDef {
 }
 
 /**
+ * OAuth 2.1 state for MCP servers that require user authorization (e.g.
+ * Notion, GitHub). Populated after the browser callback finishes the
+ * Authorization Code + PKCE flow described in the MCP spec (RFC 9470 for
+ * resource discovery + RFC 8414 for auth-server metadata + RFC 7591 for
+ * dynamic client registration).
+ */
+export interface McpOAuth {
+  /** OAuth authorization server issuer URL (from RFC 8414 metadata). */
+  issuer: string;
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  registrationEndpoint?: string;
+  /** Dynamic-registration-assigned client id. Public clients only, so no
+   *  client_secret is stored (we always register with
+   *  token_endpoint_auth_method=none). */
+  clientId: string;
+  /** Long-lived refresh token; used to mint fresh access tokens. */
+  refreshToken?: string;
+  /** Current bearer, sent as `Authorization: Bearer <accessToken>`. */
+  accessToken?: string;
+  /** Unix ms when the current access token expires. */
+  expiresAt?: number;
+  /** Scopes actually granted by the last successful token response. */
+  scope?: string;
+  /** When authorization was last completed / refreshed. */
+  connectedAt?: number;
+}
+
+/**
  * Model Context Protocol server registration. The chat layer uses the
  * Streamable HTTP transport — a single URL endpoint that accepts JSON-RPC
  * over POST and optionally streams responses via SSE.
@@ -310,8 +339,13 @@ export interface McpServer {
   name: string;
   /** Endpoint URL of the MCP server. */
   url: string;
-  /** Optional Authorization header value (e.g. "Bearer xxx"). */
+  /** Optional static Authorization header value (e.g. "Bearer xxx"). Used
+   *  when the server accepts a bring-your-own token (self-hosted /
+   *  integration token / PAT). Mutually exclusive with `oauth`. */
   authHeader?: string;
+  /** OAuth 2.1 + PKCE credentials, populated when the user completes an
+   *  authorization flow. Takes precedence over authHeader when present. */
+  oauth?: McpOAuth;
   /** Disabled servers are skipped during tool discovery. */
   enabled: boolean;
   /** Cached tools/list result so chat can register without a network round
