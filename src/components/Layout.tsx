@@ -1,30 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { PanelLeftOpen } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ErrorBoundary from './ErrorBoundary';
 import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem('sidebar-collapsed') === 'true';
-    } catch {
-      return false;
-    }
-  });
   const location = useLocation();
-
-  function toggleDesktopSidebar() {
-    setSidebarCollapsed((c) => {
-      const next = !c;
-      try {
-        localStorage.setItem('sidebar-collapsed', String(next));
-      } catch {}
-      return next;
-    });
-  }
 
   useEffect(() => {
     bootstrapBehavior();
@@ -90,40 +72,28 @@ export default function Layout() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[82%] max-w-[340px] transform shadow-[4px_0_24px_rgba(90,50,100,0.1)] transition-all duration-300 md:relative md:max-w-none md:overflow-hidden md:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-40 w-[82%] max-w-[340px] transform shadow-[4px_0_24px_rgba(90,50,100,0.1)] transition-transform duration-300 md:relative md:w-72 md:max-w-none md:translate-x-0 md:shadow-none ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } ${sidebarCollapsed ? 'md:w-0' : 'md:w-72 md:translate-x-0'}`}
+        }`}
         style={{
           background:
             'linear-gradient(180deg, #f8f2fb 0%, #f3ecf6 40%, #f0e8f3 100%)',
         }}
       >
-        <Sidebar
-          onNavigate={() => setSidebarOpen(false)}
-          onCollapse={toggleDesktopSidebar}
-        />
+        <Sidebar onNavigate={() => setSidebarOpen(false)} />
       </aside>
 
       {/* Main */}
       <main className="relative flex h-full w-full flex-1 flex-col">
-        {/* Mobile: invisible left-edge tap zone */}
+        {/* Invisible left-edge tap zone — keyboard / mouse users get a
+            way to open the sidebar even though the hamburger button is
+            gone. Hidden on md+ where the sidebar is permanent. */}
         <button
           type="button"
           onClick={() => setSidebarOpen(true)}
           aria-label="打开侧边栏"
           className="absolute left-0 top-0 z-20 h-14 w-7 cursor-default opacity-0 md:hidden"
         />
-        {/* Desktop: expand button shown only when sidebar is collapsed */}
-        {sidebarCollapsed && (
-          <button
-            type="button"
-            onClick={toggleDesktopSidebar}
-            aria-label="展开侧边栏"
-            className="absolute left-2 top-3 z-20 hidden items-center justify-center rounded-lg p-1.5 text-[#7a5a88] transition hover:bg-[rgba(176,138,204,0.15)] hover:text-[#5a4060] md:flex"
-          >
-            <PanelLeftOpen size={18} strokeWidth={1.5} />
-          </button>
-        )}
         <ErrorBoundary key={location.pathname} label={location.pathname}>
           <Outlet />
         </ErrorBoundary>
