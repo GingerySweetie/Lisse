@@ -222,14 +222,12 @@ function MemorySettings() {
           type="checkbox"
           checked={s.toolsEnabled}
           onChange={(e) => update({ toolsEnabled: e.target.checked })}
-          disabled={!s.memoryEnabled}
           className="mt-0.5 h-4 w-4 accent-lavender-400"
         />
         <span className="text-sm text-ink-900">
-          让模型自己读写记忆（工具调用）
+          启用工具调用（MCP / 记忆工具）
           <span className="ml-1 text-[11px] font-light text-ink-500">
-            开启后模型有 remember / recall 两个工具，能边聊边主动记和查。
-            会额外多一次 API 往返。
+            开启后模型可调用 MCP 服务器工具及记忆读写工具。MCP 不需要记忆系统，但会额外多一次 API 往返。
           </span>
         </span>
       </label>
