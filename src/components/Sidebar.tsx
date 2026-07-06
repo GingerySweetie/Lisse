@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ChevronRight, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp, Trash2 } from 'lucide-react';
 import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
 import { relativeTime } from '../lib/format';
@@ -19,10 +19,28 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   );
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
 
-  // Track which group headers are collapsed. Default: all expanded.
+  // Track which conversation group headers are collapsed. Default: all expanded.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   function toggle(key: string) {
     setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+  }
+
+  // Track whether the bottom nav is collapsed. Persisted to localStorage.
+  const [navCollapsed, setNavCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('sidebar-nav-collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  function toggleNav() {
+    setNavCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem('sidebar-nav-collapsed', String(next));
+      } catch {}
+      return next;
+    });
   }
 
   // Group conversations by persona id; order groups by latest activity
@@ -180,40 +198,61 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </div>
 
-      <div className="border-t border-lavender-100/70 py-2 pb-5">
-        {[
-          { to: '/home', glyph: '⌂', label: '玄関' },
-          { to: '/search', glyph: '⌕', label: '搜索' },
-          { to: '/circle', glyph: '○', label: 'OnlyCircle' },
-          { to: '/body', glyph: '♡', label: '身体' },
-          { to: '/billing', glyph: '¥', label: '账单' },
-          { to: '/personas', glyph: '◇', label: '人格' },
-          { to: '/books', glyph: '☷', label: '书架' },
-          { to: '/music', glyph: '♪', label: '音乐' },
-          { to: '/styles', glyph: '✦', label: '写作风格' },
-          { to: '/memory', glyph: '◎', label: '记忆' },
-          { to: '/mcp', glyph: '⌬', label: 'MCP' },
-          { to: '/browser', glyph: '◗', label: '浏览器' },
-          { to: '/data', glyph: '⇄', label: '导入 / 导出' },
-          { to: '/settings', glyph: '⊙', label: 'Endpoints' },
-        ].map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={() => onNavigate?.()}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-5 py-2.5 text-[13px] transition ${
-                isActive
-                  ? 'bg-[rgba(176,138,204,0.08)] text-[#5a4060]'
-                  : 'text-[#7a6a82] hover:bg-[rgba(176,138,204,0.04)] hover:text-[#5a4060]'
-              }`
-            }
-            style={{ fontFamily: 'var(--font-serif)' }}
-          >
-            <span className="text-sm opacity-60">{item.glyph}</span>
-            {item.label}
-          </NavLink>
-        ))}
+      <div className="border-t border-lavender-100/70">
+        {/* Toggle button */}
+        <button
+          type="button"
+          onClick={toggleNav}
+          className="flex w-full items-center justify-between px-5 py-2.5 text-[12px] text-[#a090aa] transition hover:text-[#7a5a88]"
+          style={{ fontFamily: 'var(--font-serif)' }}
+          aria-label={navCollapsed ? '展开功能菜单' : '收起功能菜单'}
+        >
+          <span>功能</span>
+          {navCollapsed ? (
+            <ChevronUp size={12} strokeWidth={1.5} />
+          ) : (
+            <ChevronDown size={12} strokeWidth={1.5} />
+          )}
+        </button>
+
+        {/* Collapsible nav links */}
+        {!navCollapsed && (
+          <div className="pb-5">
+            {[
+              { to: '/home', glyph: '⌂', label: '玄関' },
+              { to: '/search', glyph: '⌕', label: '搜索' },
+              { to: '/circle', glyph: '○', label: 'OnlyCircle' },
+              { to: '/body', glyph: '♡', label: '身体' },
+              { to: '/billing', glyph: '¥', label: '账单' },
+              { to: '/personas', glyph: '◇', label: '人格' },
+              { to: '/books', glyph: '☷', label: '书架' },
+              { to: '/music', glyph: '♪', label: '音乐' },
+              { to: '/styles', glyph: '✦', label: '写作风格' },
+              { to: '/memory', glyph: '◎', label: '记忆' },
+              { to: '/mcp', glyph: '⌬', label: 'MCP' },
+              { to: '/browser', glyph: '◗', label: '浏览器' },
+              { to: '/data', glyph: '⇄', label: '导入 / 导出' },
+              { to: '/settings', glyph: '⊙', label: 'Endpoints' },
+            ].map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => onNavigate?.()}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-5 py-2 text-[13px] transition ${
+                    isActive
+                      ? 'bg-[rgba(176,138,204,0.08)] text-[#5a4060]'
+                      : 'text-[#7a6a82] hover:bg-[rgba(176,138,204,0.04)] hover:text-[#5a4060]'
+                  }`
+                }
+                style={{ fontFamily: 'var(--font-serif)' }}
+              >
+                <span className="text-sm opacity-60">{item.glyph}</span>
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
