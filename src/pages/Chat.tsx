@@ -180,46 +180,6 @@ export default function ChatPage() {
     });
   }
 
-  async function handleLetSpeak(speaker: import('../types').Persona) {
-    if (!conversation) return;
-    // Group chat: prefer the speaker's per-persona model override.
-    const override = conversation.personaModels?.[speaker.id];
-    const epToUse = override
-      ? endpoints?.find((e) => e.id === override.endpointId)
-      : selectedEndpoint();
-    const modelToUse = override?.model ?? model;
-    if (!epToUse || !modelToUse) return;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setStreamingText('');
-    setStreamingThinking('');
-    const others = (personas ?? []).filter(
-      (p) => (conversation.personaIds ?? []).includes(p.id) && p.id !== speaker.id,
-    );
-    await letPersonaSpeak({
-      conversation,
-      endpoint: epToUse,
-      model: modelToUse,
-      persona: speaker,
-      style: selectedStyle(),
-      groupOthers: others.length > 0 ? others : undefined,
-      signal: controller.signal,
-      onDelta: (delta, assistantId) => {
-        setStreamingId(assistantId);
-        setStreamingText((prev) => prev + delta);
-      },
-      onThinking: (delta, assistantId) => {
-        setStreamingId(assistantId);
-        setStreamingThinking((prev) => prev + delta);
-      },
-    });
-    setStreamingId(null);
-    setStreamingText('');
-    setStreamingThinking('');
-    abortRef.current = null;
-  }
-
   async function handleSend(text: string, attachments: Attachment[]) {
     if (!endpointId || !model) return;
     const ep = selectedEndpoint();
@@ -262,6 +222,51 @@ export default function ChatPage() {
       },
     });
 
+    setStreamingId(null);
+    setStreamingText('');
+    setStreamingThinking('');
+
+    // In group mode, automatically trigger every other persona to respond in turn.
+    if (isGroup(conv.personaIds) && personas) {
+      const allIds = conv.personaIds ?? [];
+      const otherPersonas = personas.filter(
+        (p) => allIds.includes(p.id) && p.id !== personaId,
+      );
+      for (const speaker of otherPersonas) {
+        if (controller.signal.aborted) break;
+        const override = conv.personaModels?.[speaker.id];
+        const epToUse = override
+          ? (endpoints?.find((e) => e.id === override.endpointId) ?? ep)
+          : ep;
+        const modelToUse = override?.model ?? model;
+        const speakerOthers = personas.filter(
+          (p) => allIds.includes(p.id) && p.id !== speaker.id,
+        );
+        setStreamingText('');
+        setStreamingThinking('');
+        await letPersonaSpeak({
+          conversation: conv,
+          endpoint: epToUse,
+          model: modelToUse,
+          persona: speaker,
+          style: selectedStyle(),
+          groupOthers: speakerOthers.length > 0 ? speakerOthers : undefined,
+          signal: controller.signal,
+          onDelta: (delta, assistantId) => {
+            setStreamingId(assistantId);
+            setStreamingText((prev) => prev + delta);
+          },
+          onThinking: (delta, assistantId) => {
+            setStreamingId(assistantId);
+            setStreamingThinking((prev) => prev + delta);
+          },
+        });
+        setStreamingId(null);
+        setStreamingText('');
+        setStreamingThinking('');
+      }
+    }
+
     await saveSettings({
       defaultEndpointId: ep.id,
       defaultModel: model,
@@ -269,9 +274,6 @@ export default function ChatPage() {
       defaultStyleId: styleId,
     });
 
-    setStreamingId(null);
-    setStreamingText('');
-    setStreamingThinking('');
     abortRef.current = null;
   }
 
@@ -456,15 +458,6 @@ export default function ChatPage() {
                 <MessageBubble
                   message={m}
                   accentColor={conversation?.accentColor ?? null}
-                  isGroup={isGroup(conversation?.personaIds)}
-                  groupMembers={
-                    isGroup(conversation?.personaIds) && personas
-                      ? personas.filter((p) =>
-                          (conversation?.personaIds ?? []).includes(p.id),
-                        )
-                      : undefined
-                  }
-                  onLetSpeak={(p) => handleLetSpeak(p)}
                   streamingText={
                     m.id === streamingId ? streamingText : undefined
                   }

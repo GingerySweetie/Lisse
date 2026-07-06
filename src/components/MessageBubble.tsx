@@ -16,7 +16,7 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react';
-import type { Attachment, Message, Persona, ToolCallRecord } from '../types';
+import type { Attachment, Message, ToolCallRecord } from '../types';
 import { getSiblingInfo, type SiblingInfo } from '../lib/branch';
 import { attachmentDataUrl, formatBytes } from '../lib/attachments';
 import { DEFAULT_ACCENT } from './AccentPicker';
@@ -29,12 +29,6 @@ interface Props {
   streamingThinking?: string;
   /** Disable interactive controls (during another stream). */
   disabled?: boolean;
-  /** Is this conversation a group chat? Toggles in-group affordances. */
-  isGroup?: boolean;
-  /** All persona members of the group (used to render 让 X 说 buttons). */
-  groupMembers?: Persona[];
-  /** Called when the user asks another persona to speak after this message. */
-  onLetSpeak?: (persona: Persona) => void;
   /** Conversation accent color used for the user bubble. Defaults to sky. */
   accentColor?: string | null;
   onEdit?: (newText: string) => void;
@@ -47,9 +41,6 @@ export default function MessageBubble({
   streamingText,
   streamingThinking,
   disabled,
-  isGroup,
-  groupMembers,
-  onLetSpeak,
   accentColor,
   onEdit,
   onRegenerate,
@@ -317,31 +308,6 @@ export default function MessageBubble({
                 <RefreshCw size={12} /> 重生成
               </button>
             )}
-            {!isUser &&
-              isGroup &&
-              groupMembers &&
-              onLetSpeak &&
-              groupMembers
-                .filter((p) => p.id !== message.personaId)
-                .map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => onLetSpeak(p)}
-                    disabled={disabled}
-                    className="msg-act"
-                    style={{ color: p.color }}
-                    title={`让 ${p.name} 说几句`}
-                  >
-                    <span
-                      className="flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-semibold text-white"
-                      style={{ background: p.color }}
-                    >
-                      {p.avatar}
-                    </span>
-                    让 {p.name}
-                  </button>
-                ))}
           </div>
         )}
       </div>
