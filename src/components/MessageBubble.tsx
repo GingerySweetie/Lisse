@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import {
   AlertCircle,
+  BookOpen,
   Brain,
   Check,
   ChevronDown,
@@ -174,6 +175,18 @@ export default function MessageBubble({
 
         {isUser && message.attachments && message.attachments.length > 0 && (
           <Attachments attachments={message.attachments} alignRight={true} />
+        )}
+
+        {/* Book anchor: show the quoted passage that the user was commenting on */}
+        {isUser && message.bookAnchor?.selection && (
+          <div className="flex justify-end">
+            <div className="mb-1 flex max-w-[85%] items-start gap-1.5 rounded-xl border border-lavender-200 bg-lavender-50/70 px-3 py-2 text-xs text-ink-600 shadow-sm">
+              <BookOpen size={12} className="mt-0.5 shrink-0 text-lavender-400" />
+              <blockquote className="m-0 line-clamp-3 italic leading-relaxed">
+                {message.bookAnchor.selection}
+              </blockquote>
+            </div>
+          </div>
         )}
 
         {(isUser || isError) && (

@@ -4,6 +4,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
+  Bookmark,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
@@ -16,6 +18,7 @@ import {
 import BookmarkTocPanel from '../components/BookmarkTocPanel';
 import { db, getSettings, saveSettings } from '../db';
 import {
+  addBookmark,
   extractExcerpt,
   getBookConversation,
   updateReadingPosition,
@@ -166,6 +169,29 @@ export default function ReadPage() {
 
   const [composer, setComposer] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
+
+  // Margin note (bookmark) dialog
+  const [bookmarkNote, setBookmarkNote] = useState('');
+  const [bookmarkSaving, setBookmarkSaving] = useState(false);
+  const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
+
+  async function handleAddBookmark() {
+    if (!book || !selection) return;
+    setBookmarkSaving(true);
+    try {
+      await addBookmark({
+        bookId: book.id,
+        position: selection.position,
+        snippet: selection.text,
+        note: bookmarkNote.trim() || undefined,
+      });
+    } finally {
+      setBookmarkSaving(false);
+      setBookmarkDialogOpen(false);
+      setBookmarkNote('');
+      setSelection(null);
+    }
+  }
 
   function openComposerWithSelection() {
     if (!selection) return;
@@ -400,8 +426,8 @@ export default function ReadPage() {
       </div>
 
       {/* Selection action bar */}
-      {selection && !composerOpen && (
-        <div className="fixed inset-x-0 bottom-20 z-30 mx-auto flex w-[min(92vw,28rem)] items-center justify-between gap-2 rounded-full border border-lavender-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur-md">
+      {selection && !composerOpen && !bookmarkDialogOpen && (
+        <div className="fixed inset-x-0 bottom-20 z-30 mx-auto flex w-[min(92vw,32rem)] items-center justify-between gap-2 rounded-full border border-lavender-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur-md">
           <span className="min-w-0 flex-1 truncate text-xs text-ink-500">
             「{selection.text}」
           </span>
@@ -415,12 +441,65 @@ export default function ReadPage() {
           </button>
           <button
             type="button"
+            onClick={() => setBookmarkDialogOpen(true)}
+            className="flex items-center gap-1 rounded-full bg-amber-100/80 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200/60 transition hover:bg-amber-200/80"
+            title="加书签 / 边注"
+          >
+            <Bookmark size={12} />
+            书签
+          </button>
+          <button
+            type="button"
             onClick={openComposerWithSelection}
             className="flex items-center gap-1 rounded-full bg-lavender-200/70 px-3 py-1 text-xs font-medium text-lavender-600 ring-1 ring-lavender-300/50 transition hover:bg-lavender-300/80 hover:text-ink-900"
           >
             <MessageSquarePlus size={13} />
             吐槽
           </button>
+        </div>
+      )}
+
+      {/* Margin note / bookmark dialog */}
+      {bookmarkDialogOpen && selection && (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-ink-900/20 backdrop-blur-sm md:items-center"
+          onClick={() => { setBookmarkDialogOpen(false); setBookmarkNote(''); }}
+        >
+          <div
+            className="w-full max-w-md rounded-t-2xl bg-white px-5 py-4 shadow-xl md:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-1 text-sm font-semibold text-ink-900">加边注</h3>
+            <div className="mb-3 max-h-20 overflow-y-auto rounded-lg border-l-2 border-amber-300 bg-amber-50/60 px-2 py-1 text-xs italic text-ink-700">
+              「{selection.text}」
+            </div>
+            <textarea
+              value={bookmarkNote}
+              onChange={(e) => setBookmarkNote(e.target.value)}
+              rows={3}
+              placeholder="写几句批注（可空）……"
+              className="w-full resize-none rounded-lg border border-lavender-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-lavender-300"
+              autoFocus
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setBookmarkDialogOpen(false); setBookmarkNote(''); }}
+                className="rounded-lg px-4 py-1.5 text-sm text-ink-500 hover:bg-lavender-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleAddBookmark}
+                disabled={bookmarkSaving}
+                className="flex items-center gap-1 rounded-lg bg-amber-200/80 px-4 py-1.5 text-sm font-medium text-amber-800 transition hover:bg-amber-300/80 disabled:opacity-50"
+              >
+                <Check size={14} />
+                {bookmarkSaving ? '保存中…' : '保存书签'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

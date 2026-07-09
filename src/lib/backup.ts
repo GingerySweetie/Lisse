@@ -2,6 +2,7 @@ import { db, getSettings, saveSettings } from '../db';
 import type {
   AppSettings,
   Book,
+  Bookmark,
   Conversation,
   Endpoint,
   McpServer,
@@ -25,6 +26,7 @@ export interface BackupBundle {
   memoryFacts?: MemoryFact[];
   writingStyles?: WritingStyle[];
   books?: Book[];
+  bookmarks?: Bookmark[];
   mcpServers?: McpServer[];
 }
 
@@ -38,6 +40,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     memoryFacts,
     writingStyles,
     books,
+    bookmarks,
     mcpServers,
   ] = await Promise.all([
     getSettings(),
@@ -48,6 +51,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     db.memoryFacts.toArray(),
     db.writingStyles.toArray(),
     db.books.toArray(),
+    db.bookmarks.toArray(),
     db.mcpServers.toArray(),
   ]);
   return {
@@ -62,6 +66,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     memoryFacts,
     writingStyles,
     books,
+    bookmarks,
     mcpServers,
   };
 }
@@ -79,6 +84,7 @@ export interface ImportBackupResult {
   memoryFactsAdded: number;
   writingStylesAdded: number;
   booksAdded: number;
+  bookmarksAdded: number;
   mcpServersAdded: number;
   settingsApplied: boolean;
 }
@@ -115,6 +121,7 @@ export async function importBackup(
         db.memoryFacts,
         db.writingStyles,
         db.books,
+        db.bookmarks,
         db.mcpServers,
         db.kv,
       ],
@@ -126,6 +133,7 @@ export async function importBackup(
         await db.memoryFacts.clear();
         await db.writingStyles.clear();
         await db.books.clear();
+        await db.bookmarks.clear();
         await db.mcpServers.clear();
         await db.kv.clear();
       },
@@ -140,6 +148,7 @@ export async function importBackup(
     memoryFactsAdded: 0,
     writingStylesAdded: 0,
     booksAdded: 0,
+    bookmarksAdded: 0,
     mcpServersAdded: 0,
     settingsApplied: false,
   };
@@ -154,6 +163,7 @@ export async function importBackup(
       db.memoryFacts,
       db.writingStyles,
       db.books,
+      db.bookmarks,
       db.mcpServers,
     ],
     async () => {
@@ -198,6 +208,12 @@ export async function importBackup(
         if (exists && opts.mode === 'merge') continue;
         await db.books.put(b);
         result.booksAdded++;
+      }
+      for (const bm of bundle.bookmarks ?? []) {
+        const exists = await db.bookmarks.get(bm.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.bookmarks.put(bm);
+        result.bookmarksAdded++;
       }
       for (const mcp of bundle.mcpServers ?? []) {
         const exists = await db.mcpServers.get(mcp.id);

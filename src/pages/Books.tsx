@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
   ChevronLeft,
+  MessageCircle,
   Plus,
   Trash2,
   Upload,
@@ -19,6 +20,16 @@ export default function BooksPage() {
     [],
     [],
   );
+  // For showing the co-reading badge: count messages per linked conversation.
+  const allMessages = useLiveQuery(() => db.messages.toArray(), [], []);
+
+  function getCoreadMessageCount(bookConversationId?: string): number {
+    if (!bookConversationId || !allMessages) return 0;
+    return allMessages.filter(
+      (m) => m.conversationId === bookConversationId && m.role !== 'system',
+    ).length;
+  }
+
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
 
@@ -89,11 +100,22 @@ export default function BooksPage() {
                     <BookOpen size={20} />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div
-                      className="truncate text-base font-normal tracking-wide text-ink-900"
-                      style={{ fontFamily: 'var(--font-serif)' }}
-                    >
-                      {b.title}
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="truncate text-base font-normal tracking-wide text-ink-900"
+                        style={{ fontFamily: 'var(--font-serif)' }}
+                      >
+                        {b.title}
+                      </div>
+                      {(() => {
+                        const count = getCoreadMessageCount(b.conversationId);
+                        return count > 0 ? (
+                          <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-lavender-100 px-2 py-0.5 text-[10px] font-medium text-lavender-600">
+                            <MessageCircle size={9} />
+                            共读 {count}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
                     <div className="text-xs font-light text-ink-500">
                       {b.author ? `${b.author} · ` : ''}
