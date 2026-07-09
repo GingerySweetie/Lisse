@@ -18,7 +18,9 @@ export interface Endpoint {
   thinkingBudget?: number;
   /** Use Anthropic's 1-hour cache TTL instead of the 5-minute default.
    *  2x cost per write, same 10% read price; pays off when conversations
-   *  pause > 5 min between turns. */
+   *  pause > 5 min between turns. Pairs well with proactiveNudge intervals
+   *  of several hours (e.g. the 5-hour default) where cache would otherwise
+   *  expire between turns. */
   cacheLongTTL?: boolean;
   /** AIHubMix-specific second credential: balance / quota queries need
    *  the Manage Key (separate from the chat API key). Other providers
@@ -178,6 +180,26 @@ export interface AppSettings {
    *  needs the user to tap the update banner — the app reloads itself
    *  as soon as the new version is detected. Default on. */
   autoApplyUpdate: boolean;
+
+  // ─── Proactive Nudge ───
+  /** Client-side scheduler that injects a [nudge] user message when the user
+   *  has been silent for intervalMin–intervalMax minutes. The nudge rides the
+   *  normal chat path so the model sees full context and memory. */
+  proactiveNudge?: {
+    /** Master switch. */
+    enabled: boolean;
+    /** Target conversation id. Empty string = use most-recently-updated
+     *  conversation (excluding bedroom / living-room rooms). */
+    conversationId: string;
+    /** Text appended after "[nudge] " before being sent as a user message. */
+    message: string;
+    /** Minimum silence minutes required before firing a nudge.
+     *  Default 300 (5 hours). */
+    intervalMin: number;
+    /** Upper bound for random interval. Same as intervalMin = fixed interval.
+     *  Default 300 (5 hours). */
+    intervalMax: number;
+  };
 
   // ─── Bill-capture source toggles ───
   /** Notification-listener path for Alipay + WeChat. Default ON. */
