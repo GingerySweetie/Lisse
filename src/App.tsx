@@ -115,7 +115,9 @@ export default function App() {
             position: 'fixed',
             left: 12,
             right: 12,
-            bottom: 80,
+            // Stack above any bottom safe-area (Android gesture bar) so the
+            // banner never hides under system chrome.
+            bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
             zIndex: 200,
             padding: 12,
             borderRadius: 12,

@@ -76,10 +76,17 @@ export default function UpdateBanner() {
 
   if (!needRefresh) return null;
 
+  // Sit above the transparent Android gesture-nav bar in edge-to-edge mode
+  // (safe-area-inset-bottom falls back to 0px in normal browsers).
+  const bottomStyle = {
+    bottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
+  } as const;
+
   if (autoApply) {
     return (
       <div
-        className={`pointer-events-none fixed inset-x-0 bottom-3 z-[100] mx-auto flex w-[min(92vw,22rem)] items-center justify-center gap-2 rounded-2xl border border-lavender-300 bg-white/95 px-4 py-3 shadow-lg backdrop-blur transition-all duration-200 ${
+        style={bottomStyle}
+        className={`pointer-events-none fixed inset-x-0 z-[100] mx-auto flex w-[min(92vw,22rem)] items-center justify-center gap-2 rounded-2xl border border-lavender-300 bg-white/95 px-4 py-3 shadow-lg backdrop-blur transition-all duration-200 ${
           visible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
         }`}
       >
@@ -91,7 +98,8 @@ export default function UpdateBanner() {
 
   return (
     <div
-      className={`pointer-events-auto fixed inset-x-0 bottom-3 z-[100] mx-auto flex w-[min(92vw,28rem)] items-center justify-between gap-2 rounded-2xl border border-lavender-300 bg-white/95 px-4 py-3 shadow-lg backdrop-blur transition-all duration-200 ${
+      style={bottomStyle}
+      className={`pointer-events-auto fixed inset-x-0 z-[100] mx-auto flex w-[min(92vw,28rem)] items-center justify-between gap-2 rounded-2xl border border-lavender-300 bg-white/95 px-4 py-3 shadow-lg backdrop-blur transition-all duration-200 ${
         visible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
       }`}
     >

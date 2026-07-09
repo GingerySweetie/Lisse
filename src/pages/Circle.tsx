@@ -979,7 +979,9 @@ const circleStyles = `
   max-width: 600px;
   background: var(--page, #fbf9fd);
   border-radius: 18px 18px 0 0;
-  padding: 14px 18px 22px;
+  /* Bottom padding: 22px baseline + Android gesture-nav safe area so the
+     send button doesn't hide behind the transparent gesture bar. */
+  padding: 14px 18px calc(22px + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 12px;

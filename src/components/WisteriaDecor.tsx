@@ -41,7 +41,9 @@ function Strand({ left, dots, stemHeight }: { left: number; dots: StrandDot[]; s
     <div
       style={{
         position: 'absolute',
-        top: 50,
+        // Anchor the strand's stem to just below the chat header, which grows
+        // by env(safe-area-inset-top) in edge-to-edge mode.
+        top: 'calc(50px + env(safe-area-inset-top, 0px))',
         left,
         display: 'flex',
         flexDirection: 'column',
@@ -129,7 +131,8 @@ export function LeafButton({ onClick }: { onClick: () => void }) {
       style={{
         position: 'absolute',
         right: 4,
-        top: 8,
+        // Push below the transparent Android status bar on edge-to-edge.
+        top: 'calc(8px + env(safe-area-inset-top, 0px))',
         width: 66,
         height: 140,
         zIndex: 20,

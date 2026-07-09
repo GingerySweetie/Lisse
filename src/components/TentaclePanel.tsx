@@ -54,6 +54,7 @@ export default function TentaclePanel({ theme: t, onClose }: Props) {
       <div
         style={{
           padding: '14px 16px 10px',
+          paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))',
           borderBottom: `1px solid ${t.bd}`,
           background: `${t.bg}dd`,
           backdropFilter: 'blur(16px)',
@@ -205,7 +206,7 @@ export default function TentaclePanel({ theme: t, onClose }: Props) {
         onClick={() => void afterkiss.emergencyStop()}
         style={{
           position: 'fixed',
-          bottom: 20,
+          bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
           right: 20,
           width: 64,
           height: 64,
