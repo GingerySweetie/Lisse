@@ -16,7 +16,12 @@ import {
   suggestedBackupFilename,
   type ImportBackupResult,
 } from '../lib/backup';
-import { importChatGPT, importClaude, type ImportResult } from '../lib/import';
+import {
+  importChatGPT,
+  importClaude,
+  importLisseConversation,
+  type ImportResult,
+} from '../lib/import';
 import {
   exportAllConversationsZip,
   exportPersonaMemoryMarkdown,
@@ -41,6 +46,7 @@ export default function ImportExportPage() {
 
   const [chatgptStatus, setChatgptStatus] = useState<Status>({ kind: 'idle' });
   const [claudeStatus, setClaudeStatus] = useState<Status>({ kind: 'idle' });
+  const [lisseStatus, setLisseStatus] = useState<Status>({ kind: 'idle' });
   const [backupStatus, setBackupStatus] = useState<Status>({ kind: 'idle' });
   const [bulkStatus, setBulkStatus] = useState<Status>({ kind: 'idle' });
   const [memoryExportStatus, setMemoryExportStatus] = useState<Status>({
@@ -92,6 +98,20 @@ export default function ImportExportPage() {
       setClaudeStatus({ kind: 'ok', label: summarizeImport(result) });
     } catch (err) {
       setClaudeStatus({
+        kind: 'fail',
+        label: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleLisse(file: File) {
+    setLisseStatus({ kind: 'busy', label: '解析中…' });
+    try {
+      const text = await readFile(file);
+      const result = await importLisseConversation(text);
+      setLisseStatus({ kind: 'ok', label: summarizeImport(result) });
+    } catch (err) {
+      setLisseStatus({
         kind: 'fail',
         label: err instanceof Error ? err.message : String(err),
       });
@@ -180,15 +200,17 @@ export default function ImportExportPage() {
 
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-6">
-          {/* ChatGPT/Claude import shared options */}
+          {/* ChatGPT/Claude/Lisse import shared options */}
           <section className="endpoint-card !mt-0">
             <h3 className="text-base font-semibold text-ink-900">
-              从 ChatGPT / Claude 导入
+              从 ChatGPT / Claude / Wisteria 导入
             </h3>
             <p className="mt-1 text-sm text-ink-500">
               先选好这次导入要绑定哪个人格、哪个 endpoint，下面再选文件。
               <br />
               已经导入过的同一对话会自动跳过（按原始 conversation id 判重）。
+              <br />
+              Wisteria JSON 导入支持从本应用导出的单条对话 JSON 文件（<code className="rounded bg-lavender-100 px-1">__lisse: "conversation"</code>）。
             </p>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -250,7 +272,7 @@ export default function ImportExportPage() {
               )}
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
               <FileButton
                 label="ChatGPT conversations.json"
                 accept=".json,application/json"
@@ -262,6 +284,12 @@ export default function ImportExportPage() {
                 accept=".json,application/json"
                 status={claudeStatus}
                 onPick={handleClaude}
+              />
+              <FileButton
+                label="Wisteria 对话 JSON"
+                accept=".json,application/json"
+                status={lisseStatus}
+                onPick={handleLisse}
               />
             </div>
           </section>
