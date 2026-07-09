@@ -235,7 +235,19 @@ export async function editUserMessage(opts: {
   });
 
   // Build prefix: walk from root to the message's parent (inclusive), then append new user.
-  const prefix = await getPrefixThrough(message.parentId);
+  // Wrap in try/catch so any failure here marks the assistant message as 'error'
+  // rather than leaving it stuck in 'streaming' forever.
+  let prefix: Message[];
+  try {
+    prefix = await getPrefixThrough(message.parentId);
+  } catch (e) {
+    await db.messages.update(newAssistant.id, {
+      status: 'error',
+      errorMessage: e instanceof Error ? e.message : '上下文构建失败',
+    });
+    throw e;
+  }
+
   await streamAssistant({
     assistantMessageId: newAssistant.id,
     endpoint,
