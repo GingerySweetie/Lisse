@@ -6,6 +6,8 @@ import type { ImportOptions, ImportResult } from './chatgpt';
 interface ClaudeContentBlock {
   type?: string;
   text?: string;
+  /** Claude extended-thinking block content (type === 'thinking'). */
+  thinking?: string;
 }
 
 interface ClaudeMessage {
@@ -103,7 +105,8 @@ async function importOneClaude(
   for (const m of chats) {
     const role = normalizeSender(m.sender);
     if (!role) continue;
-    const text = extractText(m);
+    const text = extractTextContent(m);
+    const thinking = extractThinking(m);
     const id = newId();
     messages.push({
       id,
@@ -111,6 +114,7 @@ async function importOneClaude(
       parentId,
       role,
       content: text,
+      ...(thinking ? { thinking } : {}),
       status: 'done',
       createdAt: parseTime(m.created_at) ?? Date.now(),
     });
@@ -153,18 +157,55 @@ function normalizeSender(sender: string | undefined): Role | null {
   return null;
 }
 
-function extractText(m: ClaudeMessage): string {
-  if (typeof m.text === 'string') return m.text;
+/**
+ * Extract the main text content from a Claude message.
+ * When the message has a structured content array (modern format), only
+ * `type === 'text'` blocks are included so that thinking blocks are NOT
+ * merged into the visible text.  Falls back to the top-level `m.text`
+ * string for older export formats that don't use typed blocks.
+ */
+function extractTextContent(m: ClaudeMessage): string {
   const c = m.content;
-  if (typeof c === 'string') return c;
   if (Array.isArray(c)) {
-    return c
-      .map((b) => (typeof b.text === 'string' ? b.text : ''))
+    // Modern format: pick only explicit text blocks.
+    const fromTextBlocks = c
+      .filter((b) => b.type === 'text' && typeof b.text === 'string')
+      .map((b) => b.text as string)
       .filter(Boolean)
       .join('\n')
       .trim();
+    if (fromTextBlocks) return fromTextBlocks;
+
+    // Fallback: blocks without a type field — treat their .text as content.
+    const untyped = c
+      .filter((b) => !b.type && typeof b.text === 'string')
+      .map((b) => b.text as string)
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (untyped) return untyped;
   }
+  if (typeof c === 'string') return c;
+  // Old-format messages only have a top-level text field.
+  if (typeof m.text === 'string') return m.text;
   return '';
+}
+
+/**
+ * Extract extended-thinking content from a Claude message.
+ * Returns the concatenated text of all `type === 'thinking'` blocks,
+ * or undefined when the message has no thinking blocks.
+ */
+function extractThinking(m: ClaudeMessage): string | undefined {
+  const c = m.content;
+  if (!Array.isArray(c)) return undefined;
+  const thinking = c
+    .filter((b) => b.type === 'thinking' && typeof b.thinking === 'string')
+    .map((b) => b.thinking as string)
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+  return thinking || undefined;
 }
 
 function parseTime(s: string | undefined): number | null {
