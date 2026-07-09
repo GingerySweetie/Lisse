@@ -698,7 +698,8 @@ export default function BedroomChatPage() {
       <div
         style={{
           flexShrink: 0,
-          padding: '8px 14px 18px',
+          padding: '8px 14px',
+          paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
           background: decorVariant
             ? 'transparent'
             : `linear-gradient(to top,${t.bg}f0 65%,transparent)`,
