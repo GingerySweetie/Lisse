@@ -1443,7 +1443,7 @@ function HcDiagSheet({
           maxHeight: '85vh',
           background: '#fff',
           borderRadius: '16px 16px 0 0',
-          padding: '18px 20px 24px',
+          padding: '18px 20px calc(24px + env(safe-area-inset-bottom, 0px))',
           overflowY: 'auto',
         }}
       >
@@ -1835,7 +1835,7 @@ function PeriodSheet({
           background: 'rgba(255,247,250,0.96)',
           borderTopLeftRadius: 22,
           borderTopRightRadius: 22,
-          padding: '18px 18px 22px',
+          padding: '18px 18px calc(22px + env(safe-area-inset-bottom, 0px))',
           maxHeight: '80vh',
           overflowY: 'auto',
           fontFamily: "-apple-system,'PingFang SC',sans-serif",

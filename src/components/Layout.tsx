@@ -80,10 +80,12 @@ export default function Layout() {
         style={{
           background:
             'linear-gradient(180deg, #f8f2fb 0%, #f3ecf6 40%, #f0e8f3 100%)',
-          // On edge-to-edge Android the aside extends to the very top of the
-          // viewport (behind the transparent status bar). Shift its contents
-          // down so they aren't hidden beneath the status bar icons.
+          // On edge-to-edge Android the aside extends across the whole
+          // viewport (behind the transparent status bar at top and the
+          // gesture-nav bar at bottom). Shift the contents in so they aren't
+          // hidden beneath the system chrome.
           paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         }}
       >
         <Sidebar onNavigate={() => setSidebarOpen(false)} />
