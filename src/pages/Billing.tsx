@@ -371,7 +371,8 @@ function SettingsPage({
       <div
         onClick={save}
         style={{
-          padding: '52px 32px 0',
+          padding: '16px 32px 0',
+          paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))',
           color: 'rgba(160,140,180,0.35)',
           fontSize: 16,
           cursor: 'pointer',
@@ -584,7 +585,7 @@ export default function BillingPage() {
         onClick={() => setPage('settings')}
         style={{
           position: 'absolute',
-          top: 48,
+          top: 'calc(48px + env(safe-area-inset-top, 0px))',
           right: 36,
           padding: '8px 12px',
           margin: '-8px -12px',

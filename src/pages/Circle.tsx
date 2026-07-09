@@ -669,6 +669,7 @@ const circleStyles = `
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   padding: 14px 16px 12px;
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
   background: linear-gradient(180deg, var(--page) 70%, transparent 100%);
   backdrop-filter: blur(8px);
 }

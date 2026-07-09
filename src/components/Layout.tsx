@@ -78,6 +78,10 @@ export default function Layout() {
         style={{
           background:
             'linear-gradient(180deg, #f8f2fb 0%, #f3ecf6 40%, #f0e8f3 100%)',
+          // On edge-to-edge Android the aside extends to the very top of the
+          // viewport (behind the transparent status bar). Shift its contents
+          // down so they aren't hidden beneath the status bar icons.
+          paddingTop: 'env(safe-area-inset-top, 0px)',
         }}
       >
         <Sidebar onNavigate={() => setSidebarOpen(false)} />
