@@ -202,79 +202,90 @@ export default function ChatPage() {
     setStreamingText('');
     setStreamingThinking('');
 
-    await sendMessage({
-      conversation: conv,
-      endpoint: ep,
-      model,
-      userText: text,
-      attachments,
-      persona: selectedPersona(),
-      style: selectedStyle(),
-      groupOthers: groupOthers(),
-      signal: controller.signal,
-      onDelta: (delta, assistantId) => {
-        setStreamingId(assistantId);
-        setStreamingText((prev) => prev + delta);
-      },
-      onThinking: (delta, assistantId) => {
-        setStreamingId(assistantId);
-        setStreamingThinking((prev) => prev + delta);
-      },
-    });
+    try {
+      await sendMessage({
+        conversation: conv,
+        endpoint: ep,
+        model,
+        userText: text,
+        attachments,
+        persona: selectedPersona(),
+        style: selectedStyle(),
+        groupOthers: groupOthers(),
+        signal: controller.signal,
+        onDelta: (delta, assistantId) => {
+          setStreamingId(assistantId);
+          setStreamingText((prev) => prev + delta);
+        },
+        onThinking: (delta, assistantId) => {
+          setStreamingId(assistantId);
+          setStreamingThinking((prev) => prev + delta);
+        },
+      });
 
-    setStreamingId(null);
-    setStreamingText('');
-    setStreamingThinking('');
+      setStreamingId(null);
+      setStreamingText('');
+      setStreamingThinking('');
 
-    // In group mode, automatically trigger every other persona to respond in turn.
-    if (isGroup(conv.personaIds) && personas) {
-      const allIds = conv.personaIds ?? [];
-      const otherPersonas = personas.filter(
-        (p) => allIds.includes(p.id) && p.id !== personaId,
-      );
-      for (const speaker of otherPersonas) {
-        if (controller.signal.aborted) break;
-        const override = conv.personaModels?.[speaker.id];
-        const epToUse = override
-          ? (endpoints?.find((e) => e.id === override.endpointId) ?? ep)
-          : ep;
-        const modelToUse = override?.model ?? model;
-        const speakerOthers = personas.filter(
-          (p) => allIds.includes(p.id) && p.id !== speaker.id,
+      // In group mode, automatically trigger every other persona to respond in turn.
+      if (isGroup(conv.personaIds) && personas) {
+        const allIds = conv.personaIds ?? [];
+        const otherPersonas = personas.filter(
+          (p) => allIds.includes(p.id) && p.id !== personaId,
         );
-        setStreamingText('');
-        setStreamingThinking('');
-        await letPersonaSpeak({
-          conversation: conv,
-          endpoint: epToUse,
-          model: modelToUse,
-          persona: speaker,
-          style: selectedStyle(),
-          groupOthers: speakerOthers.length > 0 ? speakerOthers : undefined,
-          signal: controller.signal,
-          onDelta: (delta, assistantId) => {
-            setStreamingId(assistantId);
-            setStreamingText((prev) => prev + delta);
-          },
-          onThinking: (delta, assistantId) => {
-            setStreamingId(assistantId);
-            setStreamingThinking((prev) => prev + delta);
-          },
-        });
-        setStreamingId(null);
-        setStreamingText('');
-        setStreamingThinking('');
+        for (const speaker of otherPersonas) {
+          if (controller.signal.aborted) break;
+          const override = conv.personaModels?.[speaker.id];
+          const epToUse = override
+            ? (endpoints?.find((e) => e.id === override.endpointId) ?? ep)
+            : ep;
+          const modelToUse = override?.model ?? model;
+          const speakerOthers = personas.filter(
+            (p) => allIds.includes(p.id) && p.id !== speaker.id,
+          );
+          setStreamingText('');
+          setStreamingThinking('');
+          await letPersonaSpeak({
+            conversation: conv,
+            endpoint: epToUse,
+            model: modelToUse,
+            persona: speaker,
+            style: selectedStyle(),
+            groupOthers: speakerOthers.length > 0 ? speakerOthers : undefined,
+            signal: controller.signal,
+            onDelta: (delta, assistantId) => {
+              setStreamingId(assistantId);
+              setStreamingText((prev) => prev + delta);
+            },
+            onThinking: (delta, assistantId) => {
+              setStreamingId(assistantId);
+              setStreamingThinking((prev) => prev + delta);
+            },
+          });
+          setStreamingId(null);
+          setStreamingText('');
+          setStreamingThinking('');
+        }
+      }
+
+      await saveSettings({
+        defaultEndpointId: ep.id,
+        defaultModel: model,
+        defaultPersonaId: personaId,
+        defaultStyleId: styleId,
+      });
+    } catch (e) {
+      console.error('[send] 发送失败:', e);
+    } finally {
+      setStreamingId(null);
+      setStreamingText('');
+      setStreamingThinking('');
+      // Only clear abortRef if it still points to OUR controller — handleEdit
+      // may have already installed a new controller while we were awaiting.
+      if (abortRef.current === controller) {
+        abortRef.current = null;
       }
     }
-
-    await saveSettings({
-      defaultEndpointId: ep.id,
-      defaultModel: model,
-      defaultPersonaId: personaId,
-      defaultStyleId: styleId,
-    });
-
-    abortRef.current = null;
   }
 
   function handleAbort() {
@@ -344,28 +355,35 @@ export default function ChatPage() {
     abortRef.current = controller;
     setStreamingText('');
     setStreamingThinking('');
-    await regenerateAssistant({
-      conversation,
-      message,
-      endpoint: ep,
-      model,
-      persona: selectedPersona(),
-      style: selectedStyle(),
-      groupOthers: groupOthers(),
-      signal: controller.signal,
-      onDelta: (delta, assistantId) => {
-        setStreamingId(assistantId);
-        setStreamingText((prev) => prev + delta);
-      },
-      onThinking: (delta, assistantId) => {
-        setStreamingId(assistantId);
-        setStreamingThinking((prev) => prev + delta);
-      },
-    });
-    setStreamingId(null);
-    setStreamingText('');
-    setStreamingThinking('');
-    abortRef.current = null;
+    try {
+      await regenerateAssistant({
+        conversation,
+        message,
+        endpoint: ep,
+        model,
+        persona: selectedPersona(),
+        style: selectedStyle(),
+        groupOthers: groupOthers(),
+        signal: controller.signal,
+        onDelta: (delta, assistantId) => {
+          setStreamingId(assistantId);
+          setStreamingText((prev) => prev + delta);
+        },
+        onThinking: (delta, assistantId) => {
+          setStreamingId(assistantId);
+          setStreamingThinking((prev) => prev + delta);
+        },
+      });
+    } catch (e) {
+      console.error('[regenerate] 重生成失败:', e);
+    } finally {
+      setStreamingId(null);
+      setStreamingText('');
+      setStreamingThinking('');
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
+    }
   }
 
   async function handleSwitchSibling(newActiveId: string) {

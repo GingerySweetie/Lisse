@@ -71,7 +71,7 @@ export default function MessageBubble({
   }
   function saveEdit() {
     const t = draft.trim();
-    if (!t || t === message.content) {
+    if (!t) {
       setEditing(false);
       return;
     }
