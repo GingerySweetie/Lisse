@@ -1,7 +1,10 @@
 package com.gingery.wisteria
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.getcapacitor.BridgeActivity
 import com.gingery.wisteria.plugins.AccessibilityCapturePlugin
 import com.gingery.wisteria.plugins.BillSnifferPlugin
@@ -21,6 +24,16 @@ class MainActivity : BridgeActivity() {
         registerPlugin(AccessibilityCapturePlugin::class.java)
         registerPlugin(InAppBrowserPlugin::class.java)
         super.onCreate(savedInstanceState)
+
+        // Edge-to-edge: let the WebView draw behind the transparent status bar.
+        // WindowCompat handles the API-level differences (pre-30 flag dance,
+        // API-35 enforcement) so we only need one call.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        @Suppress("DEPRECATION")
+        window.statusBarColor = Color.TRANSPARENT
+        // Dark status-bar icons suit the app's light lavender palette.
+        WindowInsetsControllerCompat(window, window.decorView)
+            .isAppearanceLightStatusBars = true
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -174,6 +174,21 @@ browser_activity = """        <activity
 if "InAppBrowserActivity" not in src:
     src = re.sub(r'(\s*</application>)', '\n' + browser_activity + r'\1', src, count=1)
 
+# Edge-to-edge: allow content to extend into display cutouts (notches /
+# punch-holes). "shortEdges" lets the WebView render up to the cutout on
+# the short edges (top/bottom), which is the standard immersive-status-bar
+# mode. This attribute is a no-op on pre-API-28 devices.
+if 'windowLayoutInDisplayCutoutMode' not in src:
+    # The MainActivity opening tag may span multiple lines; use DOTALL so
+    # [^>] also matches newlines inside the tag.
+    src = re.sub(
+        r'(<activity\b(?:(?!>).)*?android:name="[^"]*MainActivity[^"]*"(?:(?!>).)*?)>',
+        r'\1\n            android:windowLayoutInDisplayCutoutMode="shortEdges">',
+        src,
+        count=1,
+        flags=re.DOTALL,
+    )
+
 open(p, 'w').write(src)
 PY
 

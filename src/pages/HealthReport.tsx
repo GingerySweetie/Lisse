@@ -50,6 +50,7 @@ export default function HealthReportPage() {
           alignItems: 'center',
           gap: 12,
           padding: '14px 16px 12px',
+          paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))',
         }}
       >
         <Link

@@ -51,6 +51,8 @@
 .st-inner {
   max-width: 430px; margin: 0 auto;
   padding: 0 24px 60px;
+  /* Shift content below the transparent status bar on edge-to-edge Android. */
+  padding-top: env(safe-area-inset-top, 0px);
   position: relative; z-index: 1;
 }
 .st.in-frame .st-inner { padding-top: 0; }

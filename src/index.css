@@ -893,6 +893,8 @@
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--line-soft);
+  /* Push content below the transparent status bar on edge-to-edge Android. */
+  padding-top: env(safe-area-inset-top, 0px);
 }
 
 .empty-state-flower {
@@ -1350,6 +1352,9 @@
 
 .wis-chat-header {
   padding: 13px 16px;
+  /* On edge-to-edge Android the status bar overlays the header; add its
+     height as extra top padding so the title doesn't hide behind it. */
+  padding-top: calc(13px + env(safe-area-inset-top, 0px));
   display: flex;
   align-items: center;
   justify-content: space-between;

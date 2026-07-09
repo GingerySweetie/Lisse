@@ -59,6 +59,7 @@ export default function BedroomPickerPage() {
           display: 'flex',
           alignItems: 'center',
           padding: '14px 18px 10px',
+          paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))',
           borderBottom: '1px solid rgba(160,140,190,0.06)',
         }}
       >
