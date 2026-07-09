@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft, Brain } from 'lucide-react';
+import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft, Brain, Bell } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db, getSettings, saveSettings } from '../db';
 import type { Endpoint, EndpointFormat } from '../types';
@@ -74,10 +74,144 @@ export default function SettingsPage() {
           )}
 
           <MemorySettings />
+          <ProactiveNudgeSettings />
           <AppMaintenance />
         </div>
       </div>
     </div>
+  );
+}
+
+function ProactiveNudgeSettings() {
+  const settings = useLiveQuery(() => getSettings(), [], null);
+  const conversations = useLiveQuery(
+    () =>
+      db.conversations
+        .orderBy('updatedAt')
+        .reverse()
+        .filter((c) => !c.room)
+        .toArray(),
+    [],
+    [],
+  );
+
+  if (!settings) return null;
+  const cfg = settings.proactiveNudge ?? {
+    enabled: false,
+    conversationId: '',
+    message: '',
+    intervalMin: 300,
+    intervalMax: 300,
+  };
+
+  async function update(patch: Partial<NonNullable<typeof cfg>>) {
+    await saveSettings({ proactiveNudge: { ...cfg, ...patch } });
+  }
+
+  return (
+    <section className="mt-6 rounded-2xl border border-lavender-200 bg-white/55 p-5 shadow-sm backdrop-blur-sm">
+      <h3 className="flex items-center gap-2 text-base font-semibold text-ink-900">
+        <Bell size={18} className="text-lavender-600" />
+        主动消息（Proactive Nudge）
+      </h3>
+      <p className="mt-1 text-sm text-ink-500">
+        静默超过设定时间后，自动向指定对话注入一条{' '}
+        <code className="rounded bg-lavender-50 px-1 text-xs">[nudge]</code>{' '}
+        用户消息，让模型按完整上下文主动找你说话。
+        <br />
+        建议在角色的 system prompt 里加一段说明：
+        <em className="ml-1 not-italic text-ink-700">
+          「以 [nudge] 开头的消息是自动注入的，不是用户本人刚打的，请自然地主动找用户说话，不要提系统、注入或 [nudge]。」
+        </em>
+      </p>
+
+      <label className="mt-4 flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={cfg.enabled}
+          onChange={(e) => update({ enabled: e.target.checked })}
+          className="h-4 w-4 accent-lavender-400"
+        />
+        <span className="text-sm text-ink-900">启用主动消息</span>
+      </label>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm md:col-span-2">
+          <span className="text-xs font-medium text-ink-500">
+            目标对话（留空 = 自动选最近对话）
+          </span>
+          <select
+            value={cfg.conversationId}
+            onChange={(e) => update({ conversationId: e.target.value })}
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+          >
+            <option value="">自动（最近对话）</option>
+            {conversations?.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.title || `对话 ${c.id.slice(0, 8)}`}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            最短静默（分钟）
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={1440}
+            value={cfg.intervalMin}
+            onChange={(e) =>
+              update({ intervalMin: Math.max(1, Number(e.target.value) || 300) })
+            }
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            最长随机间隔（分钟，≥ 最短）
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={1440}
+            value={cfg.intervalMax}
+            onChange={(e) =>
+              update({
+                intervalMax: Math.max(
+                  cfg.intervalMin,
+                  Number(e.target.value) || 300,
+                ),
+              })
+            }
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+          />
+          <span className="text-[11px] font-light text-ink-500">
+            与最短相同 = 固定间隔；大于最短 = 在两者之间随机。默认 300 分钟（5 小时）。
+          </span>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm md:col-span-2">
+          <span className="text-xs font-medium text-ink-500">
+            注入文案（到点后以 [nudge] … 发出）
+          </span>
+          <textarea
+            value={cfg.message}
+            onChange={(e) => update({ message: e.target.value })}
+            rows={3}
+            placeholder="已经有一段时间没说话了，可以自然地来找我说话。"
+            className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 text-sm focus:border-lavender-300"
+          />
+          <span className="text-[11px] font-light text-ink-500">
+            这段话不是直接发给你的——它是注入进对话的用户消息，模型会以这段话为起点生成回复。
+            可以是简单提醒，也可以写成调用工具的指令。
+          </span>
+        </label>
+      </div>
+    </section>
   );
 }
 
@@ -999,13 +1133,14 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
                   className="h-4 w-4 accent-lavender-500"
                 />
                 <span className="text-ink-900">
-                  使用 1 小时缓存（适合慢节奏聊天）
+                  使用 1 小时缓存（适合慢节奏聊天 / 主动消息场景）
                 </span>
               </label>
               <p className="mt-1 text-xs text-ink-500">
                 默认 5 分钟。开启后，缓存写入费用从 1.25x 升到 2x 普通 input，
-                但读取仍是 10% —— 离开 10 分钟回来不用重写缓存。
-                聊天频率每天数次、每次间隔较长（上班 / 排班期间）建议开。
+                但读取仍是 10% —— 离开超过 5 分钟回来不用重写缓存。
+                聊天频率每天数次、每次间隔较长（上班 / 排班期间）或开启了主动消息（5
+                小时静默间隔）时建议开。目前 Anthropic 最长支持 1 小时 TTL。
               </p>
             </div>
           )}

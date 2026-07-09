@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import ErrorBoundary from './ErrorBoundary';
 import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
+import { bootstrapProactiveNudge } from '../lib/proactive-nudge';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -10,6 +11,7 @@ export default function Layout() {
 
   useEffect(() => {
     bootstrapBehavior();
+    bootstrapProactiveNudge();
     function onVis() {
       recordVisibilityChange();
     }
