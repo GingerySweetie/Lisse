@@ -1475,11 +1475,12 @@
 
 /* Composer */
 .wis-composer-wrap {
-  padding: 8px 14px 20px;
-  border-top: 1px solid hsla(270, 22%, 80%, 0.22);
-  background: hsla(270, 20%, 95%, 0.35);
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  padding: 8px 14px;
+  /* Push content above the Android / iOS system navigation bar.
+     env(safe-area-inset-bottom) is non-zero on edge-to-edge devices. */
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  /* Transparent so the chat-page gradient shows through — no white bar. */
+  background: transparent;
   flex-shrink: 0;
 }
 .wis-tags-row {
