@@ -342,6 +342,44 @@ export function extractExcerpt(
   return slice;
 }
 
+/**
+ * Extract the last `maxChars` characters of text UP TO (not past) the
+ * current reading position — the "already-read" window.
+ *
+ * Used for the spoiler-safe co-reading context: we give the AI everything
+ * the user has already read (capped to avoid bloating the prompt) so it can
+ * engage with the real text, while never seeing content beyond the bookmark.
+ */
+export function extractReadSoFar(
+  content: string,
+  position: number,
+  maxChars = 3000,
+): string {
+  const clampedPos = Math.max(0, Math.min(content.length, position));
+  const start = Math.max(0, clampedPos - maxChars);
+  let slice = content.slice(start, clampedPos).trim();
+  if (start > 0) slice = '…' + slice;
+  return slice;
+}
+
+/**
+ * Return bookmarks for a book that fall within the already-read portion
+ * (position ≤ readPosition), sorted newest-first, capped to `limit`.
+ * Used to inject margin notes into the co-reading AI context.
+ */
+export async function getMarginNotesForContext(
+  bookId: string,
+  readPosition: number,
+  limit = 8,
+): Promise<Bookmark[]> {
+  const all = await db.bookmarks
+    .where({ bookId })
+    .filter((bm) => bm.position <= readPosition)
+    .reverse()
+    .sortBy('position');
+  return all.slice(0, limit);
+}
+
 function guessFormat(title: string, content: string): 'txt' | 'md' {
   if (/\.md$/i.test(title)) return 'md';
   // Heuristic: lots of markdown-style headers.
