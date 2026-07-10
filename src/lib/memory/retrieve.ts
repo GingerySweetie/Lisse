@@ -39,7 +39,7 @@ export async function retrieveFacts(
   const pinned = allFacts.filter((f) => f.pinned);
   const candidates = allFacts.filter((f) => !f.pinned);
 
-  let scored: RetrievedFact[] = pinned.map((f) => ({
+  const scored: RetrievedFact[] = pinned.map((f) => ({
     fact: f,
     score: 1,
     pinned: true,
@@ -94,6 +94,32 @@ export function formatFactsBlock(facts: RetrievedFact[]): string {
     return `- ${tag}${f.fact.text}`;
   });
   return `# 你已经知道的事（关于她，关于你们）\n${lines.join('\n')}\n\n这些是你之前积累的记忆，不是现在新听到的。请自然地用，不要刻意复述。`;
+}
+
+/**
+ * Fetch a persona's pinned facts (long-term memory) with DETERMINISTIC
+ * ordering. Pinned facts change only when the user pins/unpins, so they are
+ * stable enough to live in a cached system block — but the cache prefix is
+ * matched byte-for-byte, so the ordering must be identical on every request.
+ * We sort by createdAt then id; DB iteration order alone is not guaranteed.
+ */
+export async function getPinnedFacts(personaId: string): Promise<MemoryFact[]> {
+  const pinned = await db.memoryFacts
+    .where({ personaId })
+    .filter((f) => !!f.pinned && !f.archived)
+    .toArray();
+  pinned.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  return pinned;
+}
+
+/**
+ * Format pinned facts as the stable "long-term memory" system layer.
+ * (The tutorial puts 长期记忆 inside BP1 — cached, not re-sent uncached.)
+ */
+export function formatPinnedFactsBlock(facts: MemoryFact[]): string {
+  if (facts.length === 0) return '';
+  const lines = facts.map((f) => `- ${f.text}`);
+  return `# 长期记忆（关于她，关于你们，一直记得的事）\n${lines.join('\n')}\n\n这些是你长期积累、反复确认过的记忆。请自然地用，不要刻意复述。`;
 }
 
 export async function checkEndpointSupportsEmbedding(ep: Endpoint): Promise<boolean> {

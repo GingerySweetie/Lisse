@@ -1,6 +1,8 @@
 export {
   retrieveFacts,
   formatFactsBlock,
+  getPinnedFacts,
+  formatPinnedFactsBlock,
   checkEndpointSupportsEmbedding,
   type RetrievedFact,
   type RetrieveOptions,
