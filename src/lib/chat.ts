@@ -15,6 +15,8 @@ import { type ChatTurn } from '../api';
 import {
   retrieveFacts,
   formatFactsBlock,
+  getPinnedFacts,
+  formatPinnedFactsBlock,
   extractAndStoreFacts,
 } from './memory';
 import { availableTools, type Tool } from './tools';
@@ -456,13 +458,33 @@ async function streamAssistant(args: {
     }
   }
 
-  // Memory retrieval: scoped to current persona, keyed off latest user message.
+  // Memory is split in two by cache stability:
+  //
+  //   • PINNED facts (long-term memory) — change only when the user pins /
+  //     unpins. Deterministically ordered → byte-stable across turns → they
+  //     live in a CACHED system layer (the tutorial puts 长期记忆 in BP1).
+  //   • Query-scored facts — semantic search keyed off the current user
+  //     message, different every turn → volatile zone after BP4.
+  //
+  // Fetching pinned facts does NOT depend on lastUser: the layer must be
+  // present on every request of the conversation (appearing/disappearing
+  // between requests would shift the prefix and bust the message cache).
+  let pinnedMemoryBlock = '';
+  if (persona) {
+    try {
+      pinnedMemoryBlock = formatPinnedFactsBlock(await getPinnedFacts(persona.id));
+    } catch {
+      pinnedMemoryBlock = '';
+    }
+  }
+
   let memoryBlock = '';
   const lastUser = [...branch].reverse().find((m) => m.role === 'user');
   if (persona && lastUser?.content) {
     try {
       const facts = await retrieveFacts(persona.id, lastUser.content);
-      memoryBlock = formatFactsBlock(facts);
+      // Pinned facts already live in the cached system layer above.
+      memoryBlock = formatFactsBlock(facts.filter((f) => !f.pinned));
     } catch {
       memoryBlock = '';
     }
@@ -482,9 +504,14 @@ async function streamAssistant(args: {
   // BP1: persona system prompt — almost never changes
   // BP2: writing style — changes only when the user switches style, stays
   //      byte-identical across every turn of the same conversation.
-  // BP3: group awareness snippet — stable for the duration of a group session
+  // BP3: pinned long-term memory — changes only on pin/unpin, deterministic
+  //      ordering keeps it byte-stable (tutorial: 长期记忆 lives in BP1).
+  // 4th+ system layers (group awareness) are merged untagged — still cached,
+  //      because the rolling message breakpoint (BP4) covers everything
+  //      before it anyway; the system tags only matter as fallback
+  //      boundaries when messages change.
   //
-  // WHY style is in BP2 (not the tail):
+  // WHY style is in system (not the tail):
   //   The tail approach puts the *full* style text in the uncached zone every
   //   turn.  On a fresh two-turn conversation that adds ~1 000 uncached tokens
   //   and drops the hit rate from ~90 % to ~78–80 %.  The tutorial puts
@@ -510,7 +537,12 @@ async function streamAssistant(args: {
   if (style && style.prompt.trim()) {
     turns.push({ role: 'system', content: `# 写作风格\n${style.prompt.trim()}` });
   }
-  // BP3: group-awareness — stable for the duration of a group session.
+  // BP3: pinned long-term memory — stable, deterministic ordering.
+  if (pinnedMemoryBlock) {
+    turns.push({ role: 'system', content: pinnedMemoryBlock });
+  }
+  // Group-awareness — stable per group session. May land beyond the 3rd
+  // system slot; then it's merged untagged, which is fine (see note above).
   if (persona && groupOthers && groupOthers.length > 0) {
     turns.push({ role: 'system', content: groupAwarenessSnippet(persona, groupOthers) });
   }

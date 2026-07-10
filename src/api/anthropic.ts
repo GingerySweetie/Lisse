@@ -82,7 +82,9 @@ function buildAnthropicContent(
  * Expected ordering from chat.ts (most-stable → least-stable):
  *   [0] BP1: persona                     (almost never changes)
  *   [1] BP2: writing style               (stable per conversation)
- *   [2] BP3: group awareness             (stable per group session)
+ *   [2] BP3: pinned long-term memory     (changes only on pin/unpin)
+ * Extra stable layers (e.g. group awareness) merge untagged after BP3 and
+ * are still covered by the rolling message breakpoint.
  * Volatile content (memory recall, current time, health) + a fixed one-line
  * style nudge live inside the current user message — after every breakpoint.
  *
@@ -127,39 +129,52 @@ function buildSystemBlocks(
 }
 
 /**
- * Attach a rolling cache_control breakpoint to the second-to-last USER
- * message's last content block. This extends the cache boundary over all
- * prior conversation history — the main driver of high hit rates.
+ * Attach the rolling cache_control breakpoint (BP4) to the LAST history
+ * message — the message immediately before the final one.
  *
- * We scan backwards to find the second user message from the end because in a
- * normal conversation the array looks like:
+ * The final message is this turn's fresh input (volatile context + new user
+ * text): tagging it would write a prefix that never matches again. But
+ * EVERYTHING before it is immutable history, so the optimal boundary is the
+ * very end of that history:
+ *
  *   [..., user_prev, assistant_last, user_current]
- * messages[-2] is the assistant turn, not a user message — so a simple index
- * check would silently skip BP4 on every multi-turn conversation.
+ *                    ↑ BP4 here          ↑ never tagged
+ *
+ * Compared to tagging the second-to-last USER message, this pulls the whole
+ * previous assistant reply (typically the largest per-turn item) into the
+ * cache-read region — each turn reads one extra assistant reply from cache,
+ * pushing long-conversation hit rates toward 98%+.
+ *
+ * Bonus: in tool loops, continuation rounds end with
+ * [..., user_current, assistant_tool_use, user_tool_result] — the boundary
+ * then lands on assistant_tool_use, so subsequent rounds within the same
+ * turn re-read the (large) current context instead of re-paying for it.
+ *
+ * We skip empty text blocks (the API rejects cache_control on them) and walk
+ * further back if an entire message has no taggable block.
  */
 function attachRollingBreakpoint(
   messages: Array<{ role: string; content: unknown }>,
   cacheControl: { type: 'ephemeral'; ttl?: '5m' | '1h' },
 ) {
-  let userCount = 0;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role !== 'user') continue;
-    userCount++;
-    if (userCount < 2) continue;
-
-    // This is the second-to-last user message — attach BP4 here.
+  for (let i = messages.length - 2; i >= 0; i--) {
     const target = messages[i];
-    if (Array.isArray(target.content) && target.content.length > 0) {
-      const last = target.content[target.content.length - 1];
-      if (last && typeof last === 'object') {
-        (last as Record<string, unknown>).cache_control = cacheControl;
+    if (Array.isArray(target.content)) {
+      for (let j = target.content.length - 1; j >= 0; j--) {
+        const blk = target.content[j] as Record<string, unknown> | null;
+        if (!blk || typeof blk !== 'object') continue;
+        // cache_control is invalid on empty text blocks.
+        if (blk.type === 'text' && !blk.text) continue;
+        blk.cache_control = cacheControl;
+        return;
       }
     } else if (typeof target.content === 'string' && target.content) {
       target.content = [
         { type: 'text', text: target.content as string, cache_control: cacheControl },
       ];
+      return;
     }
-    return;
+    // No taggable block in this message — try the one before it.
   }
 }
 
@@ -185,7 +200,7 @@ export async function* streamAnthropic(
   //
   // BP1: persona (almost never changes) → cache_control
   // BP2: writing style (stable per conversation) → cache_control
-  // BP3: group awareness (stable per group session) → cache_control
+  // BP3: pinned long-term memory (changes only on pin/unpin) → cache_control
   // BP4: rolling message cache on second-to-last user message
   // Volatile data (memory, time, health) + fixed style nudge ride inside
   // the CURRENT user message — after all breakpoints, never cached.
@@ -216,11 +231,10 @@ export async function* streamAnthropic(
     req.messages.filter((m) => m.role !== 'system'),
   );
 
-  // BP4 — rolling breakpoint on second-to-last user message.
-  // This extends the cache boundary to cover all prior history. The
-  // last user message is the current question (always new), so tagging
-  // it would never hit. Tagging the one before it means "everything up
-  // to this turn is cached" — the main driver of 96% hit rates.
+  // BP4 — rolling breakpoint at the very end of history (the message just
+  // before the current user input). Everything before this turn's fresh
+  // input is immutable, so the cache boundary covers ALL history including
+  // the previous assistant reply — the main driver of 96%+ hit rates.
   attachRollingBreakpoint(messages, cacheControl);
 
   // Extended thinking: when enabled, thinking deltas come in their own block
@@ -403,9 +417,9 @@ export async function* streamAnthropic(
   const hitRate = total > 0 ? Math.round((read / total) * 100) : 0;
   const cachedPct = total > 0 ? Math.round((cached / total) * 100) : 0;
 
-  // Count user messages to determine if BP4 fired.
-  const userMsgCount = messages.filter((m) => m.role === 'user').length;
-  const bp4Applied = userMsgCount >= 2;
+  // BP4 fires whenever there is at least one history message before the
+  // current input (i.e. any request beyond the very first turn).
+  const bp4Applied = messages.length >= 2;
 
   console.groupCollapsed(
     `💾 Cache | model=${req.model} | ${hitRate}% hit | ${cachedPct}% cached`,
@@ -419,7 +433,7 @@ export async function* streamAnthropic(
   console.log('TTL mode                       =', use1h ? '1h long TTL' : '5m default TTL');
   console.log('sticky user_id                 =', 'lisse-stable-user');
   console.log('system breakpoints (BP1–BP3)   =', system.filter((b) => b.cache_control).length);
-  console.log('BP4 rolling breakpoint         =', bp4Applied ? `✅ applied (${userMsgCount} user msgs)` : '⏭ skipped (first turn)');
+  console.log('BP4 rolling breakpoint         =', bp4Applied ? `✅ applied (${messages.length} msgs, boundary at end of history)` : '⏭ skipped (first turn)');
   if (read === 0 && total > 1000) {
     console.warn(
       '⚠️  Cache never hit! Possible causes:\n' +
