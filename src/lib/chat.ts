@@ -428,7 +428,7 @@ async function streamAssistant(args: {
 
   const turns: ChatTurn[] = [];
 
-  // ─── Layered system prompt caching (BP1–BP2) ────────────────────────
+  // ─── Layered system prompt caching (BP1–BP3) ────────────────────────
   // Anthropic cache is prefix-matched byte-for-byte. ANY byte that changes
   // between turns invalidates the cache from that point forward.
   //
@@ -438,12 +438,17 @@ async function streamAssistant(args: {
   //       never touches the cached prefix.
   //
   // BP1: persona system prompt — almost never changes
-  // BP2: group awareness snippet — stable for the duration of a group session
+  // BP2: writing style — changes only when the user switches style, stays
+  //      byte-identical across every turn of the same conversation.
+  // BP3: group awareness snippet — stable for the duration of a group session
   //
-  // Writing style is NOT a system block: it's appended to the END of the
-  // current user message every turn (strongest recency position, style takes
-  // full effect) — see the injection step below. Because that message sits
-  // after all breakpoints, switching styles mid-conversation costs zero cache.
+  // WHY style is in BP2 (not the tail):
+  //   The tail approach puts the *full* style text in the uncached zone every
+  //   turn.  On a fresh two-turn conversation that adds ~1 000 uncached tokens
+  //   and drops the hit rate from ~90 % to ~78–80 %.  The tutorial puts
+  //   "语言规则" in BP1 for exactly this reason — cached style = stable prefix.
+  //   We keep a short FIXED one-liner in the tail for recency; because that
+  //   line never changes, it costs zero cache (same bytes every request).
   //
   // bookBlock, memoryBlock, healthBlock, statusBlock are ALL per-turn volatile:
   //   • bookBlock   — selection/excerpt changes every reading message
@@ -457,18 +462,25 @@ async function streamAssistant(args: {
   if (persona && persona.systemPrompt.trim()) {
     turns.push({ role: 'system', content: persona.systemPrompt });
   }
-  // BP2: group-awareness — stable for the duration of a group session.
+  // BP2: writing style — stable per conversation, only changes when the user
+  // explicitly switches style.  Large style prompts (hundreds–thousands of
+  // tokens) belong HERE so they are cached, not repeated uncached every turn.
+  if (style && style.prompt.trim()) {
+    turns.push({ role: 'system', content: `# 写作风格\n${style.prompt.trim()}` });
+  }
+  // BP3: group-awareness — stable for the duration of a group session.
   if (persona && groupOthers && groupOthers.length > 0) {
     turns.push({ role: 'system', content: groupAwarenessSnippet(persona, groupOthers) });
   }
 
-  // Style tail: appended after the current user's text so the model reads it
-  // immediately before responding. Re-sent fresh every request (每次都读到),
-  // never part of the cached prefix, and never persisted to the DB message.
-  const styleTail =
-    style && style.prompt.trim()
-      ? `<style_reminder>本轮写作风格要求（务必遵守，勿复述）：\n${style.prompt.trim()}\n</style_reminder>`
-      : '';
+  // Fixed recency nudge appended to EVERY current user message.
+  // This is a constant string (never changes) so it is cache-neutral — it
+  // adds the same bytes after BP4 each request and costs zero cache misses.
+  // Its only job is to keep the style+persona at the top of the model's
+  // immediate attention window in very long conversations.
+  const STYLE_NUDGE = style && style.prompt.trim()
+    ? '<style_reminder>请参照上述人设与写作风格设定作答。</style_reminder>'
+    : '';
 
   // ─── Collect volatile context (injected after BP4, not in system) ───
   const volatileParts: string[] = [];
@@ -544,20 +556,20 @@ async function streamAssistant(args: {
         volatileParts.join('\n\n') +
         '\n</gateway_volatile_context>'
       : '';
-  if (vcText || styleTail) {
+  if (vcText || STYLE_NUDGE) {
     const last = turns[turns.length - 1];
     if (last && last.role === 'user') {
-      // Normal turn: volatile before the user's text, style at the very end.
-      const merged = [vcText, last.content, styleTail].filter(Boolean).join('\n\n');
+      // Normal turn: volatile before the user's text, fixed nudge at the end.
+      const merged = [vcText, last.content, STYLE_NUDGE].filter(Boolean).join('\n\n');
       turns[turns.length - 1] = { ...last, content: merged };
     } else {
       // Conversation ends on an assistant turn (e.g. letPersonaSpeak): append
-      // a pseudo-user turn so volatile context and style aren't dropped, and
-      // aren't spliced into an older history message (which would rewrite
+      // a pseudo-user turn so volatile context and style nudge aren't dropped,
+      // and aren't spliced into an older history message (which would rewrite
       // history semantics). It sits after all breakpoints — cache-neutral.
       turns.push({
         role: 'user',
-        content: [vcText, styleTail].filter(Boolean).join('\n\n'),
+        content: [vcText, STYLE_NUDGE].filter(Boolean).join('\n\n'),
       });
     }
   }

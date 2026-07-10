@@ -81,10 +81,10 @@ function buildAnthropicContent(
  *
  * Expected ordering from chat.ts (most-stable → least-stable):
  *   [0] BP1: persona                     (almost never changes)
- *   [1] BP2: group awareness             (stable per group session)
- *   [2] BP3: reserved (session summary)
- * All volatile content (style tail, memory recall, current time, health)
- * lives inside the current user message — after every breakpoint.
+ *   [1] BP2: writing style               (stable per conversation)
+ *   [2] BP3: group awareness             (stable per group session)
+ * Volatile content (memory recall, current time, health) + a fixed one-line
+ * style nudge live inside the current user message — after every breakpoint.
  *
  * Each of the first 3 system messages gets its own cache_control.
  * Any extra messages (≥4th) are merged without a tag — same as before.
@@ -184,11 +184,11 @@ export async function* streamAnthropic(
   // change between turns MUST live after the cache breakpoints.
   //
   // BP1: persona (almost never changes) → cache_control
-  // BP2: group awareness (stable per group session) → cache_control
-  // BP3: reserved (session summary) → cache_control
+  // BP2: writing style (stable per conversation) → cache_control
+  // BP3: group awareness (stable per group session) → cache_control
   // BP4: rolling message cache on second-to-last user message
-  // Volatile data (style tail, memory, time, health) rides inside the
-  // CURRENT user message — after all breakpoints, never cached.
+  // Volatile data (memory, time, health) + fixed style nudge ride inside
+  // the CURRENT user message — after all breakpoints, never cached.
   //
   // Default 5-minute TTL (1.25× write, 0.1× read).
   // When cacheLongTTL is on: use 1h TTL (2× write, 0.1× read).
