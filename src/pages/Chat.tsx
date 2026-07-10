@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
@@ -131,11 +131,98 @@ export default function ChatPage() {
   }, [conversation, allMessages]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+
+  // ── Claude-app-style message anchoring ──────────────────────────────
+  // When a new user message is sent, pin it to the TOP of the stream area
+  // (right under the date separator) and let the reply grow below it.
+  // The view is never yanked around during streaming. A dynamic tail
+  // spacer guarantees the anchor position is always scroll-reachable even
+  // while the reply is still short.
+  const [tailPad, setTailPad] = useState(0);
+  const tailPadRef = useRef(0);
+  const lastUserIdRef = useRef<string | null>(null);
+  const anchoredIdRef = useRef<string | null>(null);
+  const pendingAnchorRef = useRef<string | null>(null);
+  const freshLoadRef = useRef(true);
+
+  // Reset anchoring when switching conversations. Must be a layout effect
+  // declared BEFORE the anchor effect so it runs first on conv change.
+  useLayoutEffect(() => {
+    lastUserIdRef.current = null;
+    anchoredIdRef.current = null;
+    pendingAnchorRef.current = null;
+    freshLoadRef.current = true;
+    if (tailPadRef.current !== 0) {
+      tailPadRef.current = 0;
+      setTailPad(0);
+    }
+  }, [conversationId]);
+
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [branch.length, streamingText]);
+    if (!el || branch.length === 0) return;
+
+    const lastUser = [...branch].reverse().find((m) => m.role === 'user');
+    const lastUserId = lastUser?.id ?? null;
+    const isNewUserMsg =
+      lastUserId !== null && lastUserId !== lastUserIdRef.current;
+    lastUserIdRef.current = lastUserId;
+
+    if (freshLoadRef.current) {
+      // First paint of an opened conversation: land at the bottom, like a
+      // normal chat app. Anchoring only kicks in for messages sent live.
+      freshLoadRef.current = false;
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+
+    if (isNewUserMsg) {
+      anchoredIdRef.current = lastUserId;
+      pendingAnchorRef.current = lastUserId;
+    }
+    const anchorId = anchoredIdRef.current;
+    if (!anchorId) return;
+
+    const anchorEl = el.querySelector<HTMLElement>(
+      `[data-mid="${CSS.escape(anchorId)}"]`,
+    );
+    if (!anchorEl) {
+      // Anchored message left the active branch (sibling switch etc.) —
+      // drop the spacer and stop anchoring.
+      anchoredIdRef.current = null;
+      pendingAnchorRef.current = null;
+      if (tailPadRef.current !== 0) {
+        tailPadRef.current = 0;
+        setTailPad(0);
+      }
+      return;
+    }
+
+    // Anchor offset within the scroll content.
+    const anchorTop =
+      anchorEl.getBoundingClientRect().top -
+      el.getBoundingClientRect().top +
+      el.scrollTop;
+
+    // Tail spacer so that scrollTop = anchorTop is reachable:
+    // needs scrollHeight - clientHeight >= anchorTop.
+    const contentH = el.scrollHeight - tailPadRef.current;
+    const pad = Math.max(0, Math.round(anchorTop + el.clientHeight - contentH));
+    if (Math.abs(pad - tailPadRef.current) > 1) {
+      tailPadRef.current = pad;
+      setTailPad(pad);
+      // Wait for the spacer to render before jumping (effect re-runs via
+      // the tailPad dep) so the target position actually exists.
+      return;
+    }
+
+    if (pendingAnchorRef.current === anchorId) {
+      pendingAnchorRef.current = null;
+      el.scrollTop = Math.max(0, anchorTop - 4);
+    }
+    // While streaming we deliberately do NOT touch scrollTop — the pinned
+    // bubble stays put and the reply fills in below it.
+  }, [branch, streamingText, streamingThinking, tailPad]);
 
   function selectedPersona() {
     if (!personaId) return undefined;
@@ -472,7 +559,7 @@ export default function ChatPage() {
         ) : (
           <ul className="mx-auto flex max-w-3xl flex-col gap-3">
             {branch.map((m) => (
-              <li key={m.id}>
+              <li key={m.id} data-mid={m.id}>
                 <MessageBubble
                   message={m}
                   accentColor={conversation?.accentColor ?? null}
@@ -491,6 +578,7 @@ export default function ChatPage() {
             ))}
           </ul>
         )}
+        {tailPad > 0 && <div style={{ height: tailPad }} aria-hidden="true" />}
       </div>
 
         <ChatInput
