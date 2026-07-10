@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import rehypeHighlight from 'rehype-highlight';
 import {
   AlertCircle,
@@ -141,10 +142,10 @@ export default function MessageBubble({
             <div className="wis-ai-body ai-body prose-msg min-w-0">
               {text ? (
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={[remarkGfm, remarkBreaks]}
                   rehypePlugins={[rehypeHighlight]}
                 >
-                  {mergeShortParagraphs(text)}
+                  {text}
                 </ReactMarkdown>
               ) : isStreaming ? (
                 <span className="stream-cursor" />
@@ -243,7 +244,7 @@ export default function MessageBubble({
               </div>
             ) : (
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={[remarkGfm, remarkBreaks]}
                 rehypePlugins={[rehypeHighlight]}
               >
                 {text}
@@ -619,10 +620,6 @@ function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
 }
 
-/** Merge short consecutive paragraphs into flowing prose, and collapse
- *  in-paragraph single \n into spaces so prose reflows at the container
- *  edge instead of breaking where the model emitted its newlines.
- *  Lists / headings / quotes / fenced code keep their structural \n. */
 /**
  * Cache hit rate as a whole percent (0–100), or null when not computable.
  *
@@ -640,38 +637,4 @@ function cacheHitPercent(usage: NonNullable<Message['usage']>): number | null {
   const total = input >= read + creation ? input : input + read + creation;
   if (total <= 0 || read <= 0) return null;
   return Math.min(100, Math.round((read / total) * 100));
-}
-
-function mergeShortParagraphs(raw: string): string {
-  // Don't touch fenced code blocks
-  const parts = raw.split(/(```[\s\S]*?```)/);
-  return parts.map((part, i) => {
-    if (i % 2 === 1) return part; // code block, keep as-is
-    // Split on double-newline (paragraph boundary)
-    const paragraphs = part.split(/\n\n+/);
-    const merged: string[] = [];
-    let buffer: string[] = [];
-    for (const p of paragraphs) {
-      const trimmed = p.trim();
-      // Structural if ANY line inside is a heading / list / blockquote.
-      // Tested per-line because a paragraph might be "intro\n- item".
-      const hasStructure = trimmed
-        .split('\n')
-        .some((line) => /^#{1,6}\s|^[-*+]\s|^\d+\.\s|^>/.test(line));
-      // Non-structural prose: collapse single \n inside the paragraph
-      // to a space so it reflows naturally.
-      const processed = hasStructure
-        ? trimmed
-        : trimmed.replace(/\n+/g, ' ');
-      const isShort = processed.length < 80;
-      if (!hasStructure && isShort) {
-        buffer.push(processed);
-      } else {
-        if (buffer.length) { merged.push(buffer.join(' ')); buffer = []; }
-        merged.push(processed);
-      }
-    }
-    if (buffer.length) merged.push(buffer.join(' '));
-    return merged.join('\n\n');
-  }).join('');
 }

@@ -204,11 +204,6 @@ export default function ChatInput({
                 onClick={() => fileRef.current?.click()}
                 disabled={disabled || uploading}
                 className="wis-send-btn"
-                style={{
-                  background: 'hsla(270, 22%, 92%, 0.35)',
-                  borderColor: 'hsla(270, 22%, 75%, 0.25)',
-                  color: 'hsla(268, 22%, 50%, 0.55)',
-                }}
                 aria-label="附图片"
                 title="附图片"
               >
