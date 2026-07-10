@@ -302,12 +302,11 @@ export default function WorkshopPage() {
     if (!ghConfig || !repoInfo || stagedChanges.length === 0) return;
     setCommitting(true);
     try {
-      const branch = committingBranch || `workshop/${Date.now().toString(36)}`;
       const result = await batchCommit(
         ghConfig,
         stagedChanges.map((c) => ({ path: c.path, content: c.content })),
         `feat: ${agentSummary || taskText.slice(0, 72)} [炼金工房]`,
-        repoInfo.defaultBranch,
+        committingBranch || repoInfo.defaultBranch,
       );
       setCommitDone(result.url);
       addLog(`已提交到 GitHub: ${result.sha.slice(0, 7)}`, 'success');
@@ -1141,11 +1140,10 @@ function BeautyTab({
 function CostTab({
   usage,
   model,
-  repoInfo,
 }: {
   usage: { inputTokens: number; outputTokens: number; cost: number } | null;
   model: string;
-  repoInfo: { fullName: string; defaultBranch: string } | null;
+  repoInfo?: { fullName: string; defaultBranch: string } | null;
 }) {
   if (!usage) {
     return (
