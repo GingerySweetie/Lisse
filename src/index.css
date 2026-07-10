@@ -1258,7 +1258,14 @@
 .wis-chat-page {
   position: relative;
   width: 100%;
+  /* Use the dynamic viewport height so the frame tracks what is actually
+     visible when Android transparently overlays the status bar and when
+     the on-screen keyboard opens. Fall back to parent `100%` on browsers
+     without dvh support. Combined with the flex column below this keeps
+     header/composer/stream proportions stable even as the status bar or
+     keyboard mutates the visible area. */
   height: 100%;
+  height: 100dvh;
   /* clip, not hidden: hidden boxes can still be scrolled by the browser's
      focus-scrolling (Android keyboard), permanently shifting the layout. */
   overflow: hidden;
@@ -1273,7 +1280,13 @@
 
 .wis-chat-frame {
   --chat-column-max: 56rem;
-  --chat-gutter: clamp(12px, 2.4vw, 24px);
+  /* Left gutter clears the wisteria strand cluster (left decor lives
+     within the top ~50px only, so this can stay slim below it). */
+  --chat-gutter-left: clamp(14px, 2vw, 22px);
+  /* Right gutter must clear the full-height trellis hairline in
+     WisteriaDecor (rendered at right: 48px) plus a breathing margin,
+     otherwise messages, tags, and the composer draw over the line. */
+  --chat-gutter-right: 60px;
   position: relative;
   z-index: 10;
   height: 100%;
@@ -1337,7 +1350,7 @@
      and composer off-screen (the visible "growing whitespace" bug). */
   min-height: 0;
   overflow-y: auto;
-  padding: 8px var(--chat-gutter);
+  padding: 8px var(--chat-gutter-right) 8px var(--chat-gutter-left);
 }
 
 .chat-message-list {
@@ -1467,7 +1480,7 @@
 
 /* Composer */
 .wis-composer-wrap {
-  padding: 8px var(--chat-gutter);
+  padding: 8px var(--chat-gutter-right) 8px var(--chat-gutter-left);
   /* Push content above the Android / iOS system navigation bar.
      env(safe-area-inset-bottom) is non-zero on edge-to-edge devices. */
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
