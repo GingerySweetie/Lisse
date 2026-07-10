@@ -159,7 +159,7 @@ export default function ChatInput({
 
   return (
     <div className="wis-composer-wrap">
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="chat-content-column wis-composer-inner">
         {attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {attachments.map((a) => (
