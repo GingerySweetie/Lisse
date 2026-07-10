@@ -83,7 +83,7 @@ export default function BooksPage() {
           {books && books.length === 0 && (
             <div className="rounded-2xl border border-dashed border-lavender-300 bg-white/50 p-10 text-center text-sm text-ink-500">
               还没有书喵。<br />
-              点上面"加书"上传 / 粘贴 TXT 或 Markdown，
+              点上面"加书"上传 / 粘贴 TXT · Markdown · EPUB · PDF，
               或按"示例书"塞一本进来看看效果。
             </div>
           )}
@@ -182,6 +182,24 @@ function BookEditor({ onClose }: { onClose: () => void }) {
       }
       return;
     }
+    // PDF: extract text via pdfjs-dist.
+    if (name.endsWith('.pdf')) {
+      setParsing(true);
+      try {
+        const { parsePdf } = await import('../lib/pdf');
+        const parsed = await parsePdf(file);
+        setContent(parsed.content);
+        setFormat(parsed.format);
+        setImportedToc(undefined);
+        if (!title) setTitle(parsed.title);
+        if (!author && parsed.author) setAuthor(parsed.author);
+      } catch (e) {
+        setParseError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setParsing(false);
+      }
+      return;
+    }
     const text = await file.text();
     setContent(text);
     setImportedToc(undefined);
@@ -250,7 +268,7 @@ function BookEditor({ onClose }: { onClose: () => void }) {
             </label>
             <div className="flex flex-col gap-1">
               <span className="text-xs font-medium text-ink-500">
-                内容（粘贴 / 上传 TXT · Markdown · EPUB）
+                内容（粘贴 / 上传 TXT · Markdown · EPUB · PDF）
               </span>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-lavender-200 bg-lavender-50 px-3 py-1.5 text-xs text-ink-700 transition hover:bg-lavender-100">
@@ -258,7 +276,7 @@ function BookEditor({ onClose }: { onClose: () => void }) {
                   <input
                     ref={fileRef}
                     type="file"
-                    accept=".txt,.md,.markdown,.epub,text/plain,text/markdown,application/epub+zip"
+                    accept=".txt,.md,.markdown,.epub,.pdf,text/plain,text/markdown,application/epub+zip,application/pdf"
                     className="hidden"
                     disabled={parsing}
                     onChange={(e) => {

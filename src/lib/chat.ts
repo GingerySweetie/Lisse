@@ -1,5 +1,5 @@
 import { db, getSettings } from '../db';
-import { extractReadSoFar, getMarginNotesForContext } from './books';
+import { getMarginNotesForContext } from './books';
 import type {
   Attachment,
   Conversation,
@@ -387,15 +387,18 @@ async function streamAssistant(args: {
     signal,
   } = args;
 
-  // Reading-session context: if this conversation is linked to a book and
-  // the latest user message has a bookAnchor, build a spoiler-safe "currently
-  // reading" block. The AI sees:
-  //   1. Book title / author / reading progress (percent & char position)
-  //   2. Already-read window: the last ~3 000 chars UP TO the current position —
-  //      the AI is grounded in the real text but cannot see beyond the bookmark.
-  //   3. The user's highlighted selection (if any) for focused commentary.
-  //   4. The user's margin notes (bookmarks with notes) within the read portion.
-  //   5. An explicit spoiler-safety instruction.
+  // Reading-session context.
+  //
+  // Two modes depending on bookAnchor.isAnnotation:
+  //
+  // ① 批注模式 (isAnnotation=true) — user formally annotated a passage.
+  //   The AI sees: title/author, reading progress, the selected passage
+  //   (±800 chars), an explicit anti-spoiler guard, and any nearby margin
+  //   notes. This is the "grounded in the real text" response.
+  //
+  // ② 吐槽模式 (isAnnotation=false/absent) — casual in-reader comment.
+  //   The AI sees: title/author and reading progress only. No book text is
+  //   injected — the response stays conversational without pulling raw prose.
   let bookBlock = '';
   if (branch.length > 0) {
     const lastWithAnchor = [...branch]
@@ -410,48 +413,53 @@ async function streamAssistant(args: {
           const a = lastWithAnchor?.bookAnchor;
           const readPos = a?.position ?? book.lastPosition ?? 0;
           const percent = Math.round((readPos / Math.max(1, book.totalChars)) * 100);
-
           const lines: string[] = [];
-          lines.push('# 共读语境');
-          lines.push(
-            `你正在和她一起读《${book.title}》${book.author ? `（${book.author}）` : ''}。`,
-          );
-          lines.push(
-            `她目前读到大约 ${percent}% 处（第 ${readPos.toLocaleString('zh')} 字 / 共 ${book.totalChars.toLocaleString('zh')} 字）。`,
-          );
 
-          // 1. Already-read window — spoiler-safe: only up to readPos.
-          const readSoFar = extractReadSoFar(book.content, readPos, 3000);
-          if (readSoFar) {
+          if (a?.isAnnotation) {
+            // ① Annotation mode — inject the local passage so the AI can
+            //   engage with the specific text being annotated.
+            lines.push('# 共读批注');
             lines.push(
-              '\n【她已读过的正文片段（最多 3 000 字，截至当前位置）】\n' + readSoFar,
+              `你正在和她一起读《${book.title}》${book.author ? `（${book.author}）` : ''}。`,
             );
-          }
+            lines.push(`她批注时所在位置：约 ${percent}% 处。`);
 
-          // 2. Highlighted selection — what the user is specifically looking at.
-          if (a?.selection) {
-            lines.push(`\n【她划出的重点段落】\n> ${a.selection.replace(/\n/g, '\n> ')}`);
-          }
-
-          // 3. Margin notes — bookmarks with notes within the read portion.
-          try {
-            const notes = await getMarginNotesForContext(book.id, readPos, 8);
-            const withNotes = notes.filter((bm) => bm.note);
-            if (withNotes.length > 0) {
-              lines.push('\n【她的批注 / 边注（已读部分）】');
-              for (const bm of withNotes) {
-                const bmPct = Math.round((bm.position / Math.max(1, book.totalChars)) * 100);
-                lines.push(`- 约 ${bmPct}% 处：「${bm.note}」`);
-              }
+            // The highlighted passage itself (selection or excerpt).
+            if (a.selection) {
+              lines.push(`\n【她标注的段落】\n> ${a.selection.replace(/\n/g, '\n> ')}`);
             }
-          } catch { /* ignore — bookmarks optional */ }
+            // Local context window (±800 chars) for passage grounding.
+            if (a.excerpt) {
+              lines.push(`\n【段落周边原文（前后约数百字）】\n${a.excerpt}`);
+            }
 
-          lines.push(
-            '\n她接下来发来的不是泛泛聊天，是对刚才那段的吐槽 / 评论 / 提问。' +
-            '请围绕这段原文回应，可以同意 / 反驳 / 延伸 / 接梗。' +
-            '你可以引用已读部分的原文细节，但不要逐句复读。' +
-            `\n⚠️ 防剧透：她只读到 ${percent}% 处，请不要主动提及或暗示后续情节。`,
-          );
+            // Nearby margin notes within the read portion.
+            try {
+              const notes = await getMarginNotesForContext(book.id, readPos, 5);
+              const withNotes = notes.filter((bm) => bm.note);
+              if (withNotes.length > 0) {
+                lines.push('\n【她在附近的其他批注】');
+                for (const bm of withNotes) {
+                  const bmPct = Math.round((bm.position / Math.max(1, book.totalChars)) * 100);
+                  lines.push(`- 约 ${bmPct}% 处：「${bm.note}」`);
+                }
+              }
+            } catch { /* ignore */ }
+
+            lines.push(
+              '\n她发来的是对这段原文的正式批注 / 提问。' +
+              '请围绕这段原文给出有深度的回应：可以赏析、联系上下文、对比其他作品，或回答她的问题。' +
+              `\n⚠️ 防剧透：她只读到 ${percent}% 处，请不要主动涉及后续情节。`,
+            );
+          } else {
+            // ② Casual 吐槽 mode — lightweight header only.
+            lines.push('# 共读语境');
+            lines.push(
+              `你正在和她一起读《${book.title}》${book.author ? `（${book.author}）` : ''}，她目前读到约 ${percent}% 处。`,
+            );
+            lines.push('她发来的是阅读途中的随想 / 吐槽 / 闲聊，不一定针对特定段落。正常聊天回应即可。');
+          }
+
           bookBlock = lines.join('\n');
         }
       }

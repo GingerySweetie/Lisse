@@ -81,8 +81,15 @@ export interface Message {
     /** The text the user highlighted, or null if they just commented from
      *  the scroll position. */
     selection?: string;
-    /** Pre-computed surrounding excerpt for the prompt (±~400 chars). */
+    /** Pre-computed surrounding excerpt for the prompt (±~800 chars). */
     excerpt: string;
+    /**
+     * When true this is a formal annotation (批注): the assistant should
+     * read just this passage and respond to the annotation note.
+     * When absent/false it is a casual 吐槽 comment and only minimal
+     * book-position info is injected into context.
+     */
+    isAnnotation?: boolean;
   };
   /** which child id is "active" when navigating this branch point. */
   activeChildId?: string | null;
