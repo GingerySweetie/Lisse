@@ -8,22 +8,46 @@ interface ClaudeContentBlock {
   text?: string;
   /** Claude extended-thinking block content (type === 'thinking'). */
   thinking?: string;
+  /** Newer Claude.ai export: tool use blocks. */
+  toolName?: string;
+  toolInput?: unknown;
+  toolMessage?: string;
+  result?: unknown;
 }
 
 interface ClaudeMessage {
   uuid?: string;
   text?: string;
+  /** Old format: content blocks or plain string. */
   content?: ClaudeContentBlock[] | string;
+  /** New Claude.ai export format (2026+): replaces `content`. */
+  contentBlocks?: ClaudeContentBlock[];
   sender?: string;
+  /** Old format: snake_case timestamps. */
   created_at?: string;
+  /** New Claude.ai export format: camelCase timestamps. */
+  createdAt?: string;
+  /** New format: attached filenames. */
+  files?: string[];
+  /** New format: plain-text search index (not used for import). */
+  searchText?: string;
 }
 
 interface ClaudeConversation {
   uuid?: string;
   name?: string;
+  /** Old format: snake_case timestamps. */
   created_at?: string;
   updated_at?: string;
+  /** New Claude.ai export format: camelCase timestamps. */
+  createdAt?: string;
+  updatedAt?: string;
+  /** Old format. */
   chat_messages?: ClaudeMessage[];
+  /** New Claude.ai export format (2026+): replaces `chat_messages`. */
+  messages?: ClaudeMessage[];
+  /** New format: summary text (ignored on import). */
+  summary?: string;
 }
 
 /**
@@ -77,9 +101,12 @@ function extractConversations(raw: unknown): ClaudeConversation[] {
     if (Array.isArray(obj.conversations)) {
       return obj.conversations as ClaudeConversation[];
     }
-    if ('chat_messages' in obj) return [raw as ClaudeConversation];
+    // Single conversation — both old format (chat_messages) and new format (messages).
+    if ('chat_messages' in obj || 'messages' in obj) {
+      return [raw as ClaudeConversation];
+    }
   }
-  throw new Error('文件结构不像 Claude 导出（找不到 conversations 或 chat_messages）');
+  throw new Error('文件结构不像 Claude 导出（找不到 conversations、chat_messages 或 messages）');
 }
 
 async function importOneClaude(
@@ -95,7 +122,8 @@ async function importOneClaude(
     if (existing) return null;
   }
 
-  const chats = conv.chat_messages ?? [];
+  // Support both old format (chat_messages / created_at) and new format (messages / createdAt).
+  const chats = conv.messages ?? conv.chat_messages ?? [];
   if (chats.length === 0) return null;
 
   const conversationId = newId();
@@ -116,7 +144,7 @@ async function importOneClaude(
       content: text,
       ...(thinking ? { thinking } : {}),
       status: 'done',
-      createdAt: parseTime(m.created_at) ?? Date.now(),
+      createdAt: parseTime(m.createdAt ?? m.created_at) ?? Date.now(),
     });
     if (parentId) {
       const parent = messages.find((mm) => mm.id === parentId);
@@ -137,8 +165,8 @@ async function importOneClaude(
     defaultModel: opts.defaultModel,
     sourceId,
     source: 'claude',
-    createdAt: parseTime(conv.created_at) ?? now,
-    updatedAt: parseTime(conv.updated_at) ?? now,
+    createdAt: parseTime(conv.createdAt ?? conv.created_at) ?? now,
+    updatedAt: parseTime(conv.updatedAt ?? conv.updated_at) ?? now,
   };
 
   await db.transaction('rw', db.conversations, db.messages, async () => {
@@ -158,6 +186,20 @@ function normalizeSender(sender: string | undefined): Role | null {
 }
 
 /**
+ * Resolve the content block array from a Claude message.
+ * Supports both old format (`content`) and new Claude.ai export format
+ * (`contentBlocks`).  Returns the string value of `content` when the
+ * old format stored it as a plain string.
+ */
+function resolveBlocks(
+  m: ClaudeMessage,
+): ClaudeContentBlock[] | string | undefined {
+  if (Array.isArray(m.contentBlocks) && m.contentBlocks.length > 0)
+    return m.contentBlocks;
+  return m.content;
+}
+
+/**
  * Extract the main text content from a Claude message.
  * When the message has a structured content array (modern format), only
  * `type === 'text'` blocks are included so that thinking blocks are NOT
@@ -165,9 +207,9 @@ function normalizeSender(sender: string | undefined): Role | null {
  * string for older export formats that don't use typed blocks.
  */
 function extractTextContent(m: ClaudeMessage): string {
-  const c = m.content;
+  const c = resolveBlocks(m);
   if (Array.isArray(c)) {
-    // Modern format: pick only explicit text blocks.
+    // Pick only explicit text blocks.
     const fromTextBlocks = c
       .filter((b) => b.type === 'text' && typeof b.text === 'string')
       .map((b) => b.text as string)
@@ -195,9 +237,10 @@ function extractTextContent(m: ClaudeMessage): string {
  * Extract extended-thinking content from a Claude message.
  * Returns the concatenated text of all `type === 'thinking'` blocks,
  * or undefined when the message has no thinking blocks.
+ * Supports both `content` (old format) and `contentBlocks` (new format).
  */
 function extractThinking(m: ClaudeMessage): string | undefined {
-  const c = m.content;
+  const c = resolveBlocks(m);
   if (!Array.isArray(c)) return undefined;
   const thinking = c
     .filter((b) => b.type === 'thinking' && typeof b.thinking === 'string')
