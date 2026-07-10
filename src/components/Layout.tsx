@@ -63,7 +63,10 @@ export default function Layout() {
   }, []);
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
+    // overflow-clip (not hidden): hidden leaves the box programmatically
+    // scrollable, so Android keyboard focus-scrolling could shift the whole
+    // app frame and leave it stuck there. clip forbids scrolling entirely.
+    <div className="flex h-full w-full overflow-clip">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
