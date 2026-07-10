@@ -233,7 +233,7 @@ export default function MessageBubble({
                 </div>
               </div>
             ) : (
-              <ChatMarkdown text={text} />
+              <ChatMarkdown text={text} preserveSoftBreaks />
             )}
           </div>
         )}
