@@ -99,10 +99,11 @@ export function WisteriaDecor() {
           width: 1,
           background:
             'linear-gradient(180deg, hsla(270, 30%, 62%, 0.3) 0%, hsla(270, 28%, 65%, 0.22) 30%, hsla(270, 25%, 68%, 0.15) 60%, hsla(270, 22%, 72%, 0.06) 90%, transparent 100%)',
-          // Keep the trellis behind the chat content. The previous z-index
-          // forced every assistant message to reserve 50px on the right just
-          // to avoid drawing underneath this decorative line.
-          zIndex: 3,
+          // Trellis sits above chat content — it is the visual anchor of
+          // the "wisteria pole + letter" concept. The content column
+          // reserves a matching right gutter so messages never draw
+          // underneath the line instead of dropping the decoration.
+          zIndex: 15,
           pointerEvents: 'none',
         }}
       />
