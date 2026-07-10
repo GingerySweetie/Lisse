@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
-import rehypeHighlight from 'rehype-highlight';
 import {
   AlertCircle,
   BookOpen,
@@ -22,6 +18,7 @@ import type { Attachment, Message, ToolCallRecord } from '../types';
 import { getSiblingInfo, type SiblingInfo } from '../lib/branch';
 import { attachmentDataUrl, formatBytes } from '../lib/attachments';
 import { DEFAULT_ACCENT } from './AccentPicker';
+import ChatMarkdown from './ChatMarkdown';
 
 interface Props {
   message: Message;
@@ -115,15 +112,13 @@ export default function MessageBubble({
 
   return (
     <div
-      className={`group msg-enter flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}
+      className={`group msg-enter chat-message-row ${
+        isUser ? 'is-user' : 'is-assistant'
+      }`}
     >
-      <div
-        className={`flex min-w-0 flex-col gap-1.5 ${
-          isUser ? 'max-w-[85%]' : 'w-full max-w-full'
-        }`}
-      >
+      <div className="chat-message-stack">
         {!isUser && !isError && (
-          <div className="wis-ai-msg ai-message">
+          <div className="wis-ai-msg">
             {/* Letter header — small bud + gradient stroke. Pure visual,
                 no text. Replaces the previous .ai-byline persona name. */}
             <div className="wis-ai-byline">
@@ -139,14 +134,9 @@ export default function MessageBubble({
             {message.attachments && message.attachments.length > 0 && (
               <Attachments attachments={message.attachments} alignRight={false} />
             )}
-            <div className="wis-ai-body ai-body prose-msg min-w-0">
+            <div className="wis-ai-body prose-msg">
               {text ? (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkBreaks]}
-                  rehypePlugins={[rehypeHighlight]}
-                >
-                  {text}
-                </ReactMarkdown>
+                <ChatMarkdown text={text} />
               ) : isStreaming ? (
                 <span className="stream-cursor" />
               ) : null}
@@ -181,7 +171,7 @@ export default function MessageBubble({
         {/* Book anchor: show the quoted passage that the user was commenting on */}
         {isUser && message.bookAnchor?.selection && (
           <div className="flex justify-end">
-            <div className="mb-1 flex max-w-[85%] items-start gap-1.5 rounded-xl border border-lavender-200 bg-lavender-50/70 px-3 py-2 text-xs text-ink-600 shadow-sm">
+            <div className="chat-book-anchor mb-1 flex items-start gap-1.5 rounded-xl border border-lavender-200 bg-lavender-50/70 px-3 py-2 text-xs text-ink-600 shadow-sm">
               <BookOpen size={12} className="mt-0.5 shrink-0 text-lavender-400" />
               <blockquote className="m-0 line-clamp-3 italic leading-relaxed">
                 {message.bookAnchor.selection}
@@ -194,7 +184,7 @@ export default function MessageBubble({
           <div
             className={
               isUser
-                ? 'wis-user-bubble bubble-user prose-msg min-w-0'
+                ? 'wis-user-bubble prose-msg'
                 : 'min-w-0 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[15px] leading-relaxed text-rose-700'
             }
             style={
@@ -243,12 +233,7 @@ export default function MessageBubble({
                 </div>
               </div>
             ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkBreaks]}
-                rehypePlugins={[rehypeHighlight]}
-              >
-                {text}
-              </ReactMarkdown>
+              <ChatMarkdown text={text} preserveSoftBreaks />
             )}
           </div>
         )}
@@ -260,9 +245,7 @@ export default function MessageBubble({
         */}
         {!editing && !isStreaming && (
           <div
-            className={`msg-actions opacity-60 transition group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-90 ${
-              isUser ? 'justify-end' : 'justify-start'
-            }`}
+            className="msg-actions opacity-60 transition group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-90"
           >
             {sib && sib.total > 1 && (
               <div className="flex items-center gap-0 text-ink-500/45">

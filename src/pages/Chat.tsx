@@ -550,14 +550,13 @@ export default function ChatPage() {
         <div
           ref={scrollRef}
           className="wis-chat-stream"
-          style={{ flex: 1, overflowY: 'auto' }}
         >
         {hasNoEndpoints ? (
           <EmptyEndpoints />
         ) : isEmpty ? (
           <EmptyChat />
         ) : (
-          <ul className="mx-auto flex max-w-3xl flex-col gap-3">
+          <ul className="chat-content-column chat-message-list">
             {branch.map((m) => (
               <li key={m.id} data-mid={m.id}>
                 <MessageBubble
