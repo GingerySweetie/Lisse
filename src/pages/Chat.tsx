@@ -152,8 +152,10 @@ export default function ChatPage() {
     anchoredIdRef.current = null;
     pendingAnchorRef.current = null;
     freshLoadRef.current = true;
-    tailPadRef.current = 0;
-    setTailPad(0);
+    if (tailPadRef.current !== 0) {
+      tailPadRef.current = 0;
+      setTailPad(0);
+    }
   }, [conversationId]);
 
   useLayoutEffect(() => {
