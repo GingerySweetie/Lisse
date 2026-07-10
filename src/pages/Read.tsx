@@ -175,16 +175,78 @@ export default function ReadPage() {
   const [bookmarkSaving, setBookmarkSaving] = useState(false);
   const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
 
+  /**
+   * Save the bookmark and, if a note was written, automatically trigger
+   * an AI annotation reply using only the local passage as context.
+   * The note becomes the user's message; bookAnchor.isAnnotation=true
+   * tells the chat system to inject passage context (not the full
+   * read-so-far), fulfilling the "只有批注时才读当前段" requirement.
+   */
   async function handleAddBookmark() {
     if (!book || !selection) return;
+    const note = bookmarkNote.trim();
     setBookmarkSaving(true);
     try {
       await addBookmark({
         bookId: book.id,
         position: selection.position,
         snippet: selection.text,
-        note: bookmarkNote.trim() || undefined,
+        note: note || undefined,
       });
+
+      // If the user wrote a note AND there's a conversation + endpoint,
+      // send the annotation as a message so the AI can respond.
+      if (note && conversation && endpointId && model) {
+        const ep = selectedEndpoint();
+        if (ep) {
+          // Use a larger window (±800 chars) for annotation context.
+          const excerpt = extractExcerpt(book.content, selection.position, 800);
+          const controller = new AbortController();
+          abortRef.current?.abort();
+          abortRef.current = controller;
+          setStreamingText('');
+          // Close dialog immediately so the user sees streaming happen.
+          setBookmarkDialogOpen(false);
+          setBookmarkNote('');
+          setSelection(null);
+
+          await sendMessage({
+            conversation,
+            endpoint: ep,
+            model,
+            userText: note,
+            persona: selectedPersona(),
+            style: selectedStyle(),
+            groupOthers: groupOthers(),
+            bookAnchor: {
+              position: selection.position,
+              selection: selection.text,
+              excerpt,
+              isAnnotation: true,
+            },
+            signal: controller.signal,
+            onDelta: (delta, assistantId) => {
+              setStreamingId(assistantId);
+              setStreamingText((prev) => prev + delta);
+            },
+            onThinking: (_delta, assistantId) => {
+              setStreamingId(assistantId);
+            },
+          });
+
+          await saveSettings({
+            defaultEndpointId: ep.id,
+            defaultModel: model,
+            defaultPersonaId: personaId,
+            defaultStyleId: styleId,
+          });
+
+          setStreamingId(null);
+          setStreamingText('');
+          abortRef.current = null;
+          return; // dialog already closed above
+        }
+      }
     } finally {
       setBookmarkSaving(false);
       setBookmarkDialogOpen(false);
@@ -477,10 +539,15 @@ export default function ReadPage() {
               value={bookmarkNote}
               onChange={(e) => setBookmarkNote(e.target.value)}
               rows={3}
-              placeholder="写几句批注（可空）……"
+              placeholder="写几句批注……写了的话 AI 会读这段原文然后回应你"
               className="w-full resize-none rounded-lg border border-lavender-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-lavender-300"
               autoFocus
             />
+            {bookmarkNote.trim() && (
+              <p className="mt-1.5 text-[11px] text-ink-400">
+                ✦ 有批注时 AI 会读取这段原文并回应，不会提前剧透。
+              </p>
+            )}
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
@@ -496,7 +563,11 @@ export default function ReadPage() {
                 className="flex items-center gap-1 rounded-lg bg-amber-200/80 px-4 py-1.5 text-sm font-medium text-amber-800 transition hover:bg-amber-300/80 disabled:opacity-50"
               >
                 <Check size={14} />
-                {bookmarkSaving ? '保存中…' : '保存书签'}
+                {bookmarkSaving
+                  ? '处理中…'
+                  : bookmarkNote.trim()
+                    ? '保存并让 AI 评'
+                    : '保存书签'}
               </button>
             </div>
           </div>
