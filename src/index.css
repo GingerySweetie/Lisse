@@ -1557,3 +1557,69 @@
   0% { transform: translateX(0); }
   100% { transform: translateX(1.5px); }
 }
+
+/* ─── 炼金工房 Workshop ──────────────────────────────────────────── */
+.workshop-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(176, 138, 204, 0.18);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(90, 50, 100, 0.06);
+}
+
+.workshop-input {
+  background: rgba(245, 240, 250, 0.6);
+  border: 1px solid rgba(176, 138, 204, 0.25);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  color: rgba(42, 37, 48, 0.9);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s ease;
+}
+.workshop-input::placeholder {
+  color: rgba(107, 95, 122, 0.4);
+}
+.workshop-input:focus {
+  border-color: rgba(176, 138, 204, 0.5);
+  background: rgba(245, 240, 250, 0.85);
+}
+
+.workshop-select {
+  background: rgba(245, 240, 250, 0.6);
+  border: 1px solid rgba(176, 138, 204, 0.25);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: rgba(42, 37, 48, 0.85);
+  outline: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.workshop-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #d97706, #b45309);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+  font-family: inherit;
+}
+.workshop-btn-primary:hover:not(:disabled) {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+.workshop-btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
