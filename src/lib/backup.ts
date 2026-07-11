@@ -1,22 +1,35 @@
 import { db, getSettings, saveSettings } from '../db';
 import type {
   AppSettings,
+  Bill,
   Book,
   Bookmark,
+  BrowserBookmark,
+  BrowserScript,
+  CirclePost,
+  CircleReaction,
   Conversation,
   Endpoint,
+  HealthComment,
+  HealthDailySnapshot,
   McpServer,
   MemoryFact,
   Message,
+  MusicCredentials,
+  MusicHistoryEntry,
   Persona,
+  PeriodEntry,
+  WeightEntry,
   WritingStyle,
 } from '../types';
+
+const LAST_BACKUP_AT_KEY = 'last_backup_at';
 
 export interface BackupBundle {
   /** Format identifier for sanity-checking. */
   __lisse: 'backup';
   /** Schema version of the bundle (not Dexie's). */
-  version: 4;
+  version: 5;
   exportedAt: number;
   settings: AppSettings;
   endpoints: Endpoint[];
@@ -28,6 +41,18 @@ export interface BackupBundle {
   books?: Book[];
   bookmarks?: Bookmark[];
   mcpServers?: McpServer[];
+  /** Added in v5 — previously omitted from exports. */
+  bills?: Bill[];
+  periodEntries?: PeriodEntry[];
+  weightEntries?: WeightEntry[];
+  browserBookmarks?: BrowserBookmark[];
+  browserScripts?: BrowserScript[];
+  musicCredentials?: MusicCredentials[];
+  musicHistory?: MusicHistoryEntry[];
+  circlePosts?: CirclePost[];
+  circleReactions?: CircleReaction[];
+  healthComments?: HealthComment[];
+  healthDaily?: HealthDailySnapshot[];
 }
 
 export async function exportBackup(): Promise<BackupBundle> {
@@ -42,6 +67,17 @@ export async function exportBackup(): Promise<BackupBundle> {
     books,
     bookmarks,
     mcpServers,
+    bills,
+    periodEntries,
+    weightEntries,
+    browserBookmarks,
+    browserScripts,
+    musicCredentials,
+    musicHistory,
+    circlePosts,
+    circleReactions,
+    healthComments,
+    healthDaily,
   ] = await Promise.all([
     getSettings(),
     db.endpoints.toArray(),
@@ -53,11 +89,27 @@ export async function exportBackup(): Promise<BackupBundle> {
     db.books.toArray(),
     db.bookmarks.toArray(),
     db.mcpServers.toArray(),
+    db.bills.toArray(),
+    db.periodEntries.toArray(),
+    db.weightEntries.toArray(),
+    db.browserBookmarks.toArray(),
+    db.browserScripts.toArray(),
+    db.musicCredentials.toArray(),
+    db.musicHistory.toArray(),
+    db.circlePosts.toArray(),
+    db.circleReactions.toArray(),
+    db.healthComments.toArray(),
+    db.healthDaily.toArray(),
   ]);
+
+  const now = Date.now();
+  // Record the time of this export so the UI can show "last backed up N ago".
+  await db.kv.put({ key: LAST_BACKUP_AT_KEY, value: now });
+
   return {
     __lisse: 'backup',
-    version: 4,
-    exportedAt: Date.now(),
+    version: 5,
+    exportedAt: now,
     settings,
     endpoints,
     personas,
@@ -68,7 +120,24 @@ export async function exportBackup(): Promise<BackupBundle> {
     books,
     bookmarks,
     mcpServers,
+    bills,
+    periodEntries,
+    weightEntries,
+    browserBookmarks,
+    browserScripts,
+    musicCredentials,
+    musicHistory,
+    circlePosts,
+    circleReactions,
+    healthComments,
+    healthDaily,
   };
+}
+
+/** Returns the Unix-ms timestamp of the last completed backup, or null. */
+export async function getLastBackupAt(): Promise<number | null> {
+  const row = await db.kv.get(LAST_BACKUP_AT_KEY);
+  return row ? (row.value as number) : null;
 }
 
 export interface ImportBackupOptions {
@@ -86,6 +155,17 @@ export interface ImportBackupResult {
   booksAdded: number;
   bookmarksAdded: number;
   mcpServersAdded: number;
+  billsAdded: number;
+  periodEntriesAdded: number;
+  weightEntriesAdded: number;
+  browserBookmarksAdded: number;
+  browserScriptsAdded: number;
+  musicCredentialsAdded: number;
+  musicHistoryAdded: number;
+  circlePostsAdded: number;
+  circleReactionsAdded: number;
+  healthCommentsAdded: number;
+  healthDailyAdded: number;
   settingsApplied: boolean;
 }
 
@@ -108,7 +188,8 @@ export async function importBackup(
   ) {
     throw new Error('不是 Lisse 的备份文件');
   }
-  const bundle = raw as BackupBundle;
+  // Accept both the old v4 format and the new v5 format.
+  const bundle = raw as BackupBundle & { version: 4 | 5 };
 
   if (opts.mode === 'replace') {
     await db.transaction(
@@ -123,6 +204,17 @@ export async function importBackup(
         db.books,
         db.bookmarks,
         db.mcpServers,
+        db.bills,
+        db.periodEntries,
+        db.weightEntries,
+        db.browserBookmarks,
+        db.browserScripts,
+        db.musicCredentials,
+        db.musicHistory,
+        db.circlePosts,
+        db.circleReactions,
+        db.healthComments,
+        db.healthDaily,
         db.kv,
       ],
       async () => {
@@ -135,6 +227,17 @@ export async function importBackup(
         await db.books.clear();
         await db.bookmarks.clear();
         await db.mcpServers.clear();
+        await db.bills.clear();
+        await db.periodEntries.clear();
+        await db.weightEntries.clear();
+        await db.browserBookmarks.clear();
+        await db.browserScripts.clear();
+        await db.musicCredentials.clear();
+        await db.musicHistory.clear();
+        await db.circlePosts.clear();
+        await db.circleReactions.clear();
+        await db.healthComments.clear();
+        await db.healthDaily.clear();
         await db.kv.clear();
       },
     );
@@ -150,6 +253,17 @@ export async function importBackup(
     booksAdded: 0,
     bookmarksAdded: 0,
     mcpServersAdded: 0,
+    billsAdded: 0,
+    periodEntriesAdded: 0,
+    weightEntriesAdded: 0,
+    browserBookmarksAdded: 0,
+    browserScriptsAdded: 0,
+    musicCredentialsAdded: 0,
+    musicHistoryAdded: 0,
+    circlePostsAdded: 0,
+    circleReactionsAdded: 0,
+    healthCommentsAdded: 0,
+    healthDailyAdded: 0,
     settingsApplied: false,
   };
 
@@ -165,6 +279,17 @@ export async function importBackup(
       db.books,
       db.bookmarks,
       db.mcpServers,
+      db.bills,
+      db.periodEntries,
+      db.weightEntries,
+      db.browserBookmarks,
+      db.browserScripts,
+      db.musicCredentials,
+      db.musicHistory,
+      db.circlePosts,
+      db.circleReactions,
+      db.healthComments,
+      db.healthDaily,
     ],
     async () => {
       for (const e of bundle.endpoints ?? []) {
@@ -220,6 +345,72 @@ export async function importBackup(
         if (exists && opts.mode === 'merge') continue;
         await db.mcpServers.put(mcp);
         result.mcpServersAdded++;
+      }
+      for (const bill of bundle.bills ?? []) {
+        const exists = await db.bills.get(bill.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.bills.put(bill);
+        result.billsAdded++;
+      }
+      for (const pe of bundle.periodEntries ?? []) {
+        const exists = await db.periodEntries.get(pe.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.periodEntries.put(pe);
+        result.periodEntriesAdded++;
+      }
+      for (const we of bundle.weightEntries ?? []) {
+        const exists = await db.weightEntries.get(we.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.weightEntries.put(we);
+        result.weightEntriesAdded++;
+      }
+      for (const bb of bundle.browserBookmarks ?? []) {
+        const exists = await db.browserBookmarks.get(bb.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.browserBookmarks.put(bb);
+        result.browserBookmarksAdded++;
+      }
+      for (const bs of bundle.browserScripts ?? []) {
+        const exists = await db.browserScripts.get(bs.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.browserScripts.put(bs);
+        result.browserScriptsAdded++;
+      }
+      for (const mc of bundle.musicCredentials ?? []) {
+        const exists = await db.musicCredentials.get(mc.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.musicCredentials.put(mc);
+        result.musicCredentialsAdded++;
+      }
+      for (const mh of bundle.musicHistory ?? []) {
+        const exists = await db.musicHistory.get(mh.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.musicHistory.put(mh);
+        result.musicHistoryAdded++;
+      }
+      for (const cp of bundle.circlePosts ?? []) {
+        const exists = await db.circlePosts.get(cp.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.circlePosts.put(cp);
+        result.circlePostsAdded++;
+      }
+      for (const cr of bundle.circleReactions ?? []) {
+        const exists = await db.circleReactions.get(cr.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.circleReactions.put(cr);
+        result.circleReactionsAdded++;
+      }
+      for (const hc of bundle.healthComments ?? []) {
+        const exists = await db.healthComments.get(hc.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.healthComments.put(hc);
+        result.healthCommentsAdded++;
+      }
+      for (const hd of bundle.healthDaily ?? []) {
+        const exists = await db.healthDaily.get(hd.id);
+        if (exists && opts.mode === 'merge') continue;
+        await db.healthDaily.put(hd);
+        result.healthDailyAdded++;
       }
     },
   );

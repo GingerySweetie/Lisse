@@ -3,6 +3,11 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { RefreshCw } from 'lucide-react';
 import { getSettings } from '../db';
+import {
+  exportBackup,
+  downloadJSON,
+  suggestedBackupFilename,
+} from '../lib/backup';
 
 /**
  * Service-worker update prompter.
@@ -16,6 +21,10 @@ import { getSettings } from '../db';
  * a new SW is detected, the page reloads itself with a half-second
  * "新版本就位…" toast. The user never needs to manually clear the SW
  * cache. Toggle off to fall back to the classic banner.
+ *
+ * Auto-backup: before reloading for an update a full backup JSON is
+ * downloaded automatically so the user always has a recent copy of
+ * their data even if the update somehow wipes local storage.
  */
 export default function UpdateBanner() {
   const settings = useLiveQuery(() => getSettings(), [], null);
@@ -30,18 +39,24 @@ export default function UpdateBanner() {
       if (!reg) return;
       const r = reg;
       r.update().catch(() => undefined);
+
       const interval = setInterval(
         () => r.update().catch(() => undefined),
         5 * 60 * 1000,
       );
+
       function onVisible() {
         if (document.visibilityState === 'visible') {
           r.update().catch(() => undefined);
         }
       }
+
       document.addEventListener('visibilitychange', onVisible);
       window.addEventListener('focus', onVisible);
       window.addEventListener('pageshow', onVisible);
+
+      // Note: vite-plugin-pwa's onRegisteredSW does not call this cleanup
+      // automatically, but it is kept here for documentation purposes.
       return () => {
         clearInterval(interval);
         document.removeEventListener('visibilitychange', onVisible);
@@ -52,17 +67,28 @@ export default function UpdateBanner() {
   });
 
   // Auto-apply path: when needRefresh flips true and the user hasn't
-  // opted out, kick off updateServiceWorker(true) which triggers the
-  // reload. Ref guard so React StrictMode double-invocation doesn't
-  // double-apply.
+  // opted out, create a safety backup then reload.
+  // Ref guard so React StrictMode double-invocation doesn't double-apply.
   useEffect(() => {
     if (!needRefresh) return;
     if (!autoApply) return;
     if (autoAppliedRef.current) return;
     autoAppliedRef.current = true;
-    // Tiny delay so the "新版本就位…" toast actually renders.
-    const t = setTimeout(() => updateServiceWorker(true), 600);
-    return () => clearTimeout(t);
+
+    // Download a backup before reloading so the user always has a copy
+    // of their data, even if storage is somehow affected by the update.
+    const apply = async () => {
+      try {
+        const bundle = await exportBackup();
+        downloadJSON(bundle, suggestedBackupFilename());
+      } catch {
+        // Non-fatal: if the backup fails (e.g. empty DB) just proceed.
+      }
+      // Small delay so the "新版本就位…" toast renders before reload.
+      setTimeout(() => updateServiceWorker(true), 600);
+    };
+
+    void apply();
   }, [needRefresh, autoApply, updateServiceWorker]);
 
   const [visible, setVisible] = useState(false);
@@ -91,7 +117,7 @@ export default function UpdateBanner() {
         }`}
       >
         <RefreshCw size={14} className="animate-spin text-sky-500" />
-        <span className="text-sm text-ink-700">新版本就位 · 自动应用…</span>
+        <span className="text-sm text-ink-700">新版本就位 · 备份后自动应用…</span>
       </div>
     );
   }
