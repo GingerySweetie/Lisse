@@ -14,6 +14,12 @@ export default function Layout() {
     bootstrapProactiveNudge();
     function onVis() {
       recordVisibilityChange();
+      // Re-sync --app-h in case the WebView reported a stale innerHeight
+      // between the system event and this React handler. Belt-and-suspenders
+      // alongside the global listeners in main.tsx.
+      if (document.visibilityState === 'visible') {
+        document.documentElement.style.setProperty('--app-h', `${window.innerHeight}px`);
+      }
     }
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('pagehide', onVis);
