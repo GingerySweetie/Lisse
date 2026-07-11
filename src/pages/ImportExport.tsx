@@ -1,12 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import {
   ChevronLeft,
+  Database,
   Download,
   Upload,
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
   ShieldAlert,
 } from 'lucide-react';
 import { db } from '../db';
@@ -38,10 +42,127 @@ type Status =
   | { kind: 'ok'; label: string }
   | { kind: 'fail'; label: string };
 
+interface DbCounts {
+  conversations: number;
+  messages: number;
+  personas: number;
+  endpoints: number;
+  memoryFacts: number;
+  writingStyles: number;
+  books: number;
+  bills: number;
+  circlePosts: number;
+  periodEntries: number;
+  weightEntries: number;
+  healthDaily: number;
+  musicHistory: number;
+  mcpServers: number;
+  error?: string;
+}
+
+async function readAllCounts(): Promise<DbCounts> {
+  try {
+    const [
+      conversations,
+      messages,
+      personas,
+      endpoints,
+      memoryFacts,
+      writingStyles,
+      books,
+      bills,
+      circlePosts,
+      periodEntries,
+      weightEntries,
+      healthDaily,
+      musicHistory,
+      mcpServers,
+    ] = await Promise.all([
+      db.conversations.count(),
+      db.messages.count(),
+      db.personas.count(),
+      db.endpoints.count(),
+      db.memoryFacts.count(),
+      db.writingStyles.count(),
+      db.books.count(),
+      db.bills.count(),
+      db.circlePosts.count(),
+      db.periodEntries.count(),
+      db.weightEntries.count(),
+      db.healthDaily.count(),
+      db.musicHistory.count(),
+      db.mcpServers.count(),
+    ]);
+    return {
+      conversations,
+      messages,
+      personas,
+      endpoints,
+      memoryFacts,
+      writingStyles,
+      books,
+      bills,
+      circlePosts,
+      periodEntries,
+      weightEntries,
+      healthDaily,
+      musicHistory,
+      mcpServers,
+    };
+  } catch (err) {
+    return {
+      conversations: 0,
+      messages: 0,
+      personas: 0,
+      endpoints: 0,
+      memoryFacts: 0,
+      writingStyles: 0,
+      books: 0,
+      bills: 0,
+      circlePosts: 0,
+      periodEntries: 0,
+      weightEntries: 0,
+      healthDaily: 0,
+      musicHistory: 0,
+      mcpServers: 0,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export default function ImportExportPage() {
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
   const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
   const lastBackupAt = useLiveQuery(() => getLastBackupAt(), [], null);
+
+  // ── Data diagnostics ────────────────────────────────────────────────────
+  const [diagOpen, setDiagOpen] = useState(false);
+  const [counts, setCounts] = useState<DbCounts | null>(null);
+  const [diagBusy, setDiagBusy] = useState(false);
+
+  // Run an initial count on mount so the header badge is always accurate.
+  useEffect(() => {
+    readAllCounts().then(setCounts).catch(() => undefined);
+  }, []);
+
+  async function refreshCounts() {
+    setDiagBusy(true);
+    try {
+      // If the DB is blocked / stuck, try reopening first.
+      if (!db.isOpen()) {
+        await db.open();
+      }
+      setCounts(await readAllCounts());
+    } finally {
+      setDiagBusy(false);
+    }
+  }
+
+  const totalRecords = counts
+    ? counts.conversations + counts.messages + counts.memoryFacts +
+      counts.bills + counts.circlePosts + counts.periodEntries +
+      counts.weightEntries + counts.musicHistory
+    : null;
 
   // Compute "overdue" against a stable snapshot of now captured when the
   // component mounts or when lastBackupAt changes, to satisfy the react-compiler
@@ -211,6 +332,113 @@ export default function ImportExportPage() {
 
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-6">
+
+          {/* ── Data diagnostics ─────────────────────────────────────────── */}
+          <section className="endpoint-card !mt-0">
+            <button
+              type="button"
+              onClick={() => {
+                setDiagOpen((v) => !v);
+                if (!diagOpen && counts === null) void refreshCounts();
+              }}
+              className="flex w-full items-center justify-between gap-2 text-left"
+            >
+              <div className="flex items-center gap-2">
+                <Database size={15} className="text-lavender-400" strokeWidth={1.5} />
+                <span className="text-sm font-semibold text-ink-900">数据库诊断</span>
+                {counts !== null && (
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    counts.error
+                      ? 'bg-rose-100 text-rose-700'
+                      : counts.conversations > 0
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {counts.error
+                      ? '读取出错'
+                      : counts.conversations > 0
+                        ? `${counts.conversations} 条对话 · 数据存在`
+                        : '对话为空'}
+                  </span>
+                )}
+              </div>
+              {diagOpen ? <ChevronUp size={14} className="text-ink-400" /> : <ChevronDown size={14} className="text-ink-400" />}
+            </button>
+
+            {diagOpen && (
+              <div className="mt-3 space-y-3">
+                <p className="text-xs text-ink-500">
+                  直接读取 IndexedDB 的原始记录数，绕过 React 状态层。
+                  如果下方显示有数据但主界面看起来空的，说明是渲染层出了问题，数据是好的——点「立即导出」就能拿到。
+                </p>
+
+                {counts?.error && (
+                  <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                    <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                    <span>DB 读取出错：{counts.error}</span>
+                  </div>
+                )}
+
+                {counts && !counts.error && (
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 rounded-xl border border-lavender-100 bg-lavender-50/60 px-4 py-3 text-xs md:grid-cols-3">
+                    {[
+                      ['对话', counts.conversations],
+                      ['消息', counts.messages],
+                      ['人格', counts.personas],
+                      ['记忆', counts.memoryFacts],
+                      ['Endpoints', counts.endpoints],
+                      ['账单', counts.bills],
+                      ['朋友圈', counts.circlePosts],
+                      ['经期记录', counts.periodEntries],
+                      ['体重记录', counts.weightEntries],
+                      ['健康快照', counts.healthDaily],
+                      ['播放历史', counts.musicHistory],
+                      ['MCP 服务器', counts.mcpServers],
+                    ].map(([label, count]) => (
+                      <div key={String(label)} className="flex items-center justify-between gap-2">
+                        <span className="text-ink-500">{label}</span>
+                        <span className={`font-mono font-medium ${Number(count) > 0 ? 'text-emerald-600' : 'text-ink-300'}`}>
+                          {count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void refreshCounts()}
+                    disabled={diagBusy}
+                    className="flex items-center gap-1.5 rounded-lg border border-lavender-200 bg-white px-3 py-1.5 text-xs text-ink-700 transition hover:bg-lavender-50 disabled:opacity-50"
+                  >
+                    <RefreshCw size={12} className={diagBusy ? 'animate-spin' : ''} />
+                    重新读取
+                  </button>
+
+                  {totalRecords !== null && totalRecords > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleExportBackup}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-200"
+                    >
+                      <Download size={12} />
+                      立即导出全量备份
+                    </button>
+                  )}
+                </div>
+
+                {totalRecords === 0 && counts !== null && !counts.error && (
+                  <p className="text-xs text-amber-700">
+                    所有表均为空。如果你确定之前有数据，可以尝试：手机连电脑 → Chrome 地址栏输入{' '}
+                    <code className="rounded bg-amber-100 px-1">chrome://inspect/#devices</code>
+                    {' '}→ 找到 Wisteria → inspect → Application → IndexedDB → lisse，直接查看原始数据。
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+
           {/* ChatGPT/Claude/Lisse import shared options */}
           <section className="endpoint-card !mt-0">
             <h3 className="text-base font-semibold text-ink-900">
