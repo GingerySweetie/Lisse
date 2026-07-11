@@ -1,20 +1,19 @@
 package com.gingery.wisteria.plugins
 
-import android.app.Activity
-import android.content.Intent
+import android.content.ContentValues
+import android.os.Build
+import android.provider.MediaStore
 import android.util.Base64
-import com.getcapacitor.ActivityResult
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
-import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.io.IOException
 
 /**
- * FileSaverPlugin — saves a base64-encoded file to a user-chosen location
- * via Android's Storage Access Framework (ACTION_CREATE_DOCUMENT).
+ * FileSaverPlugin — writes a base64-encoded file directly to the device's
+ * public Downloads folder so the user can always find it in any file manager.
  *
  * Called from JS (via Capacitor.Plugins.FileSaver.saveFile):
  *   const result = await FileSaver.saveFile({
@@ -22,10 +21,10 @@ import java.io.IOException
  *     mimeType: 'application/json',
  *     suggestedName: 'backup.json',
  *   });
- *   // result.cancelled === true if the user dismissed the picker
+ *   // result.path — the final file path / URI that was written
  *
- * Opens the system file picker so the user chooses the exact save location
- * (Downloads, Documents, Drive, etc.), then writes the data there.
+ * Android 10+ (API 29+): uses MediaStore.Downloads for scoped storage.
+ * Android 9 and below: writes to the legacy public Downloads directory.
  */
 @CapacitorPlugin(name = "FileSaver")
 class FileSaverPlugin : Plugin() {
@@ -41,44 +40,48 @@ class FileSaverPlugin : Plugin() {
             return
         }
 
-        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = mimeType
-            putExtra(Intent.EXTRA_TITLE, suggestedName)
-        }
-
-        startActivityForResult(call, intent, "onCreateDocumentResult")
-    }
-
-    @ActivityCallback
-    private fun onCreateDocumentResult(call: PluginCall?, result: ActivityResult) {
-        if (call == null) return
-
-        if (result.resultCode != Activity.RESULT_OK || result.data?.data == null) {
-            // User cancelled the picker — not an error.
-            call.resolve(JSObject().apply { put("cancelled", true) })
+        val bytes = try {
+            Base64.decode(data, Base64.DEFAULT)
+        } catch (e: IllegalArgumentException) {
+            call.reject("Invalid base64 data: ${e.message}")
             return
         }
 
-        val uri = result.data!!.data!!
-        val rawData = call.getString("data") ?: run {
-            call.reject("Data missing after activity result")
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            // API < 29: WRITE_EXTERNAL_STORAGE would be needed. Let the JS
+            // layer fall through to the Web Share API instead.
+            call.reject("UNSUPPORTED_API_LEVEL")
             return
         }
 
         try {
-            val bytes = Base64.decode(rawData, Base64.DEFAULT)
-            context.contentResolver.openOutputStream(uri)?.use { out ->
-                out.write(bytes)
-            } ?: run {
-                call.reject("Could not open output stream for the selected URI")
-                return
-            }
-            call.resolve(JSObject().apply { put("cancelled", false) })
+            val savedPath = saveViaMediaStore(bytes, mimeType, suggestedName)
+            call.resolve(JSObject().apply { put("path", savedPath) })
         } catch (e: IOException) {
             call.reject("Failed to write file: ${e.message}")
-        } catch (e: IllegalArgumentException) {
-            call.reject("Invalid base64 data: ${e.message}")
         }
     }
+
+    /** Android 10+ (API 29+): scoped storage via MediaStore.Downloads. */
+    private fun saveViaMediaStore(bytes: ByteArray, mimeType: String, name: String): String {
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, name)
+            put(MediaStore.Downloads.MIME_TYPE, mimeType)
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: throw IOException("MediaStore.insert returned null")
+
+        resolver.openOutputStream(uri)?.use { out ->
+            out.write(bytes)
+        } ?: throw IOException("openOutputStream returned null")
+
+        values.clear()
+        values.put(MediaStore.Downloads.IS_PENDING, 0)
+        resolver.update(uri, values, null, null)
+
+        return uri.toString()
+    }
+
 }

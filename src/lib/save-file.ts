@@ -46,11 +46,17 @@ export async function saveFile(
         data: base64,
         mimeType: blob.type || 'application/octet-stream',
         suggestedName: filename,
-      }) as { cancelled: boolean };
-      if (!result.cancelled) return;
-      // If cancelled, fall through to web fallbacks (share sheet, etc.)
-    } catch {
-      // Plugin call failed → fall through.
+      }) as { path: string };
+      if (result.path) return;  // saved successfully
+      // empty path → fall through
+    } catch (err) {
+      // UNSUPPORTED_API_LEVEL or any other native error → fall through to
+      // web-based paths (share sheet, blob download).
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
+        // Unexpected error — still fall through, don't block the user.
+        console.warn('[FileSaver] native save failed:', msg);
+      }
     }
   }
 
