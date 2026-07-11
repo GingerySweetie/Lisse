@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import {
@@ -7,10 +7,12 @@ import {
   Upload,
   AlertCircle,
   CheckCircle2,
+  ShieldAlert,
 } from 'lucide-react';
 import { db } from '../db';
 import {
   exportBackup,
+  getLastBackupAt,
   importBackup,
   downloadJSON,
   suggestedBackupFilename,
@@ -39,6 +41,15 @@ type Status =
 export default function ImportExportPage() {
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
   const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
+  const lastBackupAt = useLiveQuery(() => getLastBackupAt(), [], null);
+
+  // Compute "overdue" against a stable snapshot of now captured when the
+  // component mounts or when lastBackupAt changes, to satisfy the react-compiler
+  // purity rule (Date.now() must not be called unconditionally during render).
+  const backupOverdue = useMemo(() => {
+    const now = Date.now();
+    return lastBackupAt === null || now - lastBackupAt > 7 * 24 * 60 * 60 * 1000;
+  }, [lastBackupAt]);
 
   const [importPersonaId, setImportPersonaId] = useState<string>('');
   const [importEndpointId, setImportEndpointId] = useState<string>('');
@@ -392,11 +403,29 @@ export default function ImportExportPage() {
           {/* Backup */}
           <section className="endpoint-card !mt-0">
             <h3 className="text-base font-semibold text-ink-900">
-              备份 / 恢复（Lisse 全量）
+              备份 / 恢复（全量）
             </h3>
-            <p className="mt-1 text-sm text-ink-500">
-              把 endpoints / 人格 / 对话 / 消息 / 设置打包成一个 JSON 文件，
-              换设备时拿来导入。<strong>API key 也会在文件里</strong>，请妥善保管喵。
+
+            {backupOverdue && (
+              <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                <ShieldAlert size={16} className="mt-0.5 shrink-0 text-amber-500" />
+                <span>
+                  {lastBackupAt === null
+                    ? '从未备份过。所有数据仅存在本设备上，建议现在就导出一份。'
+                    : `距上次备份已超过 7 天（${formatRelativeTime(lastBackupAt)}）。建议重新导出一份。`}
+                </span>
+              </div>
+            )}
+
+            {lastBackupAt !== null && !backupOverdue && (
+              <p className="mt-1 text-xs text-ink-400">
+                上次备份：{formatRelativeTime(lastBackupAt)}
+              </p>
+            )}
+
+            <p className="mt-2 text-sm text-ink-500">
+              把所有对话、人格、记忆、账单、健康、朋友圈等全部数据打包成一个 JSON，
+              换设备时导入即可完整恢复。<strong>API key 也会在文件里</strong>，请妥善保管喵。
             </p>
 
             <div className="mt-4 flex flex-wrap gap-3">
@@ -516,7 +545,28 @@ function summarizeImport(r: ImportResult): string {
 }
 
 function summarizeBackup(r: ImportBackupResult): string {
-  return `endpoints +${r.endpointsAdded}, personas +${r.personasAdded}, conversations +${r.conversationsAdded}, messages +${r.messagesAdded}, memory +${r.memoryFactsAdded}, styles +${r.writingStylesAdded}, books +${r.booksAdded}, MCP +${r.mcpServersAdded}${
-    r.settingsApplied ? '，设置已应用' : ''
-  }`;
+  const parts: string[] = [
+    `对话 +${r.conversationsAdded}`,
+    `消息 +${r.messagesAdded}`,
+  ];
+  if (r.endpointsAdded) parts.push(`endpoints +${r.endpointsAdded}`);
+  if (r.personasAdded) parts.push(`人格 +${r.personasAdded}`);
+  if (r.memoryFactsAdded) parts.push(`记忆 +${r.memoryFactsAdded}`);
+  if (r.billsAdded) parts.push(`账单 +${r.billsAdded}`);
+  if (r.circlePostsAdded) parts.push(`朋友圈 +${r.circlePostsAdded}`);
+  if (r.periodEntriesAdded || r.weightEntriesAdded || r.healthDailyAdded)
+    parts.push('健康数据 ✓');
+  if (r.settingsApplied) parts.push('设置已应用');
+  return parts.join('，');
+}
+
+function formatRelativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins} 分钟前`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.floor(hours / 24);
+  return `${days} 天前`;
 }
