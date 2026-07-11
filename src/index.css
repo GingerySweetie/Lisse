@@ -1258,14 +1258,16 @@
 .wis-chat-page {
   position: relative;
   width: 100%;
-  /* Use the dynamic viewport height so the frame tracks what is actually
-     visible when Android transparently overlays the status bar and when
-     the on-screen keyboard opens. Fall back to parent `100%` on browsers
-     without dvh support. Combined with the flex column below this keeps
-     header/composer/stream proportions stable even as the status bar or
-     keyboard mutates the visible area. */
-  height: 100%;
-  height: 100dvh;
+  /* Height is driven by --app-h, a JS-maintained CSS variable set (and
+     re-set on every resize / visibilitychange / pageshow) to
+     window.innerHeight. This avoids the mismatch that arises when mixing
+     100dvh (dynamic viewport unit) with a 100% parent chain: on Android
+     edge-to-edge, system events like screenshot capture and
+     background→foreground transitions can cause the WebView to briefly
+     report different innerHeight / dvh values, leaving a gap between
+     the 100% parents and the 100dvh child. Using a single JS-sourced
+     px value guarantees they agree after every layout recalculation. */
+  height: var(--app-h, 100%);
   /* clip, not hidden: hidden boxes can still be scrolled by the browser's
      focus-scrolling (Android keyboard), permanently shifting the layout. */
   overflow: hidden;
