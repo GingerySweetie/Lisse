@@ -1,4 +1,5 @@
 import { db, getSettings, saveSettings } from '../db';
+import { saveFile } from './save-file';
 import type {
   AppSettings,
   Bill,
@@ -423,18 +424,11 @@ export async function importBackup(
   return result;
 }
 
-export function downloadJSON(data: unknown, filename: string): void {
+export async function downloadJSON(data: unknown, filename: string): Promise<void> {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: 'application/json',
   });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  await saveFile(blob, filename, 'JSON 备份文件');
 }
 
 export function suggestedBackupFilename(): string {
