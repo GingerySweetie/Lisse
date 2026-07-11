@@ -254,8 +254,8 @@ export default function ImportExportPage() {
     setBackupStatus({ kind: 'busy', label: '打包中…' });
     try {
       const bundle = await exportBackup();
-      downloadJSON(bundle, suggestedBackupFilename());
-      setBackupStatus({ kind: 'ok', label: '已下载备份文件' });
+      await downloadJSON(bundle, suggestedBackupFilename());
+      setBackupStatus({ kind: 'ok', label: '已保存备份文件' });
     } catch (err) {
       setBackupStatus({
         kind: 'fail',
@@ -272,7 +272,7 @@ export default function ImportExportPage() {
         scope: bulkScope,
         includeUsage: true,
       });
-      downloadBlob(r.blob, r.filename);
+      await downloadBlob(r.blob, r.filename);
       setBulkStatus({ kind: 'ok', label: `已导出 ${r.count} 条对话` });
     } catch (err) {
       setBulkStatus({
@@ -287,8 +287,8 @@ export default function ImportExportPage() {
     setMemoryExportStatus({ kind: 'busy', label: '导出中…' });
     try {
       const r = await exportPersonaMemoryMarkdown(memoryPersonaId);
-      downloadText(r.content, r.filename, r.mime);
-      setMemoryExportStatus({ kind: 'ok', label: '已下载' });
+      await downloadText(r.content, r.filename, r.mime);
+      setMemoryExportStatus({ kind: 'ok', label: '已保存' });
     } catch (err) {
       setMemoryExportStatus({
         kind: 'fail',

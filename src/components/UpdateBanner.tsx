@@ -80,9 +80,9 @@ export default function UpdateBanner() {
     const apply = async () => {
       try {
         const bundle = await exportBackup();
-        downloadJSON(bundle, suggestedBackupFilename());
+        await downloadJSON(bundle, suggestedBackupFilename());
       } catch {
-        // Non-fatal: if the backup fails (e.g. empty DB) just proceed.
+        // Non-fatal: if the backup or save fails, proceed with the update.
       }
       // Small delay so the "新版本就位…" toast renders before reload.
       setTimeout(() => updateServiceWorker(true), 600);
