@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { db } from '../db';
 import type { Conversation, MemoryFact, Message, Persona } from '../types';
 import { getActiveBranch } from './branch';
+import { saveFile } from './save-file';
 
 const CATEGORY_LABEL: Record<MemoryFact['category'], string> = {
   user_fact: '事实',
@@ -259,20 +260,12 @@ export async function exportPersonaMemoryMarkdown(
   };
 }
 
-export function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
+  await saveFile(blob, filename);
 }
 
-export function downloadText(content: string, filename: string, mime: string): void {
-  const blob = new Blob([content], { type: mime });
-  downloadBlob(blob, filename);
+export async function downloadText(content: string, filename: string, mime: string): Promise<void> {
+  await saveFile(new Blob([content], { type: mime }), filename);
 }
 
 function sanitizeFilename(name: string): string {

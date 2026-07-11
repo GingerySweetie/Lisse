@@ -42,7 +42,7 @@ export default function ExportMenu({ conversation, persona, disabled }: Props) {
       persona,
       includeUsage: true,
     });
-    downloadText(out.content, out.filename, out.mime);
+    await downloadText(out.content, out.filename, out.mime);
   }
 
   return (
