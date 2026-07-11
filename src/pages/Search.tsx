@@ -54,23 +54,42 @@ export default function SearchPage() {
     setSearching(true);
     const needle = debounced.toLowerCase();
     (async () => {
-      // 全表 filter — 没有 content 索引, IndexedDB 也不支持子串. 内存
-      // 里 lowercase + includes 是最简单也最稳的路子。
-      const matches = await db.messages
-        .filter((m) => (m.content ?? '').toLowerCase().includes(needle))
-        .toArray();
+      // 1. Search message content (full-table filter — no content index).
+      const [matchingMessages, allConvs] = await Promise.all([
+        db.messages
+          .filter((m) => (m.content ?? '').toLowerCase().includes(needle))
+          .toArray(),
+        // 2. Fetch ALL conversations once so we can also match by title.
+        db.conversations.toArray(),
+      ]);
       if (cancelled) return;
-      // group by conversation, sort hits newest first
+
+      // Conversations whose title matches the needle.
+      const titleMatchIds = new Set(
+        allConvs
+          .filter((c) => (c.title ?? '').toLowerCase().includes(needle))
+          .map((c) => c.id),
+      );
+
+      // Group matching messages by conversation.
       const byConv = new Map<string, Message[]>();
-      for (const m of matches) {
+      for (const m of matchingMessages) {
         const arr = byConv.get(m.conversationId) ?? [];
         arr.push(m);
         byConv.set(m.conversationId, arr);
       }
-      // load conversations for the matched ids
-      const convs = await db.conversations.bulkGet(Array.from(byConv.keys()));
+
+      // Merge: conversations that matched via messages OR via title.
+      const allMatchedIds = new Set([
+        ...byConv.keys(),
+        ...titleMatchIds,
+      ]);
+
+      const convById = new Map(allConvs.map((c) => [c.id, c]));
       const out: ConversationHits[] = [];
-      for (const conv of convs) {
+
+      for (const convId of allMatchedIds) {
+        const conv = convById.get(convId);
         if (!conv) continue;
         const hits = (byConv.get(conv.id) ?? []).sort(
           (a, b) => b.createdAt - a.createdAt,
@@ -84,12 +103,15 @@ export default function SearchPage() {
           totalHits: hits.length,
         });
       }
-      // sort conversations by most recent hit time
+
+      // Sort: conversations with message hits first (by most recent hit),
+      // then title-only matches (by updatedAt).
       out.sort((a, b) => {
-        const ta = a.hits[0]?.createdAt ?? 0;
-        const tb = b.hits[0]?.createdAt ?? 0;
+        const ta = a.hits[0]?.createdAt ?? a.conversation.updatedAt ?? 0;
+        const tb = b.hits[0]?.createdAt ?? b.conversation.updatedAt ?? 0;
         return tb - ta;
       });
+
       if (cancelled) return;
       setResults(out.slice(0, TOTAL_CONVERSATIONS_LIMIT));
       setSearching(false);
@@ -211,8 +233,8 @@ export default function SearchPage() {
             {searching
               ? '搜索中…'
               : results.length === 0
-                ? '没找到匹配'
-                : `${results.length} 段会话有匹配`}
+                ? '没找到匹配（标题和消息内容都找过了）'
+                : `找到 ${results.length} 段会话`}
           </div>
         )}
       </div>

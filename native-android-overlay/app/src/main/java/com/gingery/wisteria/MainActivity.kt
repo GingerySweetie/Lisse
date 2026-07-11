@@ -8,6 +8,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.getcapacitor.BridgeActivity
 import com.gingery.wisteria.plugins.AccessibilityCapturePlugin
 import com.gingery.wisteria.plugins.BillSnifferPlugin
+import com.gingery.wisteria.plugins.FileSaverPlugin
 import com.gingery.wisteria.plugins.InAppBrowserPlugin
 import com.gingery.wisteria.plugins.ShareIntentPlugin
 import com.gingery.wisteria.plugins.SleepEstimatePlugin
@@ -23,6 +24,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(BillSnifferPlugin::class.java)
         registerPlugin(AccessibilityCapturePlugin::class.java)
         registerPlugin(InAppBrowserPlugin::class.java)
+        registerPlugin(FileSaverPlugin::class.java)
         super.onCreate(savedInstanceState)
 
         // Edge-to-edge: let the WebView draw behind the transparent status bar.
