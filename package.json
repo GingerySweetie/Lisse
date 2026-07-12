@@ -14,6 +14,7 @@
     "@capacitor/core": "8.4.0",
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/splash-screen": "8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "@capgo/capacitor-health": "^8.6.7",
     "@tailwindcss/vite": "^4.2.4",
     "@types/qrcode": "^1.5.6",
