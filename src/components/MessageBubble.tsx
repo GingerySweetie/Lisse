@@ -19,6 +19,8 @@ import { getSiblingInfo, type SiblingInfo } from '../lib/branch';
 import { attachmentDataUrl, formatBytes } from '../lib/attachments';
 import { DEFAULT_ACCENT } from './AccentPicker';
 import ChatMarkdown from './ChatMarkdown';
+import ArtifactCard from './ArtifactCard';
+import ChoicesWidget from './ChoicesWidget';
 
 interface Props {
   message: Message;
@@ -30,9 +32,13 @@ interface Props {
   disabled?: boolean;
   /** Conversation accent color used for the user bubble. Defaults to sky. */
   accentColor?: string | null;
+  /** When true, the choices widget buttons are clickable (no user reply yet). */
+  isChoicesClickable?: boolean;
   onEdit?: (newText: string) => void;
   onRegenerate?: () => void;
   onSwitchSibling?: (newActiveMessageId: string) => void;
+  /** Called when the user taps a choice button; sends the selected text as a new message. */
+  onSend?: (text: string) => void;
 }
 
 export default function MessageBubble({
@@ -41,9 +47,11 @@ export default function MessageBubble({
   streamingThinking,
   disabled,
   accentColor,
+  isChoicesClickable,
   onEdit,
   onRegenerate,
   onSwitchSibling,
+  onSend,
 }: Props) {
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
@@ -161,6 +169,20 @@ export default function MessageBubble({
                 </div>
               )}
             </div>
+            {message.artifacts && message.artifacts.length > 0 && !isStreaming && (
+              <div className="artifact-list">
+                {message.artifacts.map((a) => (
+                  <ArtifactCard key={a.id} artifact={a} />
+                ))}
+              </div>
+            )}
+            {message.choices && message.choices.length > 0 && !isStreaming && (
+              <ChoicesWidget
+                choices={message.choices}
+                clickable={isChoicesClickable ?? false}
+                onSelect={(choice) => onSend?.(choice)}
+              />
+            )}
           </div>
         )}
 

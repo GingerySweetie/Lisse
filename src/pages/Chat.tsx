@@ -557,24 +557,34 @@ export default function ChatPage() {
           <EmptyChat />
         ) : (
           <ul className="chat-content-column chat-message-list">
-            {branch.map((m) => (
-              <li key={m.id} data-mid={m.id}>
-                <MessageBubble
-                  message={m}
-                  accentColor={conversation?.accentColor ?? null}
-                  streamingText={
-                    m.id === streamingId ? streamingText : undefined
-                  }
-                  streamingThinking={
-                    m.id === streamingId ? streamingThinking : undefined
-                  }
-                  onEdit={(t) => handleEdit(m, t)}
-                  onRegenerate={() => handleRegenerate(m)}
-                  onSwitchSibling={handleSwitchSibling}
-                  disabled={busy}
-                />
-              </li>
-            ))}
+            {branch.map((m, idx) => {
+              // Choices widget is clickable only on assistant messages where
+              // no user reply exists yet in the active branch.
+              const isChoicesClickable =
+                m.role === 'assistant' &&
+                !busy &&
+                !branch.slice(idx + 1).some((mm) => mm.role === 'user');
+              return (
+                <li key={m.id} data-mid={m.id}>
+                  <MessageBubble
+                    message={m}
+                    accentColor={conversation?.accentColor ?? null}
+                    streamingText={
+                      m.id === streamingId ? streamingText : undefined
+                    }
+                    streamingThinking={
+                      m.id === streamingId ? streamingThinking : undefined
+                    }
+                    isChoicesClickable={isChoicesClickable}
+                    onEdit={(t) => handleEdit(m, t)}
+                    onRegenerate={() => handleRegenerate(m)}
+                    onSwitchSibling={handleSwitchSibling}
+                    onSend={(text) => handleSend(text, [])}
+                    disabled={busy}
+                  />
+                </li>
+              );
+            })}
           </ul>
         )}
         {tailPad > 0 && <div style={{ height: tailPad }} aria-hidden="true" />}
