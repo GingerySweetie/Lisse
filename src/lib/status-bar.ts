@@ -1,8 +1,10 @@
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
-/** Default: app primary lavender — used by every non-bedroom page. */
-export const STATUS_BAR_DEFAULT = '#F4ECF6';
+// Matches the app's <meta name="theme-color"> in index.html — a medium
+// lavender that creates a clearly visible status bar band while still
+// harmonising with the light-lavender page content below it.
+export const STATUS_BAR_DEFAULT = '#DCC9EA';
 
 /**
  * Set status bar background colour + icon style.
