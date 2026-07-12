@@ -4,10 +4,19 @@ import Sidebar from './Sidebar';
 import ErrorBoundary from './ErrorBoundary';
 import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
 import { bootstrapProactiveNudge } from '../lib/proactive-nudge';
+import { resetStatusBar } from '../lib/status-bar';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+
+  // Restore default lavender status bar whenever we land on any non-bedroom
+  // route. Bedroom routes manage their own colour and reset it on unmount.
+  useEffect(() => {
+    if (!location.pathname.startsWith('/bedroom')) {
+      void resetStatusBar();
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     bootstrapBehavior();

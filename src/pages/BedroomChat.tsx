@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { resetStatusBar, setStatusBarColor } from '../lib/status-bar';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getSettings } from '../db';
 import { type ChatTurn } from '../api';
@@ -105,6 +106,13 @@ export default function BedroomChatPage() {
   const t: BedroomTheme = getBedroomTheme(conv?.bedroomTheme, pid);
   const decorVariant = decorVariantForTheme(conv?.bedroomTheme);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+
+  // Match the status bar to the bedroom theme background.
+  // Reset to the app default (lavender) when leaving this page.
+  useEffect(() => {
+    void setStatusBarColor(t.bg, false); // dark bg → light (white) icons
+    return () => { void resetStatusBar(); };
+  }, [t.bg]);
   const [tentacleOpen, setTentacleOpen] = useState(false);
 
   async function setTheme(themeId: string) {
