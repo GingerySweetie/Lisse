@@ -41,9 +41,10 @@ function Strand({ left, dots, stemHeight }: { left: number; dots: StrandDot[]; s
     <div
       style={{
         position: 'absolute',
-        // Anchor the strand's stem to just below the chat header, which grows
-        // by env(safe-area-inset-top) in edge-to-edge mode.
-        top: 'calc(50px + env(safe-area-inset-top, 0px))',
+        // Anchor below the chat header; use --safe-top (JS-maintained) so
+        // the strands stay below the status bar even when MIUI resets
+        // env(safe-area-inset-top) to 0 after lifecycle events.
+        top: 'calc(50px + var(--safe-top, env(safe-area-inset-top, 0px)))',
         left,
         display: 'flex',
         flexDirection: 'column',
@@ -135,8 +136,8 @@ export function LeafButton({ onClick }: { onClick: () => void }) {
       style={{
         position: 'absolute',
         right: 4,
-        // Push below the transparent Android status bar on edge-to-edge.
-        top: 'calc(8px + env(safe-area-inset-top, 0px))',
+        // Push below the status bar; use --safe-top for MIUI resilience.
+        top: 'calc(8px + var(--safe-top, env(safe-area-inset-top, 0px)))',
         width: 66,
         height: 140,
         zIndex: 20,

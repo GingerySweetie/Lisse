@@ -48,13 +48,11 @@ export default function LeafMenu({ open, onClose, children }: Props) {
         style={{
           position: 'absolute',
           // Clear the transparent status bar on edge-to-edge Android.
-          top: 'calc(16px + env(safe-area-inset-top, 0px))',
+          top: 'calc(16px + var(--safe-top, env(safe-area-inset-top, 0px)))',
           right: 12,
           width: 'min(92vw, 320px)',
-          // Cap to visible viewport, subtracting both safe areas so the
-          // sheet never extends behind the status bar or gesture bar.
           maxHeight:
-            'calc(100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))',
+            'calc(100vh - 32px - var(--safe-top, env(safe-area-inset-top, 0px)) - var(--safe-bottom, env(safe-area-inset-bottom, 0px)))',
           overflowY: 'auto',
           background: 'hsla(270, 30%, 96%, 0.94)',
           border: '1px solid hsla(270, 30%, 78%, 0.4)',
