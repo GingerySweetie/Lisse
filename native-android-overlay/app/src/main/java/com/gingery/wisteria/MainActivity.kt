@@ -35,8 +35,12 @@ class MainActivity : BridgeActivity() {
         //
         // The JS layer (@capacitor/status-bar) will override this colour
         // per-page (e.g. dark themes in the bedroom section).
+        // #DCC9EA = medium lavender (matches <meta name="theme-color"> in
+        // index.html). Noticeably more saturated than the ultra-light page
+        // background so there is a clear visual band between the status bar
+        // and the chat header below it, without breaking the lavender palette.
         @Suppress("DEPRECATION")
-        window.statusBarColor = Color.parseColor("#F4ECF6") // app primary lavender
+        window.statusBarColor = Color.parseColor("#DCC9EA")
 
         // Dark icons on the light-lavender status bar.
         WindowInsetsControllerCompat(window, window.decorView)
