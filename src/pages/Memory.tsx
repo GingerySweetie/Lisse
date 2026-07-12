@@ -2,17 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import {
-  ChevronLeft,
-  Pin,
-  PinOff,
-  Trash2,
   Archive,
   ArchiveRestore,
-  Search,
+  ChevronLeft,
+  ListChecks,
   Pencil,
+  Pin,
+  PinOff,
   Save,
+  Search,
   Sparkles,
   Square,
+  Trash2,
   X,
 } from 'lucide-react';
 import { db, getSettings, saveSettings } from '../db';
@@ -68,6 +69,30 @@ export default function MemoryPage() {
   const [creating, setCreating] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
 
+  // ── Multi-select / edit mode ──────────────────────────────────────────────
+  const [editMode, setEditMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkCategory, setBulkCategory] = useState<FactCategory | ''>('');
+
+  function enterEditMode() {
+    setEditMode(true);
+    setSelected(new Set());
+    setBulkCategory('');
+  }
+  function exitEditMode() {
+    setEditMode(false);
+    setSelected(new Set());
+    setBulkCategory('');
+  }
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const filtered = useMemo(() => {
     if (!facts) return [];
     let out = facts;
@@ -77,6 +102,10 @@ export default function MemoryPage() {
     return out;
   }, [facts, filter, showArchived]);
 
+  const allFilteredIds = useMemo(() => filtered.map((f) => f.id), [filtered]);
+  const allSelected =
+    allFilteredIds.length > 0 && allFilteredIds.every((id) => selected.has(id));
+
   const stats = useMemo(() => {
     if (!facts) return { total: 0, pinned: 0, archived: 0 };
     return {
@@ -85,6 +114,48 @@ export default function MemoryPage() {
       archived: facts.filter((f) => f.archived).length,
     };
   }, [facts]);
+
+  // ── Bulk operations ───────────────────────────────────────────────────────
+  async function handleBulkDelete() {
+    if (selected.size === 0) return;
+    if (!confirm(`确定要删除选中的 ${selected.size} 条记忆？此操作不可撤销喵。`)) return;
+    await db.memoryFacts.bulkDelete([...selected]);
+    setSelected(new Set());
+  }
+
+  async function handleBulkCategorize() {
+    if (selected.size === 0 || !bulkCategory) return;
+    const now = Date.now();
+    await db.transaction('rw', db.memoryFacts, async () => {
+      for (const id of selected) {
+        await db.memoryFacts.update(id, { category: bulkCategory, updatedAt: now });
+      }
+    });
+    setSelected(new Set());
+    setBulkCategory('');
+  }
+
+  async function handleBulkPin(pinned: boolean) {
+    if (selected.size === 0) return;
+    const now = Date.now();
+    await db.transaction('rw', db.memoryFacts, async () => {
+      for (const id of selected) {
+        await db.memoryFacts.update(id, { pinned, updatedAt: now });
+      }
+    });
+    setSelected(new Set());
+  }
+
+  async function handleBulkArchive(archived: boolean) {
+    if (selected.size === 0) return;
+    const now = Date.now();
+    await db.transaction('rw', db.memoryFacts, async () => {
+      for (const id of selected) {
+        await db.memoryFacts.update(id, { archived, updatedAt: now });
+      }
+    });
+    setSelected(new Set());
+  }
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -96,51 +167,75 @@ export default function MemoryPage() {
           <ChevronLeft size={16} />
           返回
         </Link>
-        <h2 className="endpoint-card-title">记忆</h2>
+        <h2 className="endpoint-card-title flex-1">记忆</h2>
+        {/* Edit-mode toggle */}
+        {editMode ? (
+          <button
+            type="button"
+            onClick={exitEditMode}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-500 transition hover:bg-lavender-100 hover:text-ink-700"
+          >
+            <X size={13} strokeWidth={1.5} />
+            取消
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={enterEditMode}
+            className="rounded-lg p-1.5 text-ink-400 transition hover:bg-lavender-100 hover:text-ink-700"
+            aria-label="进入多选模式"
+            title="多选"
+          >
+            <ListChecks size={15} strokeWidth={1.5} />
+          </button>
+        )}
       </header>
 
       <div className="flex-1 overflow-y-auto px-3 py-4 md:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
-          {/* Persona switcher + stats */}
-          <div className="endpoint-card !mt-0 !p-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm">
-              <label className="text-xs font-medium text-ink-500">人格</label>
-              <select
-                value={personaId ?? ''}
-                onChange={(e) => setPersonaId(e.target.value || null)}
-                className="rounded-lg border border-lavender-200 bg-white px-2 py-1.5 focus:border-lavender-300"
-              >
-                {personas?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.avatar} {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-3 text-xs text-ink-500">
-              <span>共 {stats.total}</span>
-              <span>📌 {stats.pinned}</span>
-              <span>📦 {stats.archived}</span>
-              <button
-                type="button"
-                onClick={() => setBackfilling(true)}
-                disabled={!personaId}
-                className="btn-ghost flex items-center gap-1 !px-2 !py-1 !text-xs"
-              >
-                <Sparkles size={12} />
-                从对话回填
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreating(true)}
-                className="btn-primary !px-2 !py-1 !text-xs"
-              >
-                + 手工添加
-              </button>
-            </div>
-          </div>
 
-          {/* Filter */}
+          {/* Persona switcher + stats */}
+          {!editMode && (
+            <div className="endpoint-card !mt-0 !p-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm">
+                <label className="text-xs font-medium text-ink-500">人格</label>
+                <select
+                  value={personaId ?? ''}
+                  onChange={(e) => setPersonaId(e.target.value || null)}
+                  className="rounded-lg border border-lavender-200 bg-white px-2 py-1.5 focus:border-lavender-300"
+                >
+                  {personas?.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.avatar} {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-ink-500">
+                <span>共 {stats.total}</span>
+                <span>📌 {stats.pinned}</span>
+                <span>📦 {stats.archived}</span>
+                <button
+                  type="button"
+                  onClick={() => setBackfilling(true)}
+                  disabled={!personaId}
+                  className="btn-ghost flex items-center gap-1 !px-2 !py-1 !text-xs"
+                >
+                  <Sparkles size={12} />
+                  从对话回填
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreating(true)}
+                  className="btn-primary !px-2 !py-1 !text-xs"
+                >
+                  + 手工添加
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Filter bar */}
           <div className="endpoint-card !mt-0 !p-3 flex items-center gap-2">
             <Search size={16} className="text-ink-500" />
             <input
@@ -159,6 +254,111 @@ export default function MemoryPage() {
             </label>
           </div>
 
+          {/* Bulk-edit action bar */}
+          {editMode && (
+            <div className="endpoint-card !mt-0 !p-3 flex flex-wrap items-center gap-2">
+              {/* Selection controls */}
+              <span className="text-xs font-medium text-ink-700">
+                {selected.size > 0 ? `已选 ${selected.size} 条` : '未选'}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  allSelected
+                    ? setSelected(new Set())
+                    : setSelected(new Set(allFilteredIds))
+                }
+                className="rounded-lg px-2 py-1 text-xs text-ink-500 transition hover:bg-lavender-50"
+              >
+                {allSelected ? '取消全选' : '全选'}
+              </button>
+
+              <div className="mx-1 h-4 w-px bg-lavender-200" />
+
+              {/* Categorize */}
+              <select
+                value={bulkCategory}
+                onChange={(e) => setBulkCategory(e.target.value as FactCategory | '')}
+                disabled={selected.size === 0}
+                className="rounded-lg border border-lavender-200 bg-white px-2 py-1 text-xs disabled:opacity-40"
+              >
+                <option value="">改分类…</option>
+                {(Object.entries(CATEGORY_LABEL) as [FactCategory, string][]).map(
+                  ([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ),
+                )}
+              </select>
+              <button
+                type="button"
+                onClick={handleBulkCategorize}
+                disabled={selected.size === 0 || !bulkCategory}
+                className="rounded-lg bg-lavender-200 px-2 py-1 text-xs font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-40"
+              >
+                确认
+              </button>
+
+              <div className="mx-1 h-4 w-px bg-lavender-200" />
+
+              {/* Pin / Unpin */}
+              <button
+                type="button"
+                onClick={() => handleBulkPin(true)}
+                disabled={selected.size === 0}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40"
+                title="批量置顶"
+              >
+                <Pin size={12} /> 置顶
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkPin(false)}
+                disabled={selected.size === 0}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40"
+                title="批量取消置顶"
+              >
+                <PinOff size={12} /> 取消置顶
+              </button>
+
+              <div className="mx-1 h-4 w-px bg-lavender-200" />
+
+              {/* Archive / Unarchive */}
+              <button
+                type="button"
+                onClick={() => handleBulkArchive(true)}
+                disabled={selected.size === 0}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40"
+                title="批量归档"
+              >
+                <Archive size={12} /> 归档
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkArchive(false)}
+                disabled={selected.size === 0}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40"
+                title="批量取消归档"
+              >
+                <ArchiveRestore size={12} /> 取消归档
+              </button>
+
+              <div className="mx-1 h-4 w-px bg-lavender-200" />
+
+              {/* Delete */}
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={selected.size === 0}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-rose-500 transition hover:bg-rose-50 disabled:opacity-40"
+              >
+                <Trash2 size={12} />
+                删除选中 {selected.size > 0 ? `(${selected.size})` : ''}
+              </button>
+            </div>
+          )}
+
           {/* List */}
           {filtered.length === 0 ? (
             <EmptyMemory hasAny={stats.total > 0} />
@@ -166,7 +366,12 @@ export default function MemoryPage() {
             <ul className="flex flex-col gap-2">
               {filtered.map((f) => (
                 <li key={f.id}>
-                  <FactCard fact={f} />
+                  <FactCard
+                    fact={f}
+                    editMode={editMode}
+                    selected={selected.has(f.id)}
+                    onToggleSelect={() => toggleSelect(f.id)}
+                  />
                 </li>
               ))}
             </ul>
@@ -210,21 +415,25 @@ function EmptyMemory({ hasAny }: { hasAny: boolean }) {
   );
 }
 
-function FactCard({ fact }: { fact: MemoryFact }) {
+function FactCard({
+  fact,
+  editMode,
+  selected,
+  onToggleSelect,
+}: {
+  fact: MemoryFact;
+  editMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(fact.text);
 
   async function togglePin() {
-    await db.memoryFacts.update(fact.id, {
-      pinned: !fact.pinned,
-      updatedAt: Date.now(),
-    });
+    await db.memoryFacts.update(fact.id, { pinned: !fact.pinned, updatedAt: Date.now() });
   }
   async function toggleArchive() {
-    await db.memoryFacts.update(fact.id, {
-      archived: !fact.archived,
-      updatedAt: Date.now(),
-    });
+    await db.memoryFacts.update(fact.id, { archived: !fact.archived, updatedAt: Date.now() });
   }
   async function handleDelete() {
     if (!confirm('彻底删除这条记忆？')) return;
@@ -233,33 +442,20 @@ function FactCard({ fact }: { fact: MemoryFact }) {
   async function saveEdit() {
     const t = draft.trim();
     if (!t) return;
-    if (t === fact.text) {
-      setEditing(false);
-      return;
-    }
-    // Re-embed the new text.
+    if (t === fact.text) { setEditing(false); return; }
     const settings = await getSettings();
     let embedding = fact.embedding;
     if (settings.embeddingEndpointId && settings.embeddingModel) {
       const ep = await db.endpoints.get(settings.embeddingEndpointId);
       if (ep) {
         try {
-          const r = await embed({
-            endpoint: ep,
-            model: settings.embeddingModel,
-            inputs: [t],
-          });
+          const r = await embed({ endpoint: ep, model: settings.embeddingModel, inputs: [t] });
           embedding = r.vectors[0];
-        } catch {
-          // keep old embedding if re-embed fails
-        }
+        } catch { /* keep old embedding */ }
       }
     }
     await db.memoryFacts.update(fact.id, {
-      text: t,
-      embedding,
-      embeddingModel: fact.embeddingModel,
-      updatedAt: Date.now(),
+      text: t, embedding, embeddingModel: fact.embeddingModel, updatedAt: Date.now(),
     });
     setEditing(false);
   }
@@ -267,36 +463,43 @@ function FactCard({ fact }: { fact: MemoryFact }) {
   return (
     <div
       className={`rounded-xl border p-3 shadow-sm transition ${
-        fact.archived
-          ? 'border-ink-100 bg-ink-50/60 opacity-70'
-          : fact.pinned
-            ? 'border-lavender-300 bg-lavender-50'
-            : 'border-lavender-200 bg-white/80'
+        selected
+          ? 'border-lavender-400 bg-lavender-50 ring-1 ring-lavender-300'
+          : fact.archived
+            ? 'border-ink-100 bg-ink-50/60 opacity-70'
+            : fact.pinned
+              ? 'border-lavender-300 bg-lavender-50'
+              : 'border-lavender-200 bg-white/80'
       }`}
+      onClick={editMode ? onToggleSelect : undefined}
+      style={editMode ? { cursor: 'pointer' } : undefined}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start gap-2">
+        {/* Checkbox in edit mode */}
+        {editMode && (
+          <div className="mt-0.5 flex shrink-0 items-center">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              onClick={(e) => e.stopPropagation()}
+              className="h-4 w-4 accent-lavender-400"
+            />
+          </div>
+        )}
+
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span
-              className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                CATEGORY_COLOR[fact.category]
-              }`}
-            >
+            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${CATEGORY_COLOR[fact.category]}`}>
               {CATEGORY_LABEL[fact.category]}
             </span>
             {fact.pinned && (
-              <span className="rounded bg-lavender-200 px-1.5 py-0.5 text-xs text-sky-500">
-                已置顶
-              </span>
+              <span className="rounded bg-lavender-200 px-1.5 py-0.5 text-xs text-sky-500">已置顶</span>
             )}
             {fact.archived && (
-              <span className="rounded bg-ink-100 px-1.5 py-0.5 text-xs text-ink-500">
-                已归档
-              </span>
+              <span className="rounded bg-ink-100 px-1.5 py-0.5 text-xs text-ink-500">已归档</span>
             )}
-            <span className="text-xs text-ink-500/80">
-              {relativeTime(fact.createdAt)}
-            </span>
+            <span className="text-xs text-ink-500/80">{relativeTime(fact.createdAt)}</span>
           </div>
           {editing ? (
             <textarea
@@ -305,83 +508,57 @@ function FactCard({ fact }: { fact: MemoryFact }) {
               rows={Math.max(2, draft.split('\n').length + 1)}
               className="w-full resize-y rounded-lg border border-lavender-200 bg-white px-2 py-1.5 text-sm text-ink-900 focus:border-lavender-300"
               autoFocus
+              onClick={(e) => e.stopPropagation()}
             />
           ) : (
             <p className="text-sm text-ink-900">{fact.text}</p>
           )}
         </div>
-        <div className="flex shrink-0 flex-col gap-1">
-          {editing ? (
-            <>
-              <button
-                type="button"
-                onClick={saveEdit}
-                className="rounded-lg p-1.5 text-sky-500 transition hover:bg-lavender-100"
-                aria-label="保存"
-              >
-                <Save size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDraft(fact.text);
-                  setEditing(false);
-                }}
-                className="rounded-lg p-1.5 text-ink-500 transition hover:bg-lavender-50"
-                aria-label="取消"
-              >
-                <X size={14} />
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="rounded-lg p-1.5 text-ink-500 transition hover:bg-lavender-50"
-                aria-label="编辑"
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={togglePin}
-                className="rounded-lg p-1.5 text-ink-500 transition hover:bg-lavender-50"
-                aria-label={fact.pinned ? '取消置顶' : '置顶'}
-              >
-                {fact.pinned ? <PinOff size={14} /> : <Pin size={14} />}
-              </button>
-              <button
-                type="button"
-                onClick={toggleArchive}
-                className="rounded-lg p-1.5 text-ink-500 transition hover:bg-lavender-50"
-                aria-label={fact.archived ? '取消归档' : '归档'}
-              >
-                {fact.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="rounded-lg p-1.5 text-ink-500 transition hover:bg-rose-50 hover:text-rose-500"
-                aria-label="删除"
-              >
-                <Trash2 size={14} />
-              </button>
-            </>
-          )}
-        </div>
+
+        {/* Per-card action buttons — hidden in edit mode */}
+        {!editMode && (
+          <div className="flex shrink-0 flex-col gap-1">
+            {editing ? (
+              <>
+                <button type="button" onClick={saveEdit}
+                  className="rounded-lg p-1.5 text-sky-500 transition hover:bg-lavender-100" aria-label="保存">
+                  <Save size={14} />
+                </button>
+                <button type="button" onClick={() => { setDraft(fact.text); setEditing(false); }}
+                  className="rounded-lg p-1.5 text-ink-500 transition hover:bg-lavender-50" aria-label="取消">
+                  <X size={14} />
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => setEditing(true)}
+                  className="rounded-lg p-1.5 text-ink-500 transition hover:bg-lavender-50" aria-label="编辑">
+                  <Pencil size={14} />
+                </button>
+                <button type="button" onClick={togglePin}
+                  className="rounded-lg p-1.5 text-ink-500 transition hover:bg-lavender-50"
+                  aria-label={fact.pinned ? '取消置顶' : '置顶'}>
+                  {fact.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+                </button>
+                <button type="button" onClick={toggleArchive}
+                  className="rounded-lg p-1.5 text-ink-500 transition hover:bg-lavender-50"
+                  aria-label={fact.archived ? '取消归档' : '归档'}>
+                  {fact.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                </button>
+                <button type="button" onClick={handleDelete}
+                  className="rounded-lg p-1.5 text-ink-500 transition hover:bg-rose-50 hover:text-rose-500" aria-label="删除">
+                  <Trash2 size={14} />
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function ManualAddDialog({
-  personaId,
-  onClose,
-}: {
-  personaId: string;
-  onClose: () => void;
-}) {
+function ManualAddDialog({ personaId, onClose }: { personaId: string; onClose: () => void }) {
   const [text, setText] = useState('');
   const [category, setCategory] = useState<FactCategory>('user_fact');
   const [busy, setBusy] = useState(false);
@@ -390,8 +567,7 @@ function ManualAddDialog({
   async function handleSave() {
     const t = text.trim();
     if (!t) return;
-    setBusy(true);
-    setErr('');
+    setBusy(true); setErr('');
     try {
       const settings = await getSettings();
       let embedding: number[] = [];
@@ -400,11 +576,7 @@ function ManualAddDialog({
         const ep = await db.endpoints.get(settings.embeddingEndpointId);
         if (ep) {
           try {
-            const r = await embed({
-              endpoint: ep,
-              model: settings.embeddingModel,
-              inputs: [t],
-            });
+            const r = await embed({ endpoint: ep, model: settings.embeddingModel, inputs: [t] });
             embedding = r.vectors[0];
             embeddingModel = settings.embeddingModel;
           } catch (e) {
@@ -414,87 +586,43 @@ function ManualAddDialog({
       }
       const now = Date.now();
       await db.memoryFacts.add({
-        id: newId(),
-        personaId,
-        conversationId: '',
-        messageId: '',
-        text: t,
-        category,
-        embedding,
-        embeddingModel,
-        pinned: true,
-        createdAt: now,
-        updatedAt: now,
+        id: newId(), personaId, conversationId: '', messageId: '',
+        text: t, category, embedding, embeddingModel, pinned: true, createdAt: now, updatedAt: now,
       });
-      // bump default persona setting too if not set
       const settingsCheck = await getSettings();
-      if (!settingsCheck.defaultPersonaId) {
-        await saveSettings({ defaultPersonaId: personaId });
-      }
+      if (!settingsCheck.defaultPersonaId) await saveSettings({ defaultPersonaId: personaId });
       onClose();
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/30 backdrop-blur-sm md:items-center"
-      onClick={onClose}
-    >
-      <div
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl md:rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/30 backdrop-blur-sm md:items-center" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl md:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-lg font-semibold text-ink-900">手工添加记忆</h3>
-        <p className="mt-1 text-xs text-ink-500">
-          手工添加的记忆默认置顶，永远会被检索到。
-        </p>
-
+        <p className="mt-1 text-xs text-ink-500">手工添加的记忆默认置顶，永远会被检索到。</p>
         <div className="mt-4 flex flex-col gap-3 text-sm">
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-ink-500">内容</span>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={5}
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={5}
               placeholder="比如：她在苏州一家会员店做零售岗，排班 14:00-22:45。"
-              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
-            />
+              className="resize-y rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300" />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-ink-500">分类</span>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as FactCategory)}
-              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
-            >
-              {(Object.entries(CATEGORY_LABEL) as [FactCategory, string][]).map(
-                ([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ),
-              )}
+            <select value={category} onChange={(e) => setCategory(e.target.value as FactCategory)}
+              className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300">
+              {(Object.entries(CATEGORY_LABEL) as [FactCategory, string][]).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
             </select>
           </label>
           {err && <p className="text-xs text-rose-500">{err}</p>}
         </div>
-
         <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-lavender-200 px-4 py-2 text-sm text-ink-700 transition hover:bg-lavender-50"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={busy || !text.trim()}
-            className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
-          >
+          <button type="button" onClick={onClose}
+            className="rounded-lg border border-lavender-200 px-4 py-2 text-sm text-ink-700 transition hover:bg-lavender-50">取消</button>
+          <button type="button" onClick={handleSave} disabled={busy || !text.trim()}
+            className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60">
             {busy ? '保存中…' : '保存'}
           </button>
         </div>
@@ -504,52 +632,31 @@ function ManualAddDialog({
 }
 
 const SOURCE_LABEL: Record<NonNullable<Conversation['source']> | 'unknown', string> = {
-  native: '原生',
-  chatgpt: 'ChatGPT',
-  claude: 'Claude',
-  unknown: '其它',
+  native: '原生', chatgpt: 'ChatGPT', claude: 'Claude', unknown: '其它',
 };
 
-interface ConvRow {
-  conversation: Conversation;
-  msgCount: number;
-}
+interface ConvRow { conversation: Conversation; msgCount: number; }
 
-function BackfillDialog({
-  targetPersona,
-  allPersonas,
-  onClose,
-}: {
-  targetPersona: Persona;
-  allPersonas: Persona[];
-  onClose: () => void;
+function BackfillDialog({ targetPersona, allPersonas, onClose }: {
+  targetPersona: Persona; allPersonas: Persona[]; onClose: () => void;
 }) {
   const [personaId, setPersonaId] = useState(targetPersona.id);
-  const [sourceFilter, setSourceFilter] = useState<
-    'all' | 'native' | 'chatgpt' | 'claude'
-  >('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'native' | 'chatgpt' | 'claude'>('all');
   const [showBackfilled, setShowBackfilled] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rows, setRows] = useState<ConvRow[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Run state
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<BackfillProgress | null>(null);
-  const [doneSummary, setDoneSummary] = useState<{
-    convs: number;
-    facts: number;
-  } | null>(null);
+  const [doneSummary, setDoneSummary] = useState<{ convs: number; facts: number } | null>(null);
   const [runError, setRunError] = useState<string>('');
   const abortRef = useRef<AbortController | null>(null);
 
-  // Load all conversations + message counts on mount.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       const convs = await db.conversations.toArray();
-      // Drop bedroom by default (intimate threads have own retrieval scope).
       const visible = convs.filter((c) => !c.room);
       const counts = await Promise.all(
         visible.map(async (c) => ({
@@ -558,227 +665,123 @@ function BackfillDialog({
         })),
       );
       counts.sort((a, b) => b.conversation.updatedAt - a.conversation.updatedAt);
-      if (!cancelled) {
-        setRows(counts);
-        setLoading(false);
-      }
+      if (!cancelled) { setRows(counts); setLoading(false); }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const filteredRows = useMemo(() => {
     let r = rows;
-    if (sourceFilter !== 'all') {
-      r = r.filter((row) => (row.conversation.source ?? 'native') === sourceFilter);
-    }
-    if (!showBackfilled) {
-      r = r.filter((row) => !row.conversation.memoryBackfilledAt);
-    }
+    if (sourceFilter !== 'all') r = r.filter((row) => (row.conversation.source ?? 'native') === sourceFilter);
+    if (!showBackfilled) r = r.filter((row) => !row.conversation.memoryBackfilledAt);
     return r;
   }, [rows, sourceFilter, showBackfilled]);
 
   function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
-  function selectAllVisible() {
-    setSelected(new Set(filteredRows.map((r) => r.conversation.id)));
-  }
-  function clearSelection() {
-    setSelected(new Set());
-  }
+  function selectAllVisible() { setSelected(new Set(filteredRows.map((r) => r.conversation.id))); }
+  function clearSelection() { setSelected(new Set()); }
 
   const selectedRows = filteredRows.filter((r) => selected.has(r.conversation.id));
-  const estimatedBatches = selectedRows.reduce(
-    (sum, r) => sum + Math.max(1, Math.ceil(r.msgCount / 16)),
-    0,
-  );
+  const estimatedBatches = selectedRows.reduce((sum, r) => sum + Math.max(1, Math.ceil(r.msgCount / 16)), 0);
 
   async function start() {
     if (selectedRows.length === 0) return;
     const persona = allPersonas.find((p) => p.id === personaId);
     if (!persona) return;
-    setRunning(true);
-    setRunError('');
-    setDoneSummary(null);
+    setRunning(true); setRunError(''); setDoneSummary(null);
     const controller = new AbortController();
     abortRef.current = controller;
     try {
       const results = await backfillConversations({
-        conversations: selectedRows.map((r) => r.conversation),
-        persona,
-        signal: controller.signal,
-        onProgress: setProgress,
+        conversations: selectedRows.map((r) => r.conversation), persona,
+        signal: controller.signal, onProgress: setProgress,
       });
       const totalFacts = results.reduce((s, r) => s + r.factsAdded, 0);
       setDoneSummary({ convs: results.length, facts: totalFacts });
-      // Refresh row data so backfilled timestamps appear immediately.
       const refreshed = await Promise.all(
         rows.map(async (r) => ({
           conversation: (await db.conversations.get(r.conversation.id)) ?? r.conversation,
           msgCount: r.msgCount,
         })),
       );
-      setRows(refreshed);
-      setSelected(new Set());
+      setRows(refreshed); setSelected(new Set());
     } catch (e) {
       setRunError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setRunning(false);
-      abortRef.current = null;
-    }
+    } finally { setRunning(false); abortRef.current = null; }
   }
 
-  function abort() {
-    abortRef.current?.abort();
-  }
+  function abort() { abortRef.current?.abort(); }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/30 backdrop-blur-sm md:items-center"
-      onClick={running ? undefined : onClose}
-    >
-      <div
-        className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl md:rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/30 backdrop-blur-sm md:items-center"
+      onClick={running ? undefined : onClose}>
+      <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl md:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-lavender-100 px-5 py-4">
           <div>
             <h3 className="flex items-center gap-1.5 text-lg font-semibold text-ink-900">
               <Sparkles size={16} className="text-lavender-600" /> 从对话回填记忆
             </h3>
-            <p className="mt-1 text-xs text-ink-500">
-              历史对话每 16 条消息打包一次喂给抽取小模型，事实落到选中的人格记忆池。
-            </p>
+            <p className="mt-1 text-xs text-ink-500">历史对话每 16 条消息打包一次喂给抽取小模型，事实落到选中的人格记忆池。</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={running}
-            className="rounded-full p-1 text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40"
-            aria-label="关闭"
-          >
+          <button type="button" onClick={onClose} disabled={running}
+            className="rounded-full p-1 text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40" aria-label="关闭">
             <X size={16} />
           </button>
         </div>
-
-        {/* Controls */}
         <div className="flex flex-wrap items-center gap-3 border-b border-lavender-100 px-5 py-3 text-sm">
           <label className="flex items-center gap-2">
             <span className="text-xs text-ink-500">归到</span>
-            <select
-              value={personaId}
-              onChange={(e) => setPersonaId(e.target.value)}
-              disabled={running}
-              className="rounded-lg border border-lavender-200 bg-white px-2 py-1 text-sm"
-            >
-              {allPersonas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.avatar} {p.name}
-                </option>
-              ))}
+            <select value={personaId} onChange={(e) => setPersonaId(e.target.value)} disabled={running}
+              className="rounded-lg border border-lavender-200 bg-white px-2 py-1 text-sm">
+              {allPersonas.map((p) => <option key={p.id} value={p.id}>{p.avatar} {p.name}</option>)}
             </select>
           </label>
           <div className="flex items-center gap-1 text-xs">
             {(['all', 'native', 'chatgpt', 'claude'] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                disabled={running}
-                onClick={() => setSourceFilter(s)}
-                className={`rounded-full px-2 py-1 transition ${
-                  sourceFilter === s
-                    ? 'bg-lavender-200 text-ink-900'
-                    : 'bg-lavender-50 text-ink-500 hover:bg-lavender-100'
-                } disabled:opacity-40`}
-              >
+              <button key={s} type="button" disabled={running} onClick={() => setSourceFilter(s)}
+                className={`rounded-full px-2 py-1 transition ${sourceFilter === s ? 'bg-lavender-200 text-ink-900' : 'bg-lavender-50 text-ink-500 hover:bg-lavender-100'} disabled:opacity-40`}>
                 {s === 'all' ? '全部' : SOURCE_LABEL[s]}
               </button>
             ))}
           </div>
           <label className="flex items-center gap-1 text-xs text-ink-500">
-            <input
-              type="checkbox"
-              checked={showBackfilled}
-              onChange={(e) => setShowBackfilled(e.target.checked)}
-              disabled={running}
-            />
+            <input type="checkbox" checked={showBackfilled} onChange={(e) => setShowBackfilled(e.target.checked)} disabled={running} />
             含已抽过
           </label>
           <div className="ml-auto flex items-center gap-2 text-xs">
-            <button
-              type="button"
-              disabled={running || filteredRows.length === 0}
-              onClick={selectAllVisible}
-              className="rounded-lg px-2 py-1 text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40"
-            >
-              全选
-            </button>
-            <button
-              type="button"
-              disabled={running || selected.size === 0}
-              onClick={clearSelection}
-              className="rounded-lg px-2 py-1 text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40"
-            >
-              清空
-            </button>
+            <button type="button" disabled={running || filteredRows.length === 0} onClick={selectAllVisible}
+              className="rounded-lg px-2 py-1 text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40">全选</button>
+            <button type="button" disabled={running || selected.size === 0} onClick={clearSelection}
+              className="rounded-lg px-2 py-1 text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40">清空</button>
           </div>
         </div>
-
-        {/* List */}
         <div className="flex-1 overflow-y-auto px-3 py-2">
           {loading ? (
             <div className="px-3 py-8 text-center text-sm text-ink-500">加载对话……</div>
           ) : filteredRows.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-ink-500">
-              当前过滤条件下没有对话。
-            </div>
+            <div className="px-3 py-8 text-center text-sm text-ink-500">当前过滤条件下没有对话。</div>
           ) : (
             <ul className="flex flex-col gap-1">
               {filteredRows.map((row) => {
                 const c = row.conversation;
                 const isSelected = selected.has(c.id);
-                const isCurrent =
-                  progress?.conversationId === c.id && running;
+                const isCurrent = progress?.conversationId === c.id && running;
                 return (
                   <li key={c.id}>
-                    <label
-                      className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
-                        isCurrent
-                          ? 'border-lavender-300 bg-lavender-50'
-                          : isSelected
-                            ? 'border-lavender-300 bg-lavender-50'
-                            : 'border-transparent hover:bg-lavender-50/60'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggle(c.id)}
-                        disabled={running}
-                      />
+                    <label className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${isCurrent || isSelected ? 'border-lavender-300 bg-lavender-50' : 'border-transparent hover:bg-lavender-50/60'}`}>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggle(c.id)} disabled={running} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <span className="truncate text-ink-900">
-                            {c.title || '（无标题）'}
-                          </span>
+                          <span className="truncate text-ink-900">{c.title || '（无标题）'}</span>
                           {c.memoryBackfilledAt && (
-                            <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-500">
-                              已抽过
-                            </span>
+                            <span className="shrink-0 rounded bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-500">已抽过</span>
                           )}
                         </div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-ink-500">
-                          <span className="rounded bg-lavender-50 px-1.5 py-0.5">
-                            {SOURCE_LABEL[c.source ?? 'native']}
-                          </span>
+                          <span className="rounded bg-lavender-50 px-1.5 py-0.5">{SOURCE_LABEL[c.source ?? 'native']}</span>
                           <span>{row.msgCount} 条</span>
                           <span>·</span>
                           <span>{relativeTime(c.updatedAt)}</span>
@@ -786,8 +789,7 @@ function BackfillDialog({
                       </div>
                       {isCurrent && progress && (
                         <span className="shrink-0 text-[11px] text-sky-500">
-                          {progress.phase === 'embedding' ? '嵌入中' : '抽取中'}{' '}
-                          {progress.batchDone + 1}/{progress.batchTotal}
+                          {progress.phase === 'embedding' ? '嵌入中' : '抽取中'} {progress.batchDone + 1}/{progress.batchTotal}
                         </span>
                       )}
                     </label>
@@ -797,56 +799,32 @@ function BackfillDialog({
             </ul>
           )}
         </div>
-
-        {/* Footer / progress / actions */}
         <div className="border-t border-lavender-100 bg-lavender-50/40 px-5 py-3">
-          {runError && (
-            <p className="mb-2 text-xs text-rose-500">{runError}</p>
-          )}
+          {runError && <p className="mb-2 text-xs text-rose-500">{runError}</p>}
           {doneSummary && !running && (
-            <p className="mb-2 text-xs text-sky-500">
-              完成：处理 {doneSummary.convs} 个对话，新增 {doneSummary.facts} 条记忆。
-            </p>
+            <p className="mb-2 text-xs text-sky-500">完成：处理 {doneSummary.convs} 个对话，新增 {doneSummary.facts} 条记忆。</p>
           )}
           {running && progress && (
             <div className="mb-2 text-xs text-ink-500">
-              对话 {progress.conversationIndex + 1}/{progress.conversationTotal} ·
-              批次 {progress.batchDone + 1}/{progress.batchTotal || 1} ·
-              已添加 {progress.factsAddedTotal} 条事实
+              对话 {progress.conversationIndex + 1}/{progress.conversationTotal} · 批次 {progress.batchDone + 1}/{progress.batchTotal || 1} · 已添加 {progress.factsAddedTotal} 条事实
             </div>
           )}
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs text-ink-500">
-              {selectedRows.length > 0
-                ? `已选 ${selectedRows.length} 个对话 · 约 ${estimatedBatches} 次抽取调用`
-                : '未选'}
+              {selectedRows.length > 0 ? `已选 ${selectedRows.length} 个对话 · 约 ${estimatedBatches} 次抽取调用` : '未选'}
             </div>
             <div className="flex gap-2">
               {running ? (
-                <button
-                  type="button"
-                  onClick={abort}
-                  className="flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-500 transition hover:bg-rose-100"
-                >
+                <button type="button" onClick={abort}
+                  className="flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-500 transition hover:bg-rose-100">
                   <Square size={12} fill="currentColor" /> 停止
                 </button>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-lg border border-lavender-200 px-4 py-2 text-sm text-ink-700 transition hover:bg-lavender-50"
-                  >
-                    关闭
-                  </button>
-                  <button
-                    type="button"
-                    onClick={start}
-                    disabled={selectedRows.length === 0}
-                    className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-50"
-                  >
-                    开始抽取
-                  </button>
+                  <button type="button" onClick={onClose}
+                    className="rounded-lg border border-lavender-200 px-4 py-2 text-sm text-ink-700 transition hover:bg-lavender-50">关闭</button>
+                  <button type="button" onClick={start} disabled={selectedRows.length === 0}
+                    className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-50">开始抽取</button>
                 </>
               )}
             </div>
