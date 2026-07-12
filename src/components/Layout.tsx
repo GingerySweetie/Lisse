@@ -93,8 +93,8 @@ export default function Layout() {
           // viewport (behind the transparent status bar at top and the
           // gesture-nav bar at bottom). Shift the contents in so they aren't
           // hidden beneath the system chrome.
-          paddingTop: 'env(safe-area-inset-top, 0px)',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))',
+          paddingBottom: 'var(--safe-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
         <Sidebar onNavigate={() => setSidebarOpen(false)} />
