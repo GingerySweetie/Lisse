@@ -24,6 +24,47 @@ import { runToolLoop } from './tools/loop';
 import { buildGroupTurns, groupAwarenessSnippet } from './group';
 import { formatStatusBlock } from './behavior';
 import { formatHealthContextBlock } from './health-context';
+import { parseArtifacts } from './artifacts';
+
+/**
+ * Capability description injected as a stable system turn so the model
+ * knows how to produce file artifacts and choice selectors. Kept as a
+ * constant so it is byte-stable across requests and benefits from prompt
+ * caching.
+ */
+const ARTIFACTS_CAPABILITY = `# 输出能力：文件 Artifact 与选择器
+
+你可以在回复中生成文件或多选按钮，使用以下标签格式：
+
+## 文件 Artifact
+格式：[file name=文件名.扩展名]完整文件内容[/file]
+
+规则：
+- 凡是"成品"性质的内容（完整 HTML 页面、Markdown 文档、代码文件、配置文件等）都用文件标签发送，不要把完整代码贴在聊天气泡里刷屏
+- 文件名要有意义，扩展名准确（.html / .md / .py / .js / .ts / .css / .json 等）
+- 一条回复可以包含多个文件标签
+- 文件标签外可以有正常的聊天文字
+
+## 选择器
+格式：[choices]选项A|选项B|选项C[/choices]
+
+规则：
+- 当需要让用户从有限选项中选择时使用，选项用 | 分隔
+- 自己判断时机，不要滥用；纯聊天、开放性问题不需要选择器
+- 一条回复里只用一个 [choices] 标签
+
+示例（HTML 文件）：
+好的，这是你要的登录页面：
+[file name=login.html]<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="UTF-8"><title>登录</title></head>
+<body><form>...</form></body>
+</html>[/file]
+
+示例（选择器）：
+你想要哪种风格？
+[choices]极简白色|深色模式|彩色渐变[/choices]`;
+
 
 export interface SendOptions {
   conversation: Conversation;
@@ -535,6 +576,11 @@ async function streamAssistant(args: {
   // These are collected into gateway_volatile_context below and prepended to the
   // last user message (after BP4), so they never bust any cached prefix.
 
+  // Artifact / choices capability description — byte-stable constant, so it
+  // costs nothing extra in prompt caching. Placed BEFORE persona so it sets
+  // the baseline capability context the persona can then override / extend.
+  turns.push({ role: 'system', content: ARTIFACTS_CAPABILITY });
+
   // BP1: persona (stable — almost never changes)
   if (persona && persona.systemPrompt.trim()) {
     turns.push({ role: 'system', content: persona.systemPrompt });
@@ -691,8 +737,15 @@ async function streamAssistant(args: {
   });
 
   const finalStatus: Message['status'] = result.errored ? 'error' : 'done';
+
+  // Parse artifact and choices tags out of the raw response text so the
+  // chat bubble only shows clean prose while cards/buttons render separately.
+  const { cleanText, artifacts, choices } = parseArtifacts(result.text);
+
   await db.messages.update(assistantMessageId, {
-    content: result.text,
+    content: cleanText,
+    artifacts: artifacts.length > 0 ? artifacts : undefined,
+    choices: choices.length > 0 ? choices : undefined,
     thinking: result.thinking || undefined,
     status: finalStatus,
     errorMessage: result.errorMessage,
