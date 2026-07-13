@@ -3,7 +3,6 @@ package com.gingery.wisteria
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.getcapacitor.BridgeActivity
 import com.gingery.wisteria.plugins.AccessibilityCapturePlugin
@@ -13,6 +12,7 @@ import com.gingery.wisteria.plugins.InAppBrowserPlugin
 import com.gingery.wisteria.plugins.ShareIntentPlugin
 import com.gingery.wisteria.plugins.SleepEstimatePlugin
 import com.gingery.wisteria.plugins.StepCounterPlugin
+import com.gingery.wisteria.plugins.SystemBarsPlugin
 import com.gingery.wisteria.plugins.UsageStatsPlugin
 
 class MainActivity : BridgeActivity() {
@@ -25,27 +25,23 @@ class MainActivity : BridgeActivity() {
         registerPlugin(AccessibilityCapturePlugin::class.java)
         registerPlugin(InAppBrowserPlugin::class.java)
         registerPlugin(FileSaverPlugin::class.java)
+        registerPlugin(SystemBarsPlugin::class.java)
         super.onCreate(savedInstanceState)
 
-        // The WebView does NOT extend behind the status bar (default
-        // fitsSystemWindows = true).  The status bar gets its own fixed space
-        // and we colour it to match the app palette.
-        //
-        // This completely eliminates the MIUI edge-to-edge / safe-area inset
-        // reset issue: env(safe-area-inset-top) is always 0 in this mode, the
-        // WebView starts cleanly below the status bar, no JS patching needed.
-        //
-        // The JS layer (@capacitor/status-bar) will override this colour
-        // per-page (e.g. dark themes in the bedroom section).
-        // #F5F0FA = very light lavender — the solid equivalent of the app
-        // header backgrounds (.wis-chat-header / .topbar), so the status bar
-        // merges visually with the header rather than forming a distinct band.
+        // No edge-to-edge. WebView sits between the system bars (default
+        // Android behaviour), which eliminates the MIUI WindowInsets sync
+        // issues entirely. Status bar + navigation bar are painted with
+        // #F5F0FA (light lavender = solid equivalent of header background),
+        // and the JS SystemBarsPlugin bridge overrides both per route
+        // (e.g. dark bedroom themes).
+        val defaultColor = Color.parseColor("#F5F0FA")
         @Suppress("DEPRECATION")
-        window.statusBarColor = Color.parseColor("#F5F0FA")
-
-        // Dark icons on the light-lavender status bar.
-        WindowInsetsControllerCompat(window, window.decorView)
-            .isAppearanceLightStatusBars = true
+        window.statusBarColor = defaultColor
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = defaultColor
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.isAppearanceLightStatusBars = true
+        controller.isAppearanceLightNavigationBars = true
     }
 
     override fun onNewIntent(intent: Intent) {

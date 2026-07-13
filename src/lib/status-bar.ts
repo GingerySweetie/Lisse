@@ -1,20 +1,27 @@
-import { Capacitor } from '@capacitor/core';
-import { StatusBar, Style } from '@capacitor/status-bar';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 
-// Matches the solid equivalent of the app header backgrounds:
-//   .wis-chat-header → hsla(270, 25%, 96%, 0.82)  ≈ #F5F1F8
-//   .topbar          → rgba(245, 240, 250, 0.80)  ≈ #F5F0FA
-// Using this value makes the status bar visually merge with the header
-// instead of appearing as a more-saturated band above it.
+interface SystemBarsPlugin {
+  setColor(options: { color: string; dark?: boolean }): Promise<void>;
+}
+
+// Native bridge to our SystemBarsPlugin.kt overlay. Paints both the
+// status bar AND the bottom navigation bar with the same colour so every
+// app page can extend its palette to the phone edges without going
+// edge-to-edge (which broke on MIUI).
+const SystemBars = registerPlugin<SystemBarsPlugin>('SystemBars');
+
+// Default colour = solid equivalent of the app header backgrounds
+// (.wis-chat-header / .topbar). The bars visually merge with the header
+// instead of forming a distinct band above/below the content.
 export const STATUS_BAR_DEFAULT = '#F5F0FA';
 
 /**
- * Set status bar background colour + icon style.
- * No-ops on non-native platforms so the call is safe to use everywhere.
+ * Set both the status bar AND the bottom navigation bar to the same colour.
+ * No-op on non-native platforms so callers can invoke it unconditionally.
  *
- * @param color  Hex colour string e.g. '#F4ECF6'
- * @param dark   true → dark icons (use on light backgrounds)
- *               false → light icons (use on dark backgrounds)
+ * @param color  Hex string, e.g. '#F5F0FA' or '#2a1f3e'
+ * @param dark   true  → the supplied colour is LIGHT → use dark icons.
+ *               false → the supplied colour is DARK → use light icons.
  */
 export async function setStatusBarColor(
   color: string,
@@ -22,14 +29,13 @@ export async function setStatusBarColor(
 ): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
-    await StatusBar.setBackgroundColor({ color });
-    await StatusBar.setStyle({ style: dark ? Style.Light : Style.Dark });
+    await SystemBars.setColor({ color, dark });
   } catch {
-    // Non-fatal; best-effort only.
+    // Best-effort; failure to paint the bars must not break the UI.
   }
 }
 
-/** Restore the default lavender status bar (call when leaving dark pages). */
+/** Restore the default lavender bars (call when leaving themed pages). */
 export function resetStatusBar(): Promise<void> {
   return setStatusBarColor(STATUS_BAR_DEFAULT, true);
 }

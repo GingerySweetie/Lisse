@@ -88,17 +88,7 @@
 
   html,
   body {
-    /* overflow-x: hidden makes overflow-y compute to `auto`, which turns
-       the page into a real scroll container. On Android, opening the
-       keyboard scrolls the focused textarea into view by scrolling ANY
-       scrollable ancestor — including this one — and since the app is
-       exactly 100% tall there is no way to scroll it back by touch. Each
-       keyboard open/close shifted the layout a bit more (the "growing
-       top/bottom whitespace" bug). overflow: clip clips like hidden but
-       makes the box truly unscrollable, even programmatically. The
-       overflow-x line stays as a fallback for old WebViews. */
     overflow-x: hidden;
-    overflow: clip;
   }
 
   body {
@@ -344,14 +334,6 @@
  */
 
 :root {
-  /* —— Safe-area shim ——
-   * Initialized from env() so they work in any browser.
-   * On Capacitor Android, MainActivity.kt overrides these via
-   * evaluateJavascript() and keeps them correct even when MIUI
-   * resets env(safe-area-inset-*) to 0 after lifecycle events. */
-  --safe-top:    env(safe-area-inset-top,    0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-
   /* —— Lavender —— */
   --lav-50:  #F5F0FA;
   --lav-100: #EDE5F5;
@@ -486,9 +468,9 @@
    下滑手势或点 backdrop (window 占满 backdrop 之后只剩动画过程
    中那一小段可点). */
 :root {
-  /* Thinking modal sits below the chat header. Use --safe-top so the
-     modal top clears the status bar even when env() is 0 on MIUI. */
-  --thinking-modal-top: calc(52px + var(--safe-top));
+  /* 聊天头粗略高度. 不同页 (wis-chat-header padding 13×2 + content
+     ≈ 52px) 都接近这个值. 单独调用方需要可以覆盖. */
+  --thinking-modal-top: 56px;
 }
 .thinking-modal-backdrop {
   position: fixed;
@@ -576,7 +558,7 @@
 .thinking-modal-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 20px calc(20px + var(--safe-bottom));
+  padding: 20px 20px 20px;
   font-family: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
   font-size: 14px;
   line-height: 1.6;
@@ -828,7 +810,7 @@
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--line-soft);
   /* Push content below the transparent status bar on edge-to-edge Android. */
-  padding-top: var(--safe-top);
+  padding-top: 0;
 }
 
 .empty-state-flower {
@@ -1234,7 +1216,7 @@
 
 /* Add bookmark bar at the bottom of the marks tab */
 .rose-add-bar {
-  padding: 10px 12px calc(14px + var(--safe-bottom));
+  padding: 10px 12px 14px;
   background: rgba(255, 255, 255, 0.55);
   border-top: 1px solid var(--rose-200);
   -webkit-backdrop-filter: blur(8px);
@@ -1266,20 +1248,8 @@
 .wis-chat-page {
   position: relative;
   width: 100%;
-  /* Height is driven by --app-h, a JS-maintained CSS variable set (and
-     re-set on every resize / visibilitychange / pageshow) to
-     window.innerHeight. This avoids the mismatch that arises when mixing
-     100dvh (dynamic viewport unit) with a 100% parent chain: on Android
-     edge-to-edge, system events like screenshot capture and
-     background→foreground transitions can cause the WebView to briefly
-     report different innerHeight / dvh values, leaving a gap between
-     the 100% parents and the 100dvh child. Using a single JS-sourced
-     px value guarantees they agree after every layout recalculation. */
-  height: var(--app-h, 100%);
-  /* clip, not hidden: hidden boxes can still be scrolled by the browser's
-     focus-scrolling (Android keyboard), permanently shifting the layout. */
+  height: 100%;
   overflow: hidden;
-  overflow: clip;
   background: linear-gradient(
     175deg,
     hsl(268, 32%, 93%) 0%,
@@ -1313,7 +1283,7 @@
 
 .wis-chat-header {
   padding: 13px 16px;
-  padding-top: calc(13px + var(--safe-top));
+  padding-top: 13px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1490,11 +1460,7 @@
 
 /* Composer */
 .wis-composer-wrap {
-  padding: 8px var(--chat-gutter-right) 8px var(--chat-gutter-left);
-  /* Push content above the Android / iOS system navigation bar.
-     env(safe-area-inset-bottom) is non-zero on edge-to-edge devices. */
-  padding-bottom: calc(10px + var(--safe-bottom));
-  /* Transparent so the chat-page gradient shows through — no white bar. */
+  padding: 8px var(--chat-gutter-right) 10px var(--chat-gutter-left);
   background: transparent;
   flex-shrink: 0;
 }

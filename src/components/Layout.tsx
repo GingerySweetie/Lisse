@@ -23,12 +23,6 @@ export default function Layout() {
     bootstrapProactiveNudge();
     function onVis() {
       recordVisibilityChange();
-      // Re-sync --app-h in case the WebView reported a stale innerHeight
-      // between the system event and this React handler. Belt-and-suspenders
-      // alongside the global listeners in main.tsx.
-      if (document.visibilityState === 'visible') {
-        document.documentElement.style.setProperty('--app-h', `${window.innerHeight}px`);
-      }
     }
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('pagehide', onVis);
@@ -78,10 +72,7 @@ export default function Layout() {
   }, []);
 
   return (
-    // overflow-clip (not hidden): hidden leaves the box programmatically
-    // scrollable, so Android keyboard focus-scrolling could shift the whole
-    // app frame and leave it stuck there. clip forbids scrolling entirely.
-    <div className="flex h-full w-full overflow-clip">
+    <div className="flex h-full w-full overflow-hidden">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -98,12 +89,6 @@ export default function Layout() {
         style={{
           background:
             'linear-gradient(180deg, #f8f2fb 0%, #f3ecf6 40%, #f0e8f3 100%)',
-          // On edge-to-edge Android the aside extends across the whole
-          // viewport (behind the transparent status bar at top and the
-          // gesture-nav bar at bottom). Shift the contents in so they aren't
-          // hidden beneath the system chrome.
-          paddingTop: 'var(--safe-top, env(safe-area-inset-top, 0px))',
-          paddingBottom: 'var(--safe-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
         <Sidebar onNavigate={() => setSidebarOpen(false)} />
