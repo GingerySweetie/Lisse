@@ -13,6 +13,7 @@ import com.gingery.wisteria.plugins.InAppBrowserPlugin
 import com.gingery.wisteria.plugins.ShareIntentPlugin
 import com.gingery.wisteria.plugins.SleepEstimatePlugin
 import com.gingery.wisteria.plugins.StepCounterPlugin
+import com.gingery.wisteria.plugins.SystemBarsPlugin
 import com.gingery.wisteria.plugins.UsageStatsPlugin
 
 class MainActivity : BridgeActivity() {
@@ -25,6 +26,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(AccessibilityCapturePlugin::class.java)
         registerPlugin(InAppBrowserPlugin::class.java)
         registerPlugin(FileSaverPlugin::class.java)
+        registerPlugin(SystemBarsPlugin::class.java)
         super.onCreate(savedInstanceState)
 
         // Capacitor 8's BridgeActivity calls
@@ -41,17 +43,19 @@ class MainActivity : BridgeActivity() {
         //     which caused the chat header to vanish behind the status bar.
         WindowCompat.setDecorFitsSystemWindows(window, true)
 
-        // Colour the status bar to match the app header backgrounds
-        // (.wis-chat-header / .topbar). The JS layer (@capacitor/status-bar)
-        // overrides this per-page (e.g. dark themes in the bedroom section).
-        // #F5F0FA = solid equivalent of rgba(245, 240, 250, 0.8) — the topbar
-        // background — so the status bar merges with the header visually.
+        // Paint BOTH status bar and bottom navigation bar with the same
+        // default colour (#F5F0FA — solid equivalent of the header/topbar
+        // background) so they visually merge with the app content instead
+        // of forming distinct system-chrome bands. The JS SystemBarsPlugin
+        // bridge overrides both per route (e.g. dark bedroom themes).
+        val defaultColor = Color.parseColor("#F5F0FA")
         @Suppress("DEPRECATION")
-        window.statusBarColor = Color.parseColor("#F5F0FA")
-
-        // Dark icons on the light-lavender status bar.
-        WindowInsetsControllerCompat(window, window.decorView)
-            .isAppearanceLightStatusBars = true
+        window.statusBarColor = defaultColor
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = defaultColor
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.isAppearanceLightStatusBars = true
+        controller.isAppearanceLightNavigationBars = true
     }
 
     override fun onNewIntent(intent: Intent) {

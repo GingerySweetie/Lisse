@@ -47,12 +47,10 @@ export default function LeafMenu({ open, onClose, children }: Props) {
         onClick={(e) => e.stopPropagation()}
         style={{
           position: 'absolute',
-          // Clear the transparent status bar on edge-to-edge Android.
-          top: 'calc(16px + var(--safe-top, env(safe-area-inset-top, 0px)))',
+          top: 16,
           right: 12,
           width: 'min(92vw, 320px)',
-          maxHeight:
-            'calc(100vh - 32px - var(--safe-top, env(safe-area-inset-top, 0px)) - var(--safe-bottom, env(safe-area-inset-bottom, 0px)))',
+          maxHeight: 'calc(100vh - 32px)',
           overflowY: 'auto',
           background: 'hsla(270, 30%, 96%, 0.94)',
           border: '1px solid hsla(270, 30%, 78%, 0.4)',
