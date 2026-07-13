@@ -1,10 +1,12 @@
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
-// Matches the app's <meta name="theme-color"> in index.html — a medium
-// lavender that creates a clearly visible status bar band while still
-// harmonising with the light-lavender page content below it.
-export const STATUS_BAR_DEFAULT = '#DCC9EA';
+// Matches the solid equivalent of the app header backgrounds:
+//   .wis-chat-header → hsla(270, 25%, 96%, 0.82)  ≈ #F5F1F8
+//   .topbar          → rgba(245, 240, 250, 0.80)  ≈ #F5F0FA
+// Using this value makes the status bar visually merge with the header
+// instead of appearing as a more-saturated band above it.
+export const STATUS_BAR_DEFAULT = '#F5F0FA';
 
 /**
  * Set status bar background colour + icon style.
