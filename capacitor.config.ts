@@ -28,6 +28,15 @@ const config: CapacitorConfig = {
       splashFullScreen: true,
       splashImmersive: true,
     },
+    StatusBar: {
+      // Keep the status bar in its own dedicated space above the WebView
+      // (non-overlay mode). Combined with the WindowCompat call in
+      // MainActivity.kt this prevents the MIUI safe-area-inset-top reset
+      // bug from collapsing the chat header behind the status bar.
+      overlaysWebView: false,
+      style: 'LIGHT',
+      backgroundColor: '#F5F0FA',
+    },
   },
 };
 

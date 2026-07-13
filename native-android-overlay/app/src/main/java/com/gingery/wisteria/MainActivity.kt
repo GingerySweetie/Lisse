@@ -27,19 +27,25 @@ class MainActivity : BridgeActivity() {
         registerPlugin(FileSaverPlugin::class.java)
         super.onCreate(savedInstanceState)
 
-        // The WebView does NOT extend behind the status bar (default
-        // fitsSystemWindows = true).  The status bar gets its own fixed space
-        // and we colour it to match the app palette.
+        // Capacitor 8's BridgeActivity calls
+        //   WindowCompat.setDecorFitsSystemWindows(window, false)
+        // in its own onCreate, enabling edge-to-edge so the WebView extends
+        // behind the status bar. We override it back to true immediately after
+        // so the status bar gets its own dedicated space above the WebView.
         //
-        // This completely eliminates the MIUI edge-to-edge / safe-area inset
-        // reset issue: env(safe-area-inset-top) is always 0 in this mode, the
-        // WebView starts cleanly below the status bar, no JS patching needed.
-        //
-        // The JS layer (@capacitor/status-bar) will override this colour
-        // per-page (e.g. dark themes in the bedroom section).
-        // #F5F0FA = very light lavender — the solid equivalent of the app
-        // header backgrounds (.wis-chat-header / .topbar), so the status bar
-        // merges visually with the header rather than forming a distinct band.
+        // Benefits of fitsSystemWindows = true on this app:
+        //   • env(safe-area-inset-top) is always 0 — the WebView starts
+        //     cleanly below the status bar, so no JS patching is needed.
+        //   • Eliminates the MIUI bug where env(safe-area-inset-top) resets
+        //     to 0 after screenshot / background→foreground transitions,
+        //     which caused the chat header to vanish behind the status bar.
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+
+        // Colour the status bar to match the app header backgrounds
+        // (.wis-chat-header / .topbar). The JS layer (@capacitor/status-bar)
+        // overrides this per-page (e.g. dark themes in the bedroom section).
+        // #F5F0FA = solid equivalent of rgba(245, 240, 250, 0.8) — the topbar
+        // background — so the status bar merges with the header visually.
         @Suppress("DEPRECATION")
         window.statusBarColor = Color.parseColor("#F5F0FA")
 
