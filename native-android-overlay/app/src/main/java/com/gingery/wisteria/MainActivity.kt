@@ -3,6 +3,7 @@ package com.gingery.wisteria
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.getcapacitor.BridgeActivity
 import com.gingery.wisteria.plugins.AccessibilityCapturePlugin
@@ -28,12 +29,25 @@ class MainActivity : BridgeActivity() {
         registerPlugin(SystemBarsPlugin::class.java)
         super.onCreate(savedInstanceState)
 
-        // No edge-to-edge. WebView sits between the system bars (default
-        // Android behaviour), which eliminates the MIUI WindowInsets sync
-        // issues entirely. Status bar + navigation bar are painted with
-        // #F5F0FA (light lavender = solid equivalent of header background),
-        // and the JS SystemBarsPlugin bridge overrides both per route
-        // (e.g. dark bedroom themes).
+        // Capacitor 8's BridgeActivity calls
+        //   WindowCompat.setDecorFitsSystemWindows(window, false)
+        // in its own onCreate, enabling edge-to-edge so the WebView extends
+        // behind the status bar. We override it back to true immediately after
+        // so the status bar gets its own dedicated space above the WebView.
+        //
+        // Benefits of fitsSystemWindows = true on this app:
+        //   • env(safe-area-inset-top) is always 0 — the WebView starts
+        //     cleanly below the status bar, so no JS patching is needed.
+        //   • Eliminates the MIUI bug where env(safe-area-inset-top) resets
+        //     to 0 after screenshot / background→foreground transitions,
+        //     which caused the chat header to vanish behind the status bar.
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+
+        // Paint BOTH status bar and bottom navigation bar with the same
+        // default colour (#F5F0FA — solid equivalent of the header/topbar
+        // background) so they visually merge with the app content instead
+        // of forming distinct system-chrome bands. The JS SystemBarsPlugin
+        // bridge overrides both per route (e.g. dark bedroom themes).
         val defaultColor = Color.parseColor("#F5F0FA")
         @Suppress("DEPRECATION")
         window.statusBarColor = defaultColor
