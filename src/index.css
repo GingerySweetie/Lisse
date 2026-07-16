@@ -1263,13 +1263,15 @@
   /* Left gutter clears the wisteria strand cluster (left decor lives
      within the top ~50px only, so this can stay slim below it). */
   --chat-gutter-left: clamp(14px, 2vw, 22px);
-  /* Right gutter is intentionally slim so user bubbles and the composer
-     can reach past the trellis hairline (WisteriaDecor at right: 48px).
-     The hairline sits under the chat frame, so opaque bubbles/controls
-     paint over it instead of being clipped short of the line. */
-  --chat-gutter-right: clamp(16px, 2vw, 22px);
+  /* Wide right gutter keeps AI letter text clear of the trellis hairline
+     (WisteriaDecor at right: 48px) plus breathing room — same as before. */
+  --chat-gutter-right: 60px;
+  /* Tight inset for user bubbles + composer so they can reach past the line. */
+  --chat-gutter-right-tight: clamp(16px, 2vw, 22px);
   position: relative;
-  z-index: 10;
+  /* No z-index here: header must stay under the trellis (z=15) so the
+     leaf/beam/line intersection is unchanged, while stream/composer can
+     raise above the hairline for user bubbles and the input row. */
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -1365,6 +1367,10 @@
      and composer off-screen (the visible "growing whitespace" bug). */
   min-height: 0;
   overflow-y: auto;
+  /* Above trellis hairline (15) so user bubbles can cover the line; AI
+     prose still stops short via --chat-gutter-right padding. */
+  position: relative;
+  z-index: 16;
   padding: 8px var(--chat-gutter-right) 8px var(--chat-gutter-left);
   position: relative;
   z-index: 1;
@@ -1402,6 +1408,8 @@
   width: fit-content;
   max-width: 86%;
   align-items: flex-end;
+  /* Pull into the reserved right gutter so the bubble sits over the line. */
+  margin-right: calc(var(--chat-gutter-right-tight) - var(--chat-gutter-right));
 }
 .chat-message-row.is-assistant .chat-message-stack {
   width: 100%;
@@ -1499,9 +1507,12 @@
 
 /* Composer */
 .wis-composer-wrap {
-  padding: 8px var(--chat-gutter-right) 10px var(--chat-gutter-left);
+  /* Tight right inset lengthens the field and shifts the send icon right. */
+  padding: 8px var(--chat-gutter-right-tight) 10px var(--chat-gutter-left);
   background: transparent;
   flex-shrink: 0;
+  position: relative;
+  z-index: 16;
 }
 .wis-composer-inner {
   min-width: 0;

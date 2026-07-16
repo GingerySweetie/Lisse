@@ -97,10 +97,11 @@ export function WisteriaDecor() {
           width: 1,
           background:
             'linear-gradient(180deg, hsla(270, 30%, 62%, 0.3) 0%, hsla(270, 28%, 65%, 0.22) 30%, hsla(270, 25%, 68%, 0.15) 60%, hsla(270, 22%, 72%, 0.06) 90%, transparent 100%)',
-          // Trellis sits under the chat frame (z-index 10) so user bubbles
-          // and the composer can extend over the hairline. It still shows
-          // through transparent stream/composer areas as the vertical pole.
-          zIndex: 8,
+          // Trellis sits above chat content — it is the visual anchor of
+          // the "wisteria pole + letter" concept. The content column
+          // reserves a matching right gutter so messages never draw
+          // underneath the line instead of dropping the decoration.
+          zIndex: 15,
           pointerEvents: 'none',
         }}
       />
