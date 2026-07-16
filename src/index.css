@@ -1263,10 +1263,11 @@
   /* Left gutter clears the wisteria strand cluster (left decor lives
      within the top ~50px only, so this can stay slim below it). */
   --chat-gutter-left: clamp(14px, 2vw, 22px);
-  /* Right gutter must clear the full-height trellis hairline in
-     WisteriaDecor (rendered at right: 48px) plus a breathing margin,
-     otherwise messages, tags, and the composer draw over the line. */
-  --chat-gutter-right: 60px;
+  /* Right gutter is intentionally slim so user bubbles and the composer
+     can reach past the trellis hairline (WisteriaDecor at right: 48px).
+     The hairline sits under the chat frame, so opaque bubbles/controls
+     paint over it instead of being clipped short of the line. */
+  --chat-gutter-right: clamp(16px, 2vw, 22px);
   position: relative;
   z-index: 10;
   height: 100%;
@@ -1430,6 +1431,8 @@
 /* User bubble — one max-width on the parent stack, content-sized for short
  * messages and naturally wrapping up to that single limit. */
 .wis-user-bubble {
+  position: relative;
+  z-index: 1;
   width: max-content;
   max-width: 100%;
   min-width: 0;
