@@ -242,6 +242,12 @@ export interface AppSettings {
    *  the device's default WebView UA. A common reason to override:
    *  some sites gate features on UA sniffing. */
   browserUserAgent: string | null;
+
+  // ─── Chat wallpaper ───
+  /** Custom chat content-area wallpaper as a data URL. Null/undefined =
+   *  keep the default lavender gradient + WisteriaDecor. Only applied to
+   *  the message stream region (not header / composer / nav). */
+  chatWallpaper: string | null;
 }
 
 export interface Persona {
