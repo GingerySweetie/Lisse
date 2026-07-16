@@ -2,8 +2,7 @@ import { registerPlugin } from '@capacitor/core';
 
 /**
  * FileSaver — native Android file writes (Downloads + SAF folder).
- * On non-Android every method is guarded by callers; registerPlugin
- * resolves to a no-op proxy in the browser.
+ * Large files must use beginSave / writeChunk / endSave.
  */
 
 export interface FileSaverPlugin {
@@ -12,6 +11,14 @@ export interface FileSaverPlugin {
     mimeType: string;
     suggestedName: string;
   }): Promise<{ path: string }>;
+  beginSave(opts: {
+    mimeType: string;
+    suggestedName: string;
+    folderUri?: string;
+  }): Promise<{ handle: string }>;
+  writeChunk(opts: { handle: string; data: string }): Promise<void>;
+  endSave(opts: { handle: string }): Promise<{ path: string }>;
+  abortSave(opts: { handle: string }): Promise<void>;
   pickBackupFolder(): Promise<{ uri: string; label: string }>;
   checkBackupFolderPermission(opts: {
     uri: string;

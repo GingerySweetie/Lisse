@@ -2,10 +2,13 @@ import { db, getSettings, saveSettings } from '../db';
 import { saveFile } from './save-file';
 import {
   clearBackupFolder,
+  getBackupFolder,
   getValidBackupFolder,
   isBackupFolderPickerAvailable,
-  saveBlobToBackupFolder,
+  setBackupFolder,
 } from './backup-location';
+import FileSaver from './native/file-saver';
+import { saveBlobNativeChunked } from './native-chunked-save';
 import type {
   AppSettings,
   Bill,
@@ -31,6 +34,11 @@ import type {
 } from '../types';
 
 const LAST_BACKUP_AT_KEY = 'last_backup_at';
+
+/** Binary chunk size when streaming UTF-8 to the native writer. */
+const STREAM_CHUNK_BYTES = 192 * 1024;
+/** Rows per Dexie page when streaming large tables. */
+const TABLE_PAGE = 80;
 
 export interface BackupBundle {
   /** Format identifier for sanity-checking. */
@@ -60,6 +68,55 @@ export interface BackupBundle {
   circleReactions?: CircleReaction[];
   healthComments?: HealthComment[];
   healthDaily?: HealthDailySnapshot[];
+}
+
+type BackupTableName =
+  | 'endpoints'
+  | 'personas'
+  | 'conversations'
+  | 'messages'
+  | 'memoryFacts'
+  | 'writingStyles'
+  | 'books'
+  | 'bookmarks'
+  | 'mcpServers'
+  | 'bills'
+  | 'periodEntries'
+  | 'weightEntries'
+  | 'browserBookmarks'
+  | 'browserScripts'
+  | 'musicCredentials'
+  | 'musicHistory'
+  | 'circlePosts'
+  | 'circleReactions'
+  | 'healthComments'
+  | 'healthDaily';
+
+const BACKUP_TABLES: BackupTableName[] = [
+  'endpoints',
+  'personas',
+  'conversations',
+  'messages',
+  'memoryFacts',
+  'writingStyles',
+  'books',
+  'bookmarks',
+  'mcpServers',
+  'bills',
+  'periodEntries',
+  'weightEntries',
+  'browserBookmarks',
+  'browserScripts',
+  'musicCredentials',
+  'musicHistory',
+  'circlePosts',
+  'circleReactions',
+  'healthComments',
+  'healthDaily',
+];
+
+function tableRef(name: BackupTableName) {
+  return db[name];
 }
 
 export async function exportBackup(): Promise<BackupBundle> {
@@ -110,7 +167,6 @@ export async function exportBackup(): Promise<BackupBundle> {
   ]);
 
   const now = Date.now();
-  // Record the time of this export so the UI can show "last backed up N ago".
   await db.kv.put({ key: LAST_BACKUP_AT_KEY, value: now });
 
   return {
@@ -148,7 +204,7 @@ export async function getLastBackupAt(): Promise<number | null> {
 }
 
 export interface ImportBackupOptions {
-  /** 'merge' keeps existing data and skips duplicates by id. 'replace' wipes first. */
+  /** 'merge' upserts by id (updates existing). 'replace' wipes first. */
   mode: 'merge' | 'replace';
 }
 
@@ -197,6 +253,10 @@ export async function importBackup(
   }
   // Accept both the old v4 format and the new v5 format.
   const bundle = raw as BackupBundle & { version: 4 | 5 };
+
+  // Keep the SAF backup-folder grant across replace wipes.
+  const preservedFolder =
+    opts.mode === 'replace' ? await getBackupFolder() : null;
 
   if (opts.mode === 'replace') {
     await db.transaction(
@@ -248,6 +308,9 @@ export async function importBackup(
         await db.kv.clear();
       },
     );
+    if (preservedFolder) {
+      await setBackupFolder(preservedFolder);
+    }
   }
 
   const result: ImportBackupResult = {
@@ -274,6 +337,8 @@ export async function importBackup(
     settingsApplied: false,
   };
 
+  // Upsert everything (merge updates existing ids; replace already cleared).
+  // bulkPut keeps large conversation imports from timing out row-by-row.
   await db.transaction(
     'rw',
     [
@@ -299,129 +364,70 @@ export async function importBackup(
       db.healthDaily,
     ],
     async () => {
-      for (const e of bundle.endpoints ?? []) {
-        const exists = await db.endpoints.get(e.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.endpoints.put(e);
-        result.endpointsAdded++;
-      }
-      for (const p of bundle.personas ?? []) {
-        const exists = await db.personas.get(p.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.personas.put(p);
-        result.personasAdded++;
-      }
-      for (const c of bundle.conversations ?? []) {
-        const exists = await db.conversations.get(c.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.conversations.put(c);
-        result.conversationsAdded++;
-      }
-      for (const m of bundle.messages ?? []) {
-        const exists = await db.messages.get(m.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.messages.put(m);
-        result.messagesAdded++;
-      }
-      for (const f of bundle.memoryFacts ?? []) {
-        const exists = await db.memoryFacts.get(f.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.memoryFacts.put(f);
-        result.memoryFactsAdded++;
-      }
-      for (const s of bundle.writingStyles ?? []) {
-        const exists = await db.writingStyles.get(s.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.writingStyles.put(s);
-        result.writingStylesAdded++;
-      }
-      for (const b of bundle.books ?? []) {
-        const exists = await db.books.get(b.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.books.put(b);
-        result.booksAdded++;
-      }
-      for (const bm of bundle.bookmarks ?? []) {
-        const exists = await db.bookmarks.get(bm.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.bookmarks.put(bm);
-        result.bookmarksAdded++;
-      }
-      for (const mcp of bundle.mcpServers ?? []) {
-        const exists = await db.mcpServers.get(mcp.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.mcpServers.put(mcp);
-        result.mcpServersAdded++;
-      }
-      for (const bill of bundle.bills ?? []) {
-        const exists = await db.bills.get(bill.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.bills.put(bill);
-        result.billsAdded++;
-      }
-      for (const pe of bundle.periodEntries ?? []) {
-        const exists = await db.periodEntries.get(pe.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.periodEntries.put(pe);
-        result.periodEntriesAdded++;
-      }
-      for (const we of bundle.weightEntries ?? []) {
-        const exists = await db.weightEntries.get(we.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.weightEntries.put(we);
-        result.weightEntriesAdded++;
-      }
-      for (const bb of bundle.browserBookmarks ?? []) {
-        const exists = await db.browserBookmarks.get(bb.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.browserBookmarks.put(bb);
-        result.browserBookmarksAdded++;
-      }
-      for (const bs of bundle.browserScripts ?? []) {
-        const exists = await db.browserScripts.get(bs.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.browserScripts.put(bs);
-        result.browserScriptsAdded++;
-      }
-      for (const mc of bundle.musicCredentials ?? []) {
-        const exists = await db.musicCredentials.get(mc.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.musicCredentials.put(mc);
-        result.musicCredentialsAdded++;
-      }
-      for (const mh of bundle.musicHistory ?? []) {
-        const exists = await db.musicHistory.get(mh.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.musicHistory.put(mh);
-        result.musicHistoryAdded++;
-      }
-      for (const cp of bundle.circlePosts ?? []) {
-        const exists = await db.circlePosts.get(cp.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.circlePosts.put(cp);
-        result.circlePostsAdded++;
-      }
-      for (const cr of bundle.circleReactions ?? []) {
-        const exists = await db.circleReactions.get(cr.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.circleReactions.put(cr);
-        result.circleReactionsAdded++;
-      }
-      for (const hc of bundle.healthComments ?? []) {
-        const exists = await db.healthComments.get(hc.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.healthComments.put(hc);
-        result.healthCommentsAdded++;
-      }
-      for (const hd of bundle.healthDaily ?? []) {
-        const exists = await db.healthDaily.get(hd.id);
-        if (exists && opts.mode === 'merge') continue;
-        await db.healthDaily.put(hd);
-        result.healthDailyAdded++;
-      }
+      result.endpointsAdded = await upsertAll(db.endpoints, bundle.endpoints);
+      result.personasAdded = await upsertAll(db.personas, bundle.personas);
+      result.conversationsAdded = await upsertAll(
+        db.conversations,
+        bundle.conversations,
+      );
+      result.messagesAdded = await upsertAll(db.messages, bundle.messages);
+      result.memoryFactsAdded = await upsertAll(
+        db.memoryFacts,
+        bundle.memoryFacts,
+      );
+      result.writingStylesAdded = await upsertAll(
+        db.writingStyles,
+        bundle.writingStyles,
+      );
+      result.booksAdded = await upsertAll(db.books, bundle.books);
+      result.bookmarksAdded = await upsertAll(db.bookmarks, bundle.bookmarks);
+      result.mcpServersAdded = await upsertAll(db.mcpServers, bundle.mcpServers);
+      result.billsAdded = await upsertAll(db.bills, bundle.bills);
+      result.periodEntriesAdded = await upsertAll(
+        db.periodEntries,
+        bundle.periodEntries,
+      );
+      result.weightEntriesAdded = await upsertAll(
+        db.weightEntries,
+        bundle.weightEntries,
+      );
+      result.browserBookmarksAdded = await upsertAll(
+        db.browserBookmarks,
+        bundle.browserBookmarks,
+      );
+      result.browserScriptsAdded = await upsertAll(
+        db.browserScripts,
+        bundle.browserScripts,
+      );
+      result.musicCredentialsAdded = await upsertAll(
+        db.musicCredentials,
+        bundle.musicCredentials,
+      );
+      result.musicHistoryAdded = await upsertAll(
+        db.musicHistory,
+        bundle.musicHistory,
+      );
+      result.circlePostsAdded = await upsertAll(
+        db.circlePosts,
+        bundle.circlePosts,
+      );
+      result.circleReactionsAdded = await upsertAll(
+        db.circleReactions,
+        bundle.circleReactions,
+      );
+      result.healthCommentsAdded = await upsertAll(
+        db.healthComments,
+        bundle.healthComments,
+      );
+      result.healthDailyAdded = await upsertAll(
+        db.healthDaily,
+        bundle.healthDaily,
+      );
     },
   );
 
+  // Always apply settings so default endpoint / persona / style / API-related
+  // prefs land in the Settings UI after import.
   if (bundle.settings) {
     await saveSettings(bundle.settings);
     result.settingsApplied = true;
@@ -430,8 +436,57 @@ export async function importBackup(
   return result;
 }
 
+async function upsertAll<T>(
+  table: { bulkPut: (items: T[]) => Promise<unknown> },
+  rows: T[] | undefined,
+): Promise<number> {
+  if (!rows?.length) return 0;
+  // Chunk bulkPut so a huge messages[] doesn't blow the transaction.
+  const CHUNK = 200;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    await table.bulkPut(rows.slice(i, i + CHUNK));
+  }
+  return rows.length;
+}
+
+/**
+ * Export the full backup and save it. On Android this streams JSON to the
+ * native writer in small chunks (no giant base64 bridge payload). Elsewhere
+ * it builds a compact Blob and uses the normal saveFile fallbacks.
+ */
+export async function downloadBackup(filename: string): Promise<void> {
+  if (isBackupFolderPickerAvailable()) {
+    const folder = await getValidBackupFolder();
+    try {
+      await streamBackupToNative(filename, folder?.uri);
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('PERMISSION_LOST')) {
+        await clearBackupFolder();
+      }
+      if (folder && !msg.includes('UNSUPPORTED_API_LEVEL')) {
+        // Retry to Downloads without the SAF folder.
+        try {
+          await streamBackupToNative(filename);
+          return;
+        } catch (retryErr) {
+          console.warn('[backup] native stream failed:', retryErr);
+        }
+      } else if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
+        console.warn('[backup] native stream failed:', msg);
+      }
+    }
+  }
+
+  const blob = await buildBackupBlob();
+  await saveFile(blob, filename, 'JSON 备份文件');
+}
+
+/** @deprecated Prefer downloadBackup — kept for callers that already have a bundle. */
 export async function downloadJSON(data: unknown, filename: string): Promise<void> {
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
+  // Compact JSON (no pretty-print) — pretty-print roughly doubles size/memory.
+  const blob = new Blob([JSON.stringify(data)], {
     type: 'application/json',
   });
 
@@ -439,7 +494,7 @@ export async function downloadJSON(data: unknown, filename: string): Promise<voi
     const folder = await getValidBackupFolder();
     if (folder) {
       try {
-        await saveBlobToBackupFolder(blob, filename, folder.uri);
+        await saveBlobNativeChunked(blob, filename, { folderUri: folder.uri });
         return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -448,6 +503,15 @@ export async function downloadJSON(data: unknown, filename: string): Promise<voi
         } else {
           throw err;
         }
+      }
+    }
+    try {
+      await saveBlobNativeChunked(blob, filename);
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
+        console.warn('[backup] chunked save failed:', msg);
       }
     }
   }
@@ -461,4 +525,137 @@ export function suggestedBackupFilename(): string {
   return `lisse-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(
     d.getDate(),
   )}-${pad(d.getHours())}${pad(d.getMinutes())}.json`;
+}
+
+// ── Streaming / blob builders ─────────────────────────────────────────────
+
+async function streamBackupToNative(
+  filename: string,
+  folderUri?: string,
+): Promise<void> {
+  const { handle } = await FileSaver.beginSave({
+    mimeType: 'application/json',
+    suggestedName: filename,
+    folderUri,
+  });
+
+  const out = createChunkedWriter(handle);
+
+  try {
+    const now = Date.now();
+    await out.write(`{"__lisse":"backup","version":5,"exportedAt":${now}`);
+
+    const settings = await getSettings();
+    await out.write(`,"settings":${JSON.stringify(settings)}`);
+
+    for (const name of BACKUP_TABLES) {
+      await out.write(`,"${name}":[`);
+      let first = true;
+      let offset = 0;
+      for (;;) {
+        const batch = await tableRef(name).offset(offset).limit(TABLE_PAGE).toArray();
+        if (batch.length === 0) break;
+        for (const row of batch) {
+          await out.write((first ? '' : ',') + JSON.stringify(row));
+          first = false;
+        }
+        offset += batch.length;
+        await yieldToUi();
+      }
+      await out.write(']');
+    }
+
+    await out.write('}');
+    await out.flush();
+    await FileSaver.endSave({ handle });
+    await db.kv.put({ key: LAST_BACKUP_AT_KEY, value: now });
+  } catch (err) {
+    try {
+      await FileSaver.abortSave({ handle });
+    } catch {
+      // ignore
+    }
+    throw err;
+  }
+}
+
+/** Build a compact backup Blob without pretty-printing (browser / fallback). */
+async function buildBackupBlob(): Promise<Blob> {
+  const parts: BlobPart[] = [];
+  const now = Date.now();
+  parts.push(`{"__lisse":"backup","version":5,"exportedAt":${now}`);
+
+  const settings = await getSettings();
+  parts.push(`,"settings":${JSON.stringify(settings)}`);
+
+  for (const name of BACKUP_TABLES) {
+    parts.push(`,"${name}":[`);
+    let first = true;
+    let offset = 0;
+    for (;;) {
+      const batch = await tableRef(name).offset(offset).limit(TABLE_PAGE).toArray();
+      if (batch.length === 0) break;
+      for (const row of batch) {
+        parts.push((first ? '' : ',') + JSON.stringify(row));
+        first = false;
+      }
+      offset += batch.length;
+      await yieldToUi();
+    }
+    parts.push(']');
+  }
+
+  parts.push('}');
+  await db.kv.put({ key: LAST_BACKUP_AT_KEY, value: now });
+  return new Blob(parts, { type: 'application/json' });
+}
+
+function createChunkedWriter(handle: string) {
+  const encoder = new TextEncoder();
+  let pending = new Uint8Array(0);
+
+  const concat = (a: Uint8Array, b: Uint8Array) => {
+    const out = new Uint8Array(a.length + b.length);
+    out.set(a, 0);
+    out.set(b, a.length);
+    return out;
+  };
+
+  const flushFullChunks = async (force = false) => {
+    while (
+      pending.length >= STREAM_CHUNK_BYTES ||
+      (force && pending.length > 0)
+    ) {
+      const take = Math.min(pending.length, STREAM_CHUNK_BYTES);
+      const slice = pending.subarray(0, take);
+      pending = pending.subarray(take);
+      await FileSaver.writeChunk({
+        handle,
+        data: uint8ToBase64(slice),
+      });
+    }
+  };
+
+  return {
+    async write(text: string) {
+      pending = concat(pending, encoder.encode(text));
+      await flushFullChunks(false);
+    },
+    async flush() {
+      await flushFullChunks(true);
+    },
+  };
+}
+
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + step));
+  }
+  return btoa(binary);
+}
+
+function yieldToUi(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 0));
 }

@@ -4,8 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { RefreshCw } from 'lucide-react';
 import { getSettings } from '../db';
 import {
-  exportBackup,
-  downloadJSON,
+  downloadBackup,
   suggestedBackupFilename,
 } from '../lib/backup';
 
@@ -79,8 +78,7 @@ export default function UpdateBanner() {
     // of their data, even if storage is somehow affected by the update.
     const apply = async () => {
       try {
-        const bundle = await exportBackup();
-        await downloadJSON(bundle, suggestedBackupFilename());
+        await downloadBackup(suggestedBackupFilename());
       } catch {
         // Non-fatal: if the backup or save fails, proceed with the update.
       }

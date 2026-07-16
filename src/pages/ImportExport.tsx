@@ -17,10 +17,9 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import {
-  exportBackup,
   getLastBackupAt,
   importBackup,
-  downloadJSON,
+  downloadBackup,
   suggestedBackupFilename,
   type ImportBackupResult,
 } from '../lib/backup';
@@ -296,15 +295,21 @@ export default function ImportExportPage() {
       const folder = backupFolderPickerAvailable
         ? await getValidBackupFolder()
         : null;
-      const bundle = await exportBackup();
-      await downloadJSON(bundle, suggestedBackupFilename());
+      await downloadBackup(suggestedBackupFilename());
       if (folder) {
-        setBackupFolder(folder);
-        setBackupFolderPermissionLost(false);
-        setBackupStatus({
-          kind: 'ok',
-          label: `已保存到「${folder.label}」`,
-        });
+        const stillValid = await getValidBackupFolder();
+        if (stillValid) {
+          setBackupFolder(stillValid);
+          setBackupFolderPermissionLost(false);
+          setBackupStatus({
+            kind: 'ok',
+            label: `已保存到「${stillValid.label}」`,
+          });
+        } else {
+          setBackupFolder(null);
+          setBackupFolderPermissionLost(true);
+          setBackupStatus({ kind: 'ok', label: '已保存备份文件（目录权限已失效，已改存默认位置）' });
+        }
       } else {
         setBackupStatus({ kind: 'ok', label: '已保存备份文件' });
       }
@@ -390,6 +395,7 @@ export default function ImportExportPage() {
     try {
       const text = await readFile(file);
       const r = await importBackup(text, { mode });
+      await refreshCounts();
       setBackupStatus({ kind: 'ok', label: summarizeBackup(r) });
     } catch (err) {
       setBackupStatus({
@@ -734,8 +740,9 @@ export default function ImportExportPage() {
             )}
 
             <p className="mt-2 text-sm text-ink-500">
-              把所有对话、人格、记忆、账单、健康、朋友圈等全部数据打包成一个 JSON，
-              换设备时导入即可完整恢复。<strong>API key 也会在文件里</strong>，请妥善保管喵。
+              把所有对话、人格、写作风格、记忆、账单、健康、朋友圈、endpoints（含 API key）和设置
+              打包成一个 JSON；导入后会自动写回对应位置。
+              <strong>API key 也会在文件里</strong>，请妥善保管喵。
             </p>
 
             {backupFolderPickerAvailable && (
@@ -787,7 +794,7 @@ export default function ImportExportPage() {
                 导出全部
               </button>
               <FileButton
-                label="合并导入"
+                label="合并导入（覆盖同名）"
                 accept=".json,application/json"
                 status={{ kind: 'idle' }}
                 compact
@@ -802,6 +809,10 @@ export default function ImportExportPage() {
                 onPick={(f) => handleImportBackup(f, 'replace')}
               />
             </div>
+
+            <p className="mt-2 text-xs text-ink-400">
+              合并：按 id 写入/更新（人设、写作风格、API key、设置会填到对应页）；替换：先清空再完整恢复。
+            </p>
 
             <StatusLine status={backupStatus} className="mt-3" />
           </section>
@@ -895,18 +906,19 @@ function summarizeImport(r: ImportResult): string {
 
 function summarizeBackup(r: ImportBackupResult): string {
   const parts: string[] = [
-    `对话 +${r.conversationsAdded}`,
-    `消息 +${r.messagesAdded}`,
+    `对话 ${r.conversationsAdded}`,
+    `消息 ${r.messagesAdded}`,
   ];
-  if (r.endpointsAdded) parts.push(`endpoints +${r.endpointsAdded}`);
-  if (r.personasAdded) parts.push(`人格 +${r.personasAdded}`);
-  if (r.memoryFactsAdded) parts.push(`记忆 +${r.memoryFactsAdded}`);
-  if (r.billsAdded) parts.push(`账单 +${r.billsAdded}`);
-  if (r.circlePostsAdded) parts.push(`朋友圈 +${r.circlePostsAdded}`);
+  if (r.endpointsAdded) parts.push(`接口 ${r.endpointsAdded}`);
+  if (r.personasAdded) parts.push(`人格 ${r.personasAdded}`);
+  if (r.writingStylesAdded) parts.push(`风格 ${r.writingStylesAdded}`);
+  if (r.memoryFactsAdded) parts.push(`记忆 ${r.memoryFactsAdded}`);
+  if (r.billsAdded) parts.push(`账单 ${r.billsAdded}`);
+  if (r.circlePostsAdded) parts.push(`朋友圈 ${r.circlePostsAdded}`);
   if (r.periodEntriesAdded || r.weightEntriesAdded || r.healthDailyAdded)
     parts.push('健康数据 ✓');
-  if (r.settingsApplied) parts.push('设置已应用');
-  return parts.join('，');
+  if (r.settingsApplied) parts.push('设置已填入');
+  return `已恢复：${parts.join('，')}`;
 }
 
 function formatRelativeTime(ts: number): string {
