@@ -16,24 +16,26 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.io.IOException
+import java.io.OutputStream
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * FileSaverPlugin — writes a base64-encoded file directly to the device's
- * public Downloads folder so the user can always find it in any file manager.
- *
- * Called from JS (via Capacitor.Plugins.FileSaver.saveFile):
- *   const result = await FileSaver.saveFile({
- *     data: base64String,
- *     mimeType: 'application/json',
- *     suggestedName: 'backup.json',
- *   });
- *   // result.path — the final file path / URI that was written
- *
- * Android 10+ (API 29+): uses MediaStore.Downloads for scoped storage.
- * Android 9 and below: writes to the legacy public Downloads directory.
+ * FileSaverPlugin — writes files to Downloads (MediaStore) or a user-chosen
+ * SAF folder. Large payloads must use beginSave / writeChunk / endSave so
+ * each Capacitor bridge call stays under Android's ~1 MiB Binder limit;
+ * a single giant base64 string will crash the process.
  */
 @CapacitorPlugin(name = "FileSaver")
 class FileSaverPlugin : Plugin() {
+
+    private data class OpenWrite(
+        val uri: Uri,
+        val stream: OutputStream,
+        val isMediaStore: Boolean,
+    )
+
+    private val openWrites = ConcurrentHashMap<String, OpenWrite>()
 
     @PluginMethod
     fun saveFile(call: PluginCall) {
@@ -54,8 +56,6 @@ class FileSaverPlugin : Plugin() {
         }
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            // API < 29: WRITE_EXTERNAL_STORAGE would be needed. Let the JS
-            // layer fall through to the Web Share API instead.
             call.reject("UNSUPPORTED_API_LEVEL")
             return
         }
@@ -79,15 +79,176 @@ class FileSaverPlugin : Plugin() {
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
             ?: throw IOException("MediaStore.insert returned null")
 
-        resolver.openOutputStream(uri)?.use { out ->
-            out.write(bytes)
-        } ?: throw IOException("openOutputStream returned null")
+        try {
+            resolver.openOutputStream(uri)?.use { out ->
+                out.write(bytes)
+            } ?: throw IOException("openOutputStream returned null")
 
-        values.clear()
-        values.put(MediaStore.Downloads.IS_PENDING, 0)
-        resolver.update(uri, values, null, null)
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            throw e
+        }
 
         return uri.toString()
+    }
+
+    /**
+     * Open a destination file for chunked writing.
+     * Optional folderUri → write into a SAF tree; otherwise MediaStore Downloads.
+     */
+    @PluginMethod
+    fun beginSave(call: PluginCall) {
+        val mimeType = call.getString("mimeType") ?: "application/octet-stream"
+        val suggestedName = call.getString("suggestedName") ?: "download"
+        val folderUriStr = call.getString("folderUri")
+
+        try {
+            val open = if (folderUriStr != null) {
+                openSafWrite(folderUriStr, mimeType, suggestedName)
+            } else {
+                openMediaStoreWrite(mimeType, suggestedName)
+            }
+            val handle = UUID.randomUUID().toString()
+            openWrites[handle] = open
+            call.resolve(JSObject().apply { put("handle", handle) })
+        } catch (e: SecurityException) {
+            call.reject("PERMISSION_LOST")
+        } catch (e: IllegalStateException) {
+            if (e.message == "UNSUPPORTED_API_LEVEL") {
+                call.reject("UNSUPPORTED_API_LEVEL")
+            } else {
+                call.reject("Failed to begin save: ${e.message}")
+            }
+        } catch (e: IOException) {
+            call.reject("Failed to begin save: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun writeChunk(call: PluginCall) {
+        val handle = call.getString("handle")
+        val data = call.getString("data")
+        if (handle == null) {
+            call.reject("Missing required parameter: handle")
+            return
+        }
+        if (data == null) {
+            call.reject("Missing required parameter: data")
+            return
+        }
+        val open = openWrites[handle]
+        if (open == null) {
+            call.reject("Invalid or closed write handle")
+            return
+        }
+        try {
+            val bytes = Base64.decode(data, Base64.DEFAULT)
+            open.stream.write(bytes)
+            call.resolve()
+        } catch (e: IllegalArgumentException) {
+            call.reject("Invalid base64 data: ${e.message}")
+        } catch (e: IOException) {
+            call.reject("Failed to write chunk: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun endSave(call: PluginCall) {
+        val handle = call.getString("handle")
+        if (handle == null) {
+            call.reject("Missing required parameter: handle")
+            return
+        }
+        val open = openWrites.remove(handle)
+        if (open == null) {
+            call.reject("Invalid or closed write handle")
+            return
+        }
+        try {
+            open.stream.flush()
+            open.stream.close()
+            if (open.isMediaStore) {
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.IS_PENDING, 0)
+                }
+                context.contentResolver.update(open.uri, values, null, null)
+            }
+            call.resolve(JSObject().apply { put("path", open.uri.toString()) })
+        } catch (e: IOException) {
+            cleanupFailedWrite(open)
+            call.reject("Failed to finish save: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun abortSave(call: PluginCall) {
+        val handle = call.getString("handle")
+        if (handle == null) {
+            call.resolve()
+            return
+        }
+        val open = openWrites.remove(handle) ?: run {
+            call.resolve()
+            return
+        }
+        cleanupFailedWrite(open)
+        call.resolve()
+    }
+
+    private fun openMediaStoreWrite(mimeType: String, name: String): OpenWrite {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            throw IllegalStateException("UNSUPPORTED_API_LEVEL")
+        }
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, name)
+            put(MediaStore.Downloads.MIME_TYPE, mimeType)
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: throw IOException("MediaStore.insert returned null")
+        val stream = resolver.openOutputStream(uri)
+            ?: run {
+                resolver.delete(uri, null, null)
+                throw IOException("openOutputStream returned null")
+            }
+        return OpenWrite(uri, stream, isMediaStore = true)
+    }
+
+    private fun openSafWrite(folderUriStr: String, mimeType: String, name: String): OpenWrite {
+        val folderUri = Uri.parse(folderUriStr)
+        if (!hasPersistedPermission(folderUri)) {
+            throw SecurityException("PERMISSION_LOST")
+        }
+        val tree = DocumentFile.fromTreeUri(context, folderUri)
+            ?: throw IOException("无法访问目录")
+        if (!tree.canWrite()) {
+            throw IOException("无法写入目录")
+        }
+        tree.findFile(name)?.delete()
+        val file = tree.createFile(mimeType, name)
+            ?: throw IOException("createFile returned null")
+        val stream = context.contentResolver.openOutputStream(file.uri)
+            ?: throw IOException("openOutputStream returned null")
+        return OpenWrite(file.uri, stream, isMediaStore = false)
+    }
+
+    private fun cleanupFailedWrite(open: OpenWrite) {
+        try {
+            open.stream.close()
+        } catch (_: Exception) {
+        }
+        try {
+            if (open.isMediaStore) {
+                context.contentResolver.delete(open.uri, null, null)
+            } else {
+                DocumentFile.fromSingleUri(context, open.uri)?.delete()
+            }
+        } catch (_: Exception) {
+        }
     }
 
     /** Open the system folder picker (SAF) so the user can choose a backup directory. */
@@ -146,7 +307,7 @@ class FileSaverPlugin : Plugin() {
         call.resolve(ret)
     }
 
-    /** Write a base64-encoded file into a SAF tree URI chosen by the user. */
+    /** Write a base64-encoded file into a SAF tree URI (small files only). */
     @PluginMethod
     fun saveFileToFolder(call: PluginCall) {
         val data = call.getString("data")

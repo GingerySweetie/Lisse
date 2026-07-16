@@ -5,6 +5,8 @@
  *
  * 0. Native FileSaver Capacitor plugin (Android APK only)
  *    Writes to the public Downloads folder via MediaStore (no picker).
+ *    Large files are written in base64 chunks so they stay under the
+ *    Android Binder ~1 MiB limit (a single giant payload crashes the app).
  *    Backup exports may instead use a user-chosen SAF folder — see
  *    backup-location.ts and FileSaverPlugin.pickBackupFolder.
  *
@@ -20,15 +22,8 @@
  *    Classic `<a download>` trick; always works on desktop Firefox / Safari.
  */
 
-declare global {
-  interface Window {
-    // Capacitor bridge injected by the native shell.
-    Capacitor?: {
-      isNativePlatform: () => boolean;
-      Plugins: Record<string, Record<string, (...args: unknown[]) => Promise<unknown>>>;
-    };
-  }
-}
+import { Capacitor } from '@capacitor/core';
+import { saveBlobNativeChunked } from './native-chunked-save';
 
 export async function saveFile(
   blob: Blob,
@@ -37,24 +32,14 @@ export async function saveFile(
   description = 'File',
 ): Promise<void> {
 
-  // Path 0: Native Capacitor FileSaver plugin — Android APK with proper "Save As".
-  const cap = window.Capacitor;
-  if (cap?.isNativePlatform() && cap.Plugins?.FileSaver) {
+  // Path 0: Native Capacitor FileSaver — chunked write to Downloads.
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
     try {
-      const base64 = await blobToBase64(blob);
-      const result = await cap.Plugins.FileSaver.saveFile({
-        data: base64,
-        mimeType: blob.type || 'application/octet-stream',
-        suggestedName: filename,
-      }) as { path: string };
-      if (result.path) return;  // saved successfully
-      // empty path → fall through
+      const path = await saveBlobNativeChunked(blob, filename);
+      if (path) return;
     } catch (err) {
-      // UNSUPPORTED_API_LEVEL or any other native error → fall through to
-      // web-based paths (share sheet, blob download).
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
-        // Unexpected error — still fall through, don't block the user.
         console.warn('[FileSaver] native save failed:', msg);
       }
     }
@@ -104,17 +89,4 @@ export async function saveFile(
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      // result is "data:<mime>;base64,<data>" — strip the prefix.
-      const dataUrl = reader.result as string;
-      resolve(dataUrl.split(',')[1] ?? '');
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
 }

@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { db } from '../db';
 import FileSaver from './native/file-saver';
+import { saveBlobNativeChunked } from './native-chunked-save';
 
 const BACKUP_FOLDER_URI_KEY = 'backup_folder_uri';
 const BACKUP_FOLDER_LABEL_KEY = 'backup_folder_label';
@@ -69,29 +70,11 @@ export async function pickBackupFolder(): Promise<BackupFolder> {
   return folder;
 }
 
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      resolve(dataUrl.split(',')[1] ?? '');
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
-/** Save a blob into the user-chosen SAF folder. Throws on permission loss. */
+/** Save a blob into the user-chosen SAF folder (chunked). Throws on permission loss. */
 export async function saveBlobToBackupFolder(
   blob: Blob,
   filename: string,
   folderUri: string,
 ): Promise<void> {
-  const base64 = await blobToBase64(blob);
-  await FileSaver.saveFileToFolder({
-    data: base64,
-    mimeType: blob.type || 'application/octet-stream',
-    suggestedName: filename,
-    folderUri,
-  });
+  await saveBlobNativeChunked(blob, filename, { folderUri });
 }
