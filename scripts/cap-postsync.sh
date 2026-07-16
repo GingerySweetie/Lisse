@@ -211,6 +211,7 @@ if "kotlin-android" not in src:
 # Kotlin stdlib + localbroadcastmanager (used by BillSnifferPlugin).
 kotlin_block = """    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.24'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+    implementation 'androidx.documentfile:documentfile:1.1.0'
 """
 if "kotlin-stdlib" not in src:
     src = re.sub(
@@ -285,6 +286,7 @@ EXPECTED=(
   "$ANDROID_DIR/app/src/main/res/xml/payment_accessibility_config.xml"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/InAppBrowserPlugin.kt"
   "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/InAppBrowserActivity.kt"
+  "$ANDROID_DIR/app/src/main/java/com/gingery/wisteria/plugins/FileSaverPlugin.kt"
 )
 for f in "${EXPECTED[@]}"; do
   if [ ! -f "$f" ]; then

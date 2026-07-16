@@ -4,9 +4,9 @@
  * Four paths in priority order:
  *
  * 0. Native FileSaver Capacitor plugin (Android APK only)
- *    Uses ACTION_CREATE_DOCUMENT — the system file picker lets the user
- *    choose the exact destination (Downloads, Documents, Drive, etc.).
- *    This is the only approach that gives a true "Save As" dialog on Android.
+ *    Writes to the public Downloads folder via MediaStore (no picker).
+ *    Backup exports may instead use a user-chosen SAF folder — see
+ *    backup-location.ts and FileSaverPlugin.pickBackupFolder.
  *
  * 1. File System Access API (`showSaveFilePicker`)
  *    Chrome / Edge desktop: opens a native "Save As" dialog.
