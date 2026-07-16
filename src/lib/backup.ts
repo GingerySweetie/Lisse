@@ -1,5 +1,11 @@
 import { db, getSettings, saveSettings } from '../db';
 import { saveFile } from './save-file';
+import {
+  clearBackupFolder,
+  getValidBackupFolder,
+  isBackupFolderPickerAvailable,
+  saveBlobToBackupFolder,
+} from './backup-location';
 import type {
   AppSettings,
   Bill,
@@ -428,6 +434,24 @@ export async function downloadJSON(data: unknown, filename: string): Promise<voi
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: 'application/json',
   });
+
+  if (isBackupFolderPickerAvailable()) {
+    const folder = await getValidBackupFolder();
+    if (folder) {
+      try {
+        await saveBlobToBackupFolder(blob, filename, folder.uri);
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('PERMISSION_LOST')) {
+          await clearBackupFolder();
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+
   await saveFile(blob, filename, 'JSON 备份文件');
 }
 

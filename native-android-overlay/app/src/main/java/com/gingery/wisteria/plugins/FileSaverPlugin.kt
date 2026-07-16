@@ -1,13 +1,19 @@
 package com.gingery.wisteria.plugins
 
+import android.app.Activity
 import android.content.ContentValues
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Base64
+import androidx.activity.result.ActivityResult
+import androidx.documentfile.provider.DocumentFile
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.io.IOException
 
@@ -82,6 +88,124 @@ class FileSaverPlugin : Plugin() {
         resolver.update(uri, values, null, null)
 
         return uri.toString()
+    }
+
+    /** Open the system folder picker (SAF) so the user can choose a backup directory. */
+    @PluginMethod
+    fun pickBackupFolder(call: PluginCall) {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+            )
+        }
+        startActivityForResult(call, intent, "pickBackupFolderCallback")
+    }
+
+    @ActivityCallback
+    private fun pickBackupFolderCallback(call: PluginCall, result: ActivityResult) {
+        if (result.resultCode != Activity.RESULT_OK) {
+            call.reject("用户取消了选择")
+            return
+        }
+        val uri = result.data?.data
+        if (uri == null) {
+            call.reject("未获取到目录")
+            return
+        }
+        try {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, flags)
+            val label = folderLabel(uri)
+            call.resolve(
+                JSObject().apply {
+                    put("uri", uri.toString())
+                    put("label", label)
+                },
+            )
+        } catch (e: Exception) {
+            call.reject("无法获取目录权限: ${e.message}")
+        }
+    }
+
+    /** Check whether a previously granted tree URI still has read+write permission. */
+    @PluginMethod
+    fun checkBackupFolderPermission(call: PluginCall) {
+        val uriStr = call.getString("uri")
+        if (uriStr == null) {
+            call.reject("Missing required parameter: uri")
+            return
+        }
+        val uri = Uri.parse(uriStr)
+        val valid = hasPersistedPermission(uri)
+        val ret = JSObject().apply { put("valid", valid) }
+        if (valid) {
+            ret.put("label", folderLabel(uri))
+        }
+        call.resolve(ret)
+    }
+
+    /** Write a base64-encoded file into a SAF tree URI chosen by the user. */
+    @PluginMethod
+    fun saveFileToFolder(call: PluginCall) {
+        val data = call.getString("data")
+        val mimeType = call.getString("mimeType") ?: "application/octet-stream"
+        val suggestedName = call.getString("suggestedName") ?: "download"
+        val folderUriStr = call.getString("folderUri")
+
+        if (data == null) {
+            call.reject("Missing required parameter: data")
+            return
+        }
+        if (folderUriStr == null) {
+            call.reject("Missing required parameter: folderUri")
+            return
+        }
+
+        val folderUri = Uri.parse(folderUriStr)
+        if (!hasPersistedPermission(folderUri)) {
+            call.reject("PERMISSION_LOST")
+            return
+        }
+
+        val bytes = try {
+            Base64.decode(data, Base64.DEFAULT)
+        } catch (e: IllegalArgumentException) {
+            call.reject("Invalid base64 data: ${e.message}")
+            return
+        }
+
+        val tree = DocumentFile.fromTreeUri(context, folderUri)
+        if (tree == null || !tree.canWrite()) {
+            call.reject("无法访问目录")
+            return
+        }
+
+        try {
+            tree.findFile(suggestedName)?.delete()
+            val file = tree.createFile(mimeType, suggestedName)
+                ?: throw IOException("createFile returned null")
+            context.contentResolver.openOutputStream(file.uri)?.use { out ->
+                out.write(bytes)
+            } ?: throw IOException("openOutputStream returned null")
+            call.resolve(JSObject().apply { put("path", file.uri.toString()) })
+        } catch (e: IOException) {
+            call.reject("Failed to write file: ${e.message}")
+        }
+    }
+
+    private fun hasPersistedPermission(uri: Uri): Boolean {
+        return context.contentResolver.persistedUriPermissions.any {
+            it.uri == uri && it.isReadPermission && it.isWritePermission
+        }
+    }
+
+    private fun folderLabel(uri: Uri): String {
+        val doc = DocumentFile.fromTreeUri(context, uri)
+        return doc?.name?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment?.substringAfterLast(':')
+            ?: "已选目录"
     }
 
 }

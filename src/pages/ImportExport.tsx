@@ -12,6 +12,8 @@ import {
   ChevronUp,
   RefreshCw,
   ShieldAlert,
+  FolderOpen,
+  FolderCheck,
 } from 'lucide-react';
 import { db } from '../db';
 import {
@@ -22,6 +24,14 @@ import {
   suggestedBackupFilename,
   type ImportBackupResult,
 } from '../lib/backup';
+import {
+  clearBackupFolder,
+  getBackupFolder,
+  getValidBackupFolder,
+  isBackupFolderPickerAvailable,
+  pickBackupFolder,
+  type BackupFolder,
+} from '../lib/backup-location';
 import {
   importChatGPT,
   importClaude,
@@ -180,6 +190,36 @@ export default function ImportExportPage() {
   const [claudeStatus, setClaudeStatus] = useState<Status>({ kind: 'idle' });
   const [lisseStatus, setLisseStatus] = useState<Status>({ kind: 'idle' });
   const [backupStatus, setBackupStatus] = useState<Status>({ kind: 'idle' });
+  const backupFolderPickerAvailable = isBackupFolderPickerAvailable();
+  const [backupFolder, setBackupFolder] = useState<BackupFolder | null>(null);
+  const [backupFolderPermissionLost, setBackupFolderPermissionLost] =
+    useState(false);
+  const [backupFolderBusy, setBackupFolderBusy] = useState(false);
+
+  useEffect(() => {
+    if (!backupFolderPickerAvailable) return;
+    let cancelled = false;
+    void (async () => {
+      const saved = await getBackupFolder();
+      if (cancelled) return;
+      if (!saved) {
+        setBackupFolder(null);
+        return;
+      }
+      const valid = await getValidBackupFolder();
+      if (cancelled) return;
+      if (valid) {
+        setBackupFolder(valid);
+        setBackupFolderPermissionLost(false);
+      } else {
+        setBackupFolder(null);
+        setBackupFolderPermissionLost(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [backupFolderPickerAvailable]);
   const [bulkStatus, setBulkStatus] = useState<Status>({ kind: 'idle' });
   const [memoryExportStatus, setMemoryExportStatus] = useState<Status>({
     kind: 'idle',
@@ -253,14 +293,56 @@ export default function ImportExportPage() {
   async function handleExportBackup() {
     setBackupStatus({ kind: 'busy', label: '打包中…' });
     try {
+      const folder = backupFolderPickerAvailable
+        ? await getValidBackupFolder()
+        : null;
       const bundle = await exportBackup();
       await downloadJSON(bundle, suggestedBackupFilename());
-      setBackupStatus({ kind: 'ok', label: '已保存备份文件' });
+      if (folder) {
+        setBackupFolder(folder);
+        setBackupFolderPermissionLost(false);
+        setBackupStatus({
+          kind: 'ok',
+          label: `已保存到「${folder.label}」`,
+        });
+      } else {
+        setBackupStatus({ kind: 'ok', label: '已保存备份文件' });
+      }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('PERMISSION_LOST')) {
+        await clearBackupFolder();
+        setBackupFolder(null);
+        setBackupFolderPermissionLost(true);
+      }
       setBackupStatus({
         kind: 'fail',
-        label: err instanceof Error ? err.message : String(err),
+        label: msg.includes('PERMISSION_LOST')
+          ? '备份目录权限已失效，请重新选择保存位置'
+          : msg,
       });
+    }
+  }
+
+  async function handlePickBackupFolder() {
+    if (!backupFolderPickerAvailable) return;
+    setBackupFolderBusy(true);
+    setBackupStatus({ kind: 'idle' });
+    try {
+      const folder = await pickBackupFolder();
+      setBackupFolder(folder);
+      setBackupFolderPermissionLost(false);
+      setBackupStatus({
+        kind: 'ok',
+        label: `已设置备份目录：${folder.label}`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('用户取消了选择')) {
+        setBackupStatus({ kind: 'fail', label: msg });
+      }
+    } finally {
+      setBackupFolderBusy(false);
     }
   }
 
@@ -655,6 +737,45 @@ export default function ImportExportPage() {
               把所有对话、人格、记忆、账单、健康、朋友圈等全部数据打包成一个 JSON，
               换设备时导入即可完整恢复。<strong>API key 也会在文件里</strong>，请妥善保管喵。
             </p>
+
+            {backupFolderPickerAvailable && (
+              <div className="mt-4 rounded-xl border-2 border-dashed border-lavender-300 bg-lavender-50/80 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-ink-900">
+                      备份保存位置
+                    </p>
+                    {backupFolder ? (
+                      <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-600">
+                        <FolderCheck size={15} className="shrink-0 text-emerald-600" />
+                        <span className="truncate">{backupFolder.label}</span>
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm text-ink-500">
+                        {backupFolderPermissionLost
+                          ? '先前选择的目录权限已失效，请重新选择。'
+                          : '未设置时，备份会保存到系统默认位置（如下载文件夹）。'}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePickBackupFolder}
+                    disabled={backupFolderBusy}
+                    className="flex shrink-0 items-center gap-2 rounded-xl bg-lavender-300 px-5 py-2.5 text-sm font-semibold text-ink-900 shadow-sm transition hover:bg-lavender-400 disabled:opacity-60"
+                  >
+                    <FolderOpen size={18} />
+                    {backupFolder ? '更改保存位置' : '选择保存位置'}
+                  </button>
+                </div>
+                {backupFolderPermissionLost && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <ShieldAlert size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                    <span>备份目录访问权限已失效，请点击上方按钮重新授权。</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mt-4 flex flex-wrap gap-3">
               <button
