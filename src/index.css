@@ -1315,9 +1315,18 @@
   isolation: isolate;
 }
 .wis-chat-body.has-wallpaper {
-  /* Soft wash so bubbles stay readable on busy photos without changing
-     the default (no-wallpaper) look. */
-  background-color: hsla(270, 25%, 92%, 0.35);
+  /* Opaque fallback under the image so page decor can't peek through
+     transparent PNG edges. */
+  background-color: hsl(270, 25%, 92%);
+}
+.wis-chat-body.has-wallpaper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* Light wash for bubble readability on busy photos. */
+  background: hsla(270, 28%, 96%, 0.22);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .wis-date-sep {
