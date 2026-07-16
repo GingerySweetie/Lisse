@@ -561,6 +561,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   billSrcBankNotification: true,
   billSrcScreenAccessibility: false,
   browserUserAgent: null,
+  chatWallpaper: null,
 };
 
 export async function getSettings(): Promise<AppSettings> {

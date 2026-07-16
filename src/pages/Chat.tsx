@@ -21,6 +21,7 @@ import PersonaSecret from '../components/PersonaSecret';
 import StylePicker from '../components/StylePicker';
 import ExportMenu from '../components/ExportMenu';
 import AccentPicker from '../components/AccentPicker';
+import WallpaperPicker from '../components/WallpaperPicker';
 import { WisteriaDecor, LeafButton } from '../components/WisteriaDecor';
 import LeafMenu from '../components/LeafMenu';
 import WisteriaMark from '../components/WisteriaMark';
@@ -490,6 +491,7 @@ export default function ChatPage() {
   const [leafOpen, setLeafOpen] = useState(false);
 
   const persona = selectedPersona();
+  const wallpaper = settings?.chatWallpaper ?? null;
 
   return (
     <div className="wis-chat-page">
@@ -531,64 +533,77 @@ export default function ChatPage() {
           <div style={{ width: 28 }} />
         </header>
 
-        {!isEmpty && (
-          <div className="wis-date-sep">
-            <div className="wis-date-sep-line" />
-            <span className="wis-date-sep-text">
-              {new Date()
-                .toLocaleDateString('zh-CN', {
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit',
-                })
-                .replace(/\//g, '.')}
-            </span>
-            <div className="wis-date-sep-line" />
-          </div>
-        )}
-
+        {/* Wallpaper applies only to this body (date sep + message stream).
+            Header and composer stay outside so their frosted chrome is unchanged. */}
         <div
-          ref={scrollRef}
-          className="wis-chat-stream"
+          className={`wis-chat-body${wallpaper ? ' has-wallpaper' : ''}`}
+          style={
+            wallpaper
+              ? {
+                  backgroundImage: `url(${wallpaper})`,
+                }
+              : undefined
+          }
         >
-        {hasNoEndpoints ? (
-          <EmptyEndpoints />
-        ) : isEmpty ? (
-          <EmptyChat />
-        ) : (
-          <ul className="chat-content-column chat-message-list">
-            {branch.map((m, idx) => {
-              // Choices widget is clickable only on assistant messages where
-              // no user reply exists yet in the active branch.
-              const isChoicesClickable =
-                m.role === 'assistant' &&
-                !busy &&
-                !branch.slice(idx + 1).some((mm) => mm.role === 'user');
-              return (
-                <li key={m.id} data-mid={m.id}>
-                  <MessageBubble
-                    message={m}
-                    accentColor={conversation?.accentColor ?? null}
-                    streamingText={
-                      m.id === streamingId ? streamingText : undefined
-                    }
-                    streamingThinking={
-                      m.id === streamingId ? streamingThinking : undefined
-                    }
-                    isChoicesClickable={isChoicesClickable}
-                    onEdit={(t) => handleEdit(m, t)}
-                    onRegenerate={() => handleRegenerate(m)}
-                    onSwitchSibling={handleSwitchSibling}
-                    onSend={(text) => handleSend(text, [])}
-                    disabled={busy}
-                  />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {tailPad > 0 && <div style={{ height: tailPad }} aria-hidden="true" />}
-      </div>
+          {!isEmpty && (
+            <div className="wis-date-sep">
+              <div className="wis-date-sep-line" />
+              <span className="wis-date-sep-text">
+                {new Date()
+                  .toLocaleDateString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                  })
+                  .replace(/\//g, '.')}
+              </span>
+              <div className="wis-date-sep-line" />
+            </div>
+          )}
+
+          <div
+            ref={scrollRef}
+            className="wis-chat-stream"
+          >
+          {hasNoEndpoints ? (
+            <EmptyEndpoints />
+          ) : isEmpty ? (
+            <EmptyChat />
+          ) : (
+            <ul className="chat-content-column chat-message-list">
+              {branch.map((m, idx) => {
+                // Choices widget is clickable only on assistant messages where
+                // no user reply exists yet in the active branch.
+                const isChoicesClickable =
+                  m.role === 'assistant' &&
+                  !busy &&
+                  !branch.slice(idx + 1).some((mm) => mm.role === 'user');
+                return (
+                  <li key={m.id} data-mid={m.id}>
+                    <MessageBubble
+                      message={m}
+                      accentColor={conversation?.accentColor ?? null}
+                      streamingText={
+                        m.id === streamingId ? streamingText : undefined
+                      }
+                      streamingThinking={
+                        m.id === streamingId ? streamingThinking : undefined
+                      }
+                      isChoicesClickable={isChoicesClickable}
+                      onEdit={(t) => handleEdit(m, t)}
+                      onRegenerate={() => handleRegenerate(m)}
+                      onSwitchSibling={handleSwitchSibling}
+                      onSend={(text) => handleSend(text, [])}
+                      disabled={busy}
+                    />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {tailPad > 0 && <div style={{ height: tailPad }} aria-hidden="true" />}
+          </div>
+        </div>
 
         <ChatInput
           onSend={handleSend}
@@ -640,6 +655,14 @@ export default function ChatPage() {
                   accentColor: next ?? undefined,
                   updatedAt: Date.now(),
                 });
+              }}
+            />
+          </MenuRow>
+          <MenuRow label="壁纸">
+            <WallpaperPicker
+              value={wallpaper}
+              onChange={async (next) => {
+                await saveSettings({ chatWallpaper: next });
               }}
             />
           </MenuRow>
