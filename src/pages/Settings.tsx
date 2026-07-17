@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft, Brain, Bell, FlaskConical } from 'lucide-react';
+import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft, Brain, Bell, FlaskConical, Plane } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db, getSettings, saveSettings } from '../db';
 import type { Endpoint, EndpointFormat } from '../types';
@@ -9,6 +9,7 @@ import { streamChat } from '../api';
 import { embed } from '../api/embedding';
 import { fetchBalance } from '../api/balance';
 import { resumeWaitingJobs } from '../lib/workshop/handoff-runner';
+import { DEFAULT_TRAVEL_DAEMON, mergeTravelCfg } from '../lib/travel';
 
 export default function SettingsPage() {
   const endpoints = useLiveQuery(
@@ -77,6 +78,7 @@ export default function SettingsPage() {
           <MemorySettings />
           <WorkshopHandoffSettings />
           <ProactiveNudgeSettings />
+          <TravelDaemonSettings />
           <ClawdPetSettings />
           <AppMaintenance />
         </div>
@@ -343,6 +345,241 @@ function ProactiveNudgeSettings() {
       </div>
     </section>
   );
+}
+
+function TravelDaemonSettings() {
+  const settings = useLiveQuery(() => getSettings(), [], null);
+  const endpoints = useLiveQuery(
+    () => db.endpoints.orderBy('createdAt').toArray(),
+    [],
+    [],
+  );
+  const personas = useLiveQuery(
+    () => db.personas.orderBy('createdAt').toArray(),
+    [],
+    [],
+  );
+
+  if (!settings) return null;
+  const cfg = mergeTravelCfg(settings.travelDaemon);
+
+  async function update(patch: Partial<typeof cfg>) {
+    await saveSettings({
+      travelDaemon: {
+        ...cfg,
+        ...patch,
+        quietHours: { ...cfg.quietHours, ...patch.quietHours },
+      },
+    });
+  }
+
+  const epId = cfg.endpointId ?? settings.defaultEndpointId;
+  const ep = endpoints?.find((e) => e.id === epId);
+  const models = ep?.chatModels ?? [];
+
+  return (
+    <section className="mt-6 rounded-2xl border border-lavender-200 bg-white/55 p-5 shadow-sm backdrop-blur-sm">
+      <h3 className="flex items-center gap-2 text-base font-semibold text-ink-900">
+        <Plane size={18} className="text-lavender-600" />
+        出行 Daemon（阳台）
+      </h3>
+      <p className="mt-1 text-sm text-ink-500">
+        上层纯代码每小时决定「出不出门」；下层才调用模型选地点、找真图、带回礼物。
+        推送默认安静，被拦住的消息会落在{' '}
+        <Link to="/travel" className="text-lavender-700 underline-offset-2 hover:underline">
+          阳台
+        </Link>
+        。
+      </p>
+
+      <label className="mt-4 flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={cfg.enabled}
+          onChange={(e) => update({ enabled: e.target.checked })}
+          className="h-4 w-4 accent-lavender-400"
+        />
+        <span className="text-sm text-ink-900">启用出行 daemon</span>
+      </label>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">出行人格</span>
+          <select
+            value={cfg.personaId}
+            onChange={(e) => update({ personaId: e.target.value })}
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+          >
+            {personas?.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            Endpoint（空 = 默认）
+          </span>
+          <select
+            value={cfg.endpointId ?? ''}
+            onChange={(e) =>
+              update({ endpointId: e.target.value || null, model: null })
+            }
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+          >
+            <option value="">使用默认 endpoint</option>
+            {endpoints?.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm md:col-span-2">
+          <span className="text-xs font-medium text-ink-500">
+            模型（空 = 默认）
+          </span>
+          <select
+            value={cfg.model ?? ''}
+            onChange={(e) => update({ model: e.target.value || null })}
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+          >
+            <option value="">使用默认模型</option>
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">最短间隔（天）</span>
+          <input
+            type="number"
+            min={0}
+            max={30}
+            value={cfg.minDaysBetween}
+            onChange={(e) =>
+              update({
+                minDaysBetween: Math.max(
+                  0,
+                  Number(e.target.value) || DEFAULT_TRAVEL_DAEMON.minDaysBetween,
+                ),
+              })
+            }
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">强制上限（天）</span>
+          <input
+            type="number"
+            min={1}
+            max={60}
+            value={cfg.maxDaysBetween}
+            onChange={(e) =>
+              update({
+                maxDaysBetween: Math.max(
+                  cfg.minDaysBetween,
+                  Number(e.target.value) || DEFAULT_TRAVEL_DAEMON.maxDaysBetween,
+                ),
+              })
+            }
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            工作日静音起–止（时）
+          </span>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={23}
+              value={cfg.quietHours.weekdayStart}
+              onChange={(e) =>
+                update({
+                  quietHours: {
+                    ...cfg.quietHours,
+                    weekdayStart: clampHour(e.target.value),
+                  },
+                })
+              }
+              className="w-full rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+            />
+            <span className="text-ink-400">→</span>
+            <input
+              type="number"
+              min={0}
+              max={23}
+              value={cfg.quietHours.weekdayEnd}
+              onChange={(e) =>
+                update({
+                  quietHours: {
+                    ...cfg.quietHours,
+                    weekdayEnd: clampHour(e.target.value),
+                  },
+                })
+              }
+              className="w-full rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+            />
+          </div>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            周末静音起–止（时）
+          </span>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={23}
+              value={cfg.quietHours.weekendStart}
+              onChange={(e) =>
+                update({
+                  quietHours: {
+                    ...cfg.quietHours,
+                    weekendStart: clampHour(e.target.value),
+                  },
+                })
+              }
+              className="w-full rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+            />
+            <span className="text-ink-400">→</span>
+            <input
+              type="number"
+              min={0}
+              max={23}
+              value={cfg.quietHours.weekendEnd}
+              onChange={(e) =>
+                update({
+                  quietHours: {
+                    ...cfg.quietHours,
+                    weekendEnd: clampHour(e.target.value),
+                  },
+                })
+              }
+              className="w-full rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+            />
+          </div>
+        </label>
+      </div>
+    </section>
+  );
+}
+
+function clampHour(raw: string): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(23, Math.floor(n)));
 }
 
 function AppMaintenance() {

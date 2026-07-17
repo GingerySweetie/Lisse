@@ -34,6 +34,7 @@ const MusicPage = lazy(() => import('./pages/Music'));
 const SearchPage = lazy(() => import('./pages/Search'));
 const HealthReportPage = lazy(() => import('./pages/HealthReport'));
 const CirclePage = lazy(() => import('./pages/Circle'));
+const TravelPage = lazy(() => import('./pages/Travel'));
 
 export default function App() {
   // Capture window-level errors + unhandled promise rejections so async
@@ -86,6 +87,7 @@ export default function App() {
             <Route path="/music" element={<MusicPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/circle" element={<CirclePage />} />
+            <Route path="/travel" element={<TravelPage />} />
             <Route path="/workshop" element={<WorkshopPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:conversationId" element={<ChatPage />} />

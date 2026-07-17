@@ -915,6 +915,7 @@ function summarizeBackup(r: ImportBackupResult): string {
   if (r.memoryFactsAdded) parts.push(`记忆 ${r.memoryFactsAdded}`);
   if (r.billsAdded) parts.push(`账单 ${r.billsAdded}`);
   if (r.circlePostsAdded) parts.push(`朋友圈 ${r.circlePostsAdded}`);
+  if (r.travelTripsAdded) parts.push(`出行 ${r.travelTripsAdded}`);
   if (r.periodEntriesAdded || r.weightEntriesAdded || r.healthDailyAdded)
     parts.push('健康数据 ✓');
   if (r.settingsApplied) parts.push('设置已填入');

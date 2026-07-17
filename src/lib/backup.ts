@@ -29,6 +29,9 @@ import type {
   MusicHistoryEntry,
   Persona,
   PeriodEntry,
+  TravelEvent,
+  TravelHeldPush,
+  TravelTrip,
   WeightEntry,
   WritingStyle,
 } from '../types';
@@ -70,6 +73,9 @@ export interface BackupBundle {
   healthComments?: HealthComment[];
   healthDaily?: HealthDailySnapshot[];
   handoffJobs?: HandoffJob[];
+  travelTrips?: TravelTrip[];
+  travelEvents?: TravelEvent[];
+  travelHeldPushes?: TravelHeldPush[];
 }
 
 type BackupTableName =
@@ -93,7 +99,10 @@ type BackupTableName =
   | 'circleReactions'
   | 'healthComments'
   | 'healthDaily'
-  | 'handoffJobs';
+  | 'handoffJobs'
+  | 'travelTrips'
+  | 'travelEvents'
+  | 'travelHeldPushes';
 
 const BACKUP_TABLES: BackupTableName[] = [
   'endpoints',
@@ -117,6 +126,9 @@ const BACKUP_TABLES: BackupTableName[] = [
   'healthComments',
   'healthDaily',
   'handoffJobs',
+  'travelTrips',
+  'travelEvents',
+  'travelHeldPushes',
 ];
 
 function tableRef(name: BackupTableName) {
@@ -147,6 +159,9 @@ export async function exportBackup(): Promise<BackupBundle> {
     healthComments,
     healthDaily,
     handoffJobs,
+    travelTrips,
+    travelEvents,
+    travelHeldPushes,
   ] = await Promise.all([
     getSettings(),
     db.endpoints.toArray(),
@@ -170,6 +185,9 @@ export async function exportBackup(): Promise<BackupBundle> {
     db.healthComments.toArray(),
     db.healthDaily.toArray(),
     db.handoffJobs.toArray(),
+    db.travelTrips.toArray(),
+    db.travelEvents.toArray(),
+    db.travelHeldPushes.toArray(),
   ]);
 
   const now = Date.now();
@@ -201,6 +219,9 @@ export async function exportBackup(): Promise<BackupBundle> {
     healthComments,
     healthDaily,
     handoffJobs,
+    travelTrips,
+    travelEvents,
+    travelHeldPushes,
   };
 }
 
@@ -237,6 +258,9 @@ export interface ImportBackupResult {
   healthCommentsAdded: number;
   healthDailyAdded: number;
   handoffJobsAdded: number;
+  travelTripsAdded: number;
+  travelEventsAdded: number;
+  travelHeldPushesAdded: number;
   settingsApplied: boolean;
 }
 
@@ -291,6 +315,9 @@ export async function importBackup(
         db.healthComments,
         db.healthDaily,
         db.handoffJobs,
+        db.travelTrips,
+        db.travelEvents,
+        db.travelHeldPushes,
         db.kv,
       ],
       async () => {
@@ -315,6 +342,9 @@ export async function importBackup(
         await db.healthComments.clear();
         await db.healthDaily.clear();
         await db.handoffJobs.clear();
+        await db.travelTrips.clear();
+        await db.travelEvents.clear();
+        await db.travelHeldPushes.clear();
         await db.kv.clear();
       },
     );
@@ -345,6 +375,9 @@ export async function importBackup(
     healthCommentsAdded: 0,
     healthDailyAdded: 0,
     handoffJobsAdded: 0,
+    travelTripsAdded: 0,
+    travelEventsAdded: 0,
+    travelHeldPushesAdded: 0,
     settingsApplied: false,
   };
 
@@ -374,6 +407,9 @@ export async function importBackup(
       db.healthComments,
       db.healthDaily,
       db.handoffJobs,
+      db.travelTrips,
+      db.travelEvents,
+      db.travelHeldPushes,
     ],
     async () => {
       result.endpointsAdded = await upsertAll(db.endpoints, bundle.endpoints);
@@ -438,6 +474,18 @@ export async function importBackup(
       result.handoffJobsAdded = await upsertAll(
         db.handoffJobs,
         bundle.handoffJobs,
+      );
+      result.travelTripsAdded = await upsertAll(
+        db.travelTrips,
+        bundle.travelTrips,
+      );
+      result.travelEventsAdded = await upsertAll(
+        db.travelEvents,
+        bundle.travelEvents,
+      );
+      result.travelHeldPushesAdded = await upsertAll(
+        db.travelHeldPushes,
+        bundle.travelHeldPushes,
       );
     },
   );

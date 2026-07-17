@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:handoff": "node --experimental-strip-types --test scripts/test-handoff-protocol.mjs"
+    "test:handoff": "node --experimental-strip-types --test scripts/test-handoff-protocol.mjs",
+    "test:travel": "node --experimental-strip-types --test scripts/test-travel-daemon.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",
