@@ -595,6 +595,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   billSrcScreenAccessibility: false,
   browserUserAgent: null,
   chatWallpaper: null,
+  clawdPetEnabled: true,
 };
 
 export async function getSettings(): Promise<AppSettings> {

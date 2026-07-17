@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import ErrorBoundary from './ErrorBoundary';
+import ClawdPet from './clawd/ClawdPet';
 import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
 import { bootstrapProactiveNudge } from '../lib/proactive-nudge';
 import { resetStatusBar } from '../lib/status-bar';
@@ -109,6 +110,8 @@ export default function Layout() {
           <Outlet />
         </ErrorBoundary>
       </main>
+
+      <ClawdPet />
     </div>
   );
 }
