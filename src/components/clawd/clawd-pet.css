@@ -9,7 +9,10 @@
   user-select: none;
   cursor: grab;
   pointer-events: auto;
-  filter: drop-shadow(0 6px 10px rgba(60, 40, 70, 0.18));
+  /* Soft outline so the white shell stays readable on lavender UIs. */
+  filter:
+    drop-shadow(0 0 0.6px rgba(90, 70, 110, 0.35))
+    drop-shadow(0 6px 10px rgba(60, 40, 70, 0.18));
   animation: clawd-pet-breathe 3.6s ease-in-out infinite;
 }
 

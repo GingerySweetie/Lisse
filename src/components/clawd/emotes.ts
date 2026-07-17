@@ -1429,8 +1429,28 @@ const SVG: Record<ClawdEmoteId, string> = {
 </svg>`,
 };
 
+/** Desk-pet palette override — body/eyes only; props & FX stay original. */
+export const CLAWD_BODY = '#FFFFFF';
+export const CLAWD_EYES = '#3D8BFF';
+
+/** Upstream crab shell color in clawd-emotes-skill SVGs. */
+const UPSTREAM_BODY = '#DE886D';
+
 export function getClawdSvg(id: ClawdEmoteId): string {
-  return SVG[id];
+  let svg = SVG[id];
+  // Shell / feet / arms
+  svg = svg.replaceAll(UPSTREAM_BODY, CLAWD_BODY);
+  // Named eye groups (incl. halloween's orange pupils)
+  svg = svg.replace(
+    /class="([^"]*-eye)" fill="#[0-9A-Fa-f]{3,8}"/g,
+    `class="$1" fill="${CLAWD_EYES}"`,
+  );
+  // Sleeping uses closed-eye bars without the *-eye class
+  svg = svg.replace(
+    /(<!-- closed sleeping eyes -->\s*<g fill=)"#[0-9A-Fa-f]{3,8}"/g,
+    `$1"${CLAWD_EYES}"`,
+  );
+  return svg;
 }
 
 export function isClawdEmoteId(v: string): v is ClawdEmoteId {
