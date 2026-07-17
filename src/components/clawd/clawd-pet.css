@@ -13,7 +13,8 @@
   animation: clawd-pet-breathe 3.6s ease-in-out infinite;
 }
 
-.clawd-pet:active {
+.clawd-pet:active,
+.clawd-pet--dragging {
   cursor: grabbing;
   animation: none;
 }

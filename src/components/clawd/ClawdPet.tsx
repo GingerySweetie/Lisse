@@ -4,6 +4,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { getSettings } from '../../db';
@@ -27,6 +28,7 @@ import './clawd-pet.css';
 const POS_KEY = 'lisse.clawd.pos';
 const HIDDEN_KEY = 'lisse.clawd.hiddenUntil';
 const HIDE_MS = 30 * 60_000;
+const PET_SIZE = 104;
 
 type Pos = { x: number; y: number };
 
@@ -94,6 +96,13 @@ function resolveBaseMood(pathname: string): ClawdEmoteId {
   return routeMood;
 }
 
+function defaultPos(): Pos {
+  return {
+    x: Math.max(12, window.innerWidth - 118),
+    y: Math.max(12, window.innerHeight - 168),
+  };
+}
+
 /**
  * Floating Clawd desk pet — SVG+CSS emotes from clawd-emotes-skill.
  * Mood follows the current route, calendar season, and 理理酱 chat events.
@@ -108,14 +117,8 @@ export default function ClawdPet() {
   );
   const [bubble, setBubble] = useState<string | null>(null);
   const [tuckedAway, setTuckedAway] = useState(() => remainingHideMs() > 0);
-  const [pos, setPos] = useState<Pos>(() => {
-    const saved = loadPos();
-    if (saved) return saved;
-    return {
-      x: Math.max(12, window.innerWidth - 118),
-      y: Math.max(12, window.innerHeight - 168),
-    };
-  });
+  const [pos, setPos] = useState<Pos>(() => loadPos() ?? defaultPos());
+  const [dragging, setDragging] = useState(false);
 
   const baseRef = useRef<ClawdEmoteId>(resolveBaseMood(location.pathname));
   const reactionTimer = useRef<number | null>(null);
@@ -125,9 +128,12 @@ export default function ClawdPet() {
     pointerId: number;
     ox: number;
     oy: number;
+    startX: number;
+    startY: number;
     moved: boolean;
   } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const livePos = useRef(pos);
 
   // Keep hide timer alive across mounts.
   useEffect(() => {
@@ -148,7 +154,6 @@ export default function ClawdPet() {
     if (reactionTimer.current) return;
 
     let cancelled = false;
-    // Defer so we don't setState synchronously inside the effect body.
     const id = window.setTimeout(() => {
       if (cancelled) return;
       setEmote((prev) => {
@@ -222,7 +227,9 @@ export default function ClawdPet() {
 
   useEffect(() => {
     function onResize() {
-      setPos((p) => clampPos(p.x, p.y, 104));
+      const next = clampPos(livePos.current.x, livePos.current.y, PET_SIZE);
+      livePos.current = next;
+      setPos(next);
     }
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -238,40 +245,64 @@ export default function ClawdPet() {
 
   if (!enabled || tuckedAway) return null;
   if (location.pathname.startsWith('/read/')) return null;
+  if (typeof document === 'undefined') return null;
+
+  function moveTo(clientX: number, clientY: number) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const next = clampPos(clientX - drag.ox, clientY - drag.oy, PET_SIZE);
+    if (
+      Math.abs(clientX - drag.startX) + Math.abs(clientY - drag.startY) >
+      4
+    ) {
+      drag.moved = true;
+    }
+    livePos.current = next;
+    const el = rootRef.current;
+    if (el) {
+      el.style.left = `${next.x}px`;
+      el.style.top = `${next.y}px`;
+    }
+  }
 
   function onPointerDown(e: ReactPointerEvent) {
     if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
     const el = rootRef.current;
     if (!el) return;
     el.setPointerCapture(e.pointerId);
+    const cur = livePos.current;
     dragRef.current = {
       pointerId: e.pointerId,
-      ox: e.clientX - pos.x,
-      oy: e.clientY - pos.y,
+      ox: e.clientX - cur.x,
+      oy: e.clientY - cur.y,
+      startX: e.clientX,
+      startY: e.clientY,
       moved: false,
     };
+    setDragging(true);
   }
 
   function onPointerMove(e: ReactPointerEvent) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
-    const next = clampPos(e.clientX - drag.ox, e.clientY - drag.oy, 104);
-    if (Math.abs(next.x - pos.x) + Math.abs(next.y - pos.y) > 3) {
-      drag.moved = true;
-    }
-    setPos(next);
+    e.preventDefault();
+    moveTo(e.clientX, e.clientY);
   }
 
   function onPointerUp(e: ReactPointerEvent) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return;
     dragRef.current = null;
+    setDragging(false);
     try {
       rootRef.current?.releasePointerCapture(e.pointerId);
     } catch {
       /* already released */
     }
-    const next = clampPos(pos.x, pos.y, 104);
+    const next = clampPos(livePos.current.x, livePos.current.y, PET_SIZE);
+    livePos.current = next;
     setPos(next);
     savePos(next);
     if (!drag.moved) {
@@ -300,10 +331,10 @@ export default function ClawdPet() {
     }, HIDE_MS);
   }
 
-  return (
+  return createPortal(
     <div
       ref={rootRef}
-      className="clawd-pet"
+      className={`clawd-pet${dragging ? ' clawd-pet--dragging' : ''}`}
       style={{ left: pos.x, top: pos.y }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -323,6 +354,7 @@ export default function ClawdPet() {
         key={emote}
         dangerouslySetInnerHTML={{ __html: getClawdSvg(emote) }}
       />
-    </div>
+    </div>,
+    document.body,
   );
 }
