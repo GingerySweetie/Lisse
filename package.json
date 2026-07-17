@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:handoff": "node --experimental-strip-types --test scripts/test-handoff-protocol.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",

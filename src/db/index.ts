@@ -23,6 +23,7 @@ import type {
   WeightEntry,
   WritingStyle,
 } from '../types';
+import type { HandoffJob } from '../lib/workshop/handoff-protocol';
 
 interface KVRow {
   key: string;
@@ -51,6 +52,7 @@ class LisseDB extends Dexie {
   circleReactions!: EntityTable<CircleReaction, 'id'>;
   healthComments!: EntityTable<HealthComment, 'id'>;
   healthDaily!: EntityTable<HealthDailySnapshot, 'id'>;
+  handoffJobs!: EntityTable<HandoffJob, 'id'>;
   kv!: EntityTable<KVRow, 'key'>;
 
   constructor() {
@@ -364,6 +366,34 @@ class LisseDB extends Dexie {
         }
       });
 
+    // v19: CLWD Handoff — durable jobs bridging chat → 炼金工房.
+    this.version(19).stores({
+      endpoints: 'id, name, format, createdAt',
+      conversations: 'id, updatedAt, createdAt, source, personaId, styleId, bookId, room, [room+personaId]',
+      messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+      personas: 'id, name, builtin, createdAt',
+      memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+      writingStyles: 'id, name, builtin, createdAt',
+      books: 'id, title, createdAt, updatedAt, conversationId',
+      bills: 'id, date, category, createdAt',
+      bookmarks: 'id, bookId, position, createdAt, [bookId+position]',
+      periodEntries: 'id, startDate, createdAt',
+      weightEntries: 'id, date, createdAt',
+      mcpServers: 'id, name, enabled, createdAt',
+      browserBookmarks: 'id, position, createdAt',
+      browserScripts: 'id, name, autoRun, createdAt',
+      musicCredentials: 'id',
+      musicHistory: 'id, songId, playedAt',
+      healthCache: 'id, type, date, updatedAt, [type+date]',
+      circlePosts: 'id, createdAt',
+      circleReactions: 'id, postId, personaId, kind, createdAt, [postId+personaId]',
+      healthComments: 'id, date, personaId, createdAt, [date+personaId]',
+      healthDaily: 'id, date',
+      handoffJobs:
+        'id, status, selected, created_at, updated_at, source.conversation_id, source.assistant_node_id, [source.conversation_id+created_at]',
+      kv: 'key',
+    });
+
     this.on('populate', async (tx) => {
       const personas = tx.table('personas');
       const styles = tx.table('writingStyles');
@@ -556,6 +586,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   retrievalThreshold: 0.5,
   maxHistoryTurns: null,
   toolsEnabled: false,
+  workshopHandoffEnabled: false,
+  workshopEndpointId: null,
+  workshopModel: null,
   autoApplyUpdate: true,
   billSrcAlipayWechat: true,
   billSrcBankNotification: true,

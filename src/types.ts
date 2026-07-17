@@ -88,6 +88,9 @@ export interface Message {
   artifacts?: Artifact[];
   /** Multiple-choice options extracted from [choices]A|B|C[/choices] tags. */
   choices?: string[];
+  /** CLWD handoff injection receipt — which workspace results rode this user turn. */
+  clwdResultsInjected?: Array<{ id: string; title: string }>;
+  clwdResultsInjectedAt?: number;
   /** In a group conversation, which persona authored this assistant turn.
    *  Undefined for user messages, system messages, and single-persona convos. */
   personaId?: string;
@@ -201,6 +204,13 @@ export interface AppSettings {
   /** When true, expose remember/recall tools to the chat model. Requires
    *  memoryEnabled + embedding endpoint to function. Default off. */
   toolsEnabled: boolean;
+  /** When true, the chat coordinator may emit [clwd-task] blocks that are
+   *  parsed into durable 炼金工房 jobs (CLWD Handoff Protocol). Default off. */
+  workshopHandoffEnabled: boolean;
+  /** Endpoint used by the 炼金工房 worker for handoff jobs. Null = default. */
+  workshopEndpointId: string | null;
+  /** Model used by the 炼金工房 worker for handoff jobs. Null = default. */
+  workshopModel: string | null;
   /** When true, applying a freshly-installed Service Worker no longer
    *  needs the user to tap the update banner — the app reloads itself
    *  as soon as the new version is detected. Default on. */

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft, Brain, Bell } from 'lucide-react';
+import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft, Brain, Bell, FlaskConical } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db, getSettings, saveSettings } from '../db';
 import type { Endpoint, EndpointFormat } from '../types';
@@ -8,6 +8,7 @@ import { newId } from '../lib/id';
 import { streamChat } from '../api';
 import { embed } from '../api/embedding';
 import { fetchBalance } from '../api/balance';
+import { resumeWaitingJobs } from '../lib/workshop/handoff-runner';
 
 export default function SettingsPage() {
   const endpoints = useLiveQuery(
@@ -74,11 +75,101 @@ export default function SettingsPage() {
           )}
 
           <MemorySettings />
+          <WorkshopHandoffSettings />
           <ProactiveNudgeSettings />
           <AppMaintenance />
         </div>
       </div>
     </div>
+  );
+}
+
+function WorkshopHandoffSettings() {
+  const settings = useLiveQuery(() => getSettings(), [], null);
+  const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
+
+  if (!settings) return null;
+  const s = settings;
+
+  async function update(patch: Parameters<typeof saveSettings>[0]) {
+    await saveSettings(patch);
+    if (patch.workshopHandoffEnabled || patch.workshopEndpointId || patch.workshopModel) {
+      void resumeWaitingJobs();
+    }
+  }
+
+  const workerEp =
+    endpoints?.find((e) => e.id === (s.workshopEndpointId ?? s.defaultEndpointId)) ??
+    null;
+  const models = workerEp?.chatModels ?? [];
+
+  return (
+    <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/40 p-5 shadow-sm backdrop-blur-sm">
+      <h3 className="flex items-center gap-2 text-base font-semibold text-ink-900">
+        <FlaskConical size={18} className="text-amber-700" />
+        炼金工房 · CLWD Handoff
+      </h3>
+      <p className="mt-1 text-sm text-ink-500">
+        开启后，聊天中的协调模型可输出{' '}
+        <code className="rounded bg-amber-100/80 px-1 text-xs">[clwd-task]</code>{' '}
+        把施工派发到炼金工房；结果进入返回架，勾选后随下一条消息回流。
+      </p>
+
+      <label className="mt-4 flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={s.workshopHandoffEnabled}
+          onChange={(e) => update({ workshopHandoffEnabled: e.target.checked })}
+          className="mt-0.5 h-4 w-4 accent-amber-600"
+        />
+        <span className="text-sm text-ink-900">
+          启用 CLWD 任务派发
+          <span className="ml-1 text-[11px] font-light text-ink-500">
+            需要先在炼金工房连接 GitHub 仓库
+          </span>
+        </span>
+      </label>
+
+      {s.workshopHandoffEnabled && (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-medium text-ink-500">Worker endpoint</span>
+            <select
+              value={s.workshopEndpointId ?? ''}
+              onChange={(e) =>
+                update({
+                  workshopEndpointId: e.target.value || null,
+                  workshopModel: null,
+                })
+              }
+              className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">使用默认 endpoint</option>
+              {(endpoints ?? []).map((ep) => (
+                <option key={ep.id} value={ep.id}>
+                  {ep.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-medium text-ink-500">Worker 模型（建议便宜模型）</span>
+            <select
+              value={s.workshopModel ?? ''}
+              onChange={(e) => update({ workshopModel: e.target.value || null })}
+              className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">使用默认模型</option>
+              {models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+    </section>
   );
 }
 

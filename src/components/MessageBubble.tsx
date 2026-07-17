@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   AlertCircle,
   BookOpen,
@@ -10,6 +11,7 @@ import {
   ChevronRight,
   ChevronUp,
   Copy,
+  FlaskConical,
   Pencil,
   RefreshCw,
   X,
@@ -21,6 +23,7 @@ import { DEFAULT_ACCENT } from './AccentPicker';
 import ChatMarkdown from './ChatMarkdown';
 import ArtifactCard from './ArtifactCard';
 import ChoicesWidget from './ChoicesWidget';
+import { listJobsForAssistant } from '../lib/workshop/handoff-store';
 
 interface Props {
   message: Message;
@@ -60,6 +63,15 @@ export default function MessageBubble({
   const thinking = streamingThinking ?? message.thinking ?? '';
   const hasThinking = thinking.trim().length > 0;
   const accent = accentColor ?? DEFAULT_ACCENT;
+
+  const handoffJobs = useLiveQuery(
+    () =>
+      !isUser && message.status === 'done'
+        ? listJobsForAssistant(message.id)
+        : Promise.resolve([]),
+    [message.id, message.status, isUser],
+    [],
+  );
 
   const [sib, setSib] = useState<SiblingInfo | null>(null);
   useEffect(() => {
@@ -183,8 +195,43 @@ export default function MessageBubble({
                 onSelect={(choice) => onSend?.(choice)}
               />
             )}
+            {handoffJobs && handoffJobs.length > 0 && !isStreaming && (
+              <div className="mt-2 space-y-1.5">
+                {handoffJobs.map((job) => (
+                  <div key={job.id} className="handoff-job-chip">
+                    <FlaskConical size={13} className="shrink-0 text-amber-700" />
+                    <span className="min-w-0 flex-1 truncate">
+                      已派发到炼金工房：{job.title}
+                    </span>
+                    <span className="shrink-0 text-[10px] opacity-70">
+                      {job.status === 'completed'
+                        ? '完成'
+                        : job.status === 'running'
+                          ? '施工中'
+                          : job.status === 'failed'
+                            ? '失败'
+                            : '排队'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
+
+        {isUser &&
+          message.clwdResultsInjected &&
+          message.clwdResultsInjected.length > 0 && (
+            <div className="handoff-job-chip mb-1.5 ml-auto max-w-[min(100%,28rem)]">
+              <FlaskConical size={13} className="shrink-0 text-amber-700" />
+              <span className="min-w-0 flex-1 truncate">
+                带回了 {message.clwdResultsInjected.length} 项工房结果
+                {message.clwdResultsInjected[0]
+                  ? ` · ${message.clwdResultsInjected[0].title}`
+                  : ''}
+              </span>
+            </div>
+          )}
 
         {isUser && message.attachments && message.attachments.length > 0 && (
           <Attachments attachments={message.attachments} alignRight={true} />

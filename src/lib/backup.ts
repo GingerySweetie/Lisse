@@ -32,6 +32,7 @@ import type {
   WeightEntry,
   WritingStyle,
 } from '../types';
+import type { HandoffJob } from './workshop/handoff-protocol';
 
 const LAST_BACKUP_AT_KEY = 'last_backup_at';
 
@@ -68,6 +69,7 @@ export interface BackupBundle {
   circleReactions?: CircleReaction[];
   healthComments?: HealthComment[];
   healthDaily?: HealthDailySnapshot[];
+  handoffJobs?: HandoffJob[];
 }
 
 type BackupTableName =
@@ -90,7 +92,8 @@ type BackupTableName =
   | 'circlePosts'
   | 'circleReactions'
   | 'healthComments'
-  | 'healthDaily';
+  | 'healthDaily'
+  | 'handoffJobs';
 
 const BACKUP_TABLES: BackupTableName[] = [
   'endpoints',
@@ -113,6 +116,7 @@ const BACKUP_TABLES: BackupTableName[] = [
   'circleReactions',
   'healthComments',
   'healthDaily',
+  'handoffJobs',
 ];
 
 function tableRef(name: BackupTableName) {
@@ -142,6 +146,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     circleReactions,
     healthComments,
     healthDaily,
+    handoffJobs,
   ] = await Promise.all([
     getSettings(),
     db.endpoints.toArray(),
@@ -164,6 +169,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     db.circleReactions.toArray(),
     db.healthComments.toArray(),
     db.healthDaily.toArray(),
+    db.handoffJobs.toArray(),
   ]);
 
   const now = Date.now();
@@ -194,6 +200,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     circleReactions,
     healthComments,
     healthDaily,
+    handoffJobs,
   };
 }
 
@@ -229,6 +236,7 @@ export interface ImportBackupResult {
   circleReactionsAdded: number;
   healthCommentsAdded: number;
   healthDailyAdded: number;
+  handoffJobsAdded: number;
   settingsApplied: boolean;
 }
 
@@ -282,6 +290,7 @@ export async function importBackup(
         db.circleReactions,
         db.healthComments,
         db.healthDaily,
+        db.handoffJobs,
         db.kv,
       ],
       async () => {
@@ -305,6 +314,7 @@ export async function importBackup(
         await db.circleReactions.clear();
         await db.healthComments.clear();
         await db.healthDaily.clear();
+        await db.handoffJobs.clear();
         await db.kv.clear();
       },
     );
@@ -334,6 +344,7 @@ export async function importBackup(
     circleReactionsAdded: 0,
     healthCommentsAdded: 0,
     healthDailyAdded: 0,
+    handoffJobsAdded: 0,
     settingsApplied: false,
   };
 
@@ -362,6 +373,7 @@ export async function importBackup(
       db.circleReactions,
       db.healthComments,
       db.healthDaily,
+      db.handoffJobs,
     ],
     async () => {
       result.endpointsAdded = await upsertAll(db.endpoints, bundle.endpoints);
@@ -422,6 +434,10 @@ export async function importBackup(
       result.healthDailyAdded = await upsertAll(
         db.healthDaily,
         bundle.healthDaily,
+      );
+      result.handoffJobsAdded = await upsertAll(
+        db.handoffJobs,
+        bundle.handoffJobs,
       );
     },
   );
