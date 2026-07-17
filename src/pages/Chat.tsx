@@ -14,7 +14,10 @@ import {
 import { isGroup } from '../lib/group';
 import { getActiveBranch } from '../lib/branch';
 import MessageBubble from '../components/MessageBubble';
+import HandoffReturnShelf from '../components/HandoffReturnShelf';
 import ChatInput from '../components/ChatInput';
+import { getSelectedJobIds } from '../lib/workshop/handoff-store';
+import { stripClwdTaskTags } from '../lib/workshop/handoff-protocol';
 import EndpointPicker from '../components/EndpointPicker';
 import PersonaPicker from '../components/PersonaPicker';
 import PersonaSecret from '../components/PersonaSecret';
@@ -290,6 +293,10 @@ export default function ChatPage() {
     setStreamingText('');
     setStreamingThinking('');
 
+    const handoffIds = settings?.workshopHandoffEnabled
+      ? await getSelectedJobIds(conv.id)
+      : undefined;
+
     try {
       await sendMessage({
         conversation: conv,
@@ -300,10 +307,11 @@ export default function ChatPage() {
         persona: selectedPersona(),
         style: selectedStyle(),
         groupOthers: groupOthers(),
+        handoffIds,
         signal: controller.signal,
         onDelta: (delta, assistantId) => {
           setStreamingId(assistantId);
-          setStreamingText((prev) => prev + delta);
+          setStreamingText((prev) => stripClwdTaskTags(prev + delta));
         },
         onThinking: (delta, assistantId) => {
           setStreamingId(assistantId);
@@ -605,6 +613,9 @@ export default function ChatPage() {
           </div>
         </div>
 
+        {conversationId && settings?.workshopHandoffEnabled && (
+          <HandoffReturnShelf conversationId={conversationId} disabled={busy} />
+        )}
         <ChatInput
           onSend={handleSend}
           onAbort={handleAbort}

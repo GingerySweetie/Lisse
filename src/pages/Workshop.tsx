@@ -21,7 +21,6 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db, getSettings } from '../db';
-import type { ChatTurn } from '../api/types';
 import type { Endpoint } from '../types';
 import {
   parseRepoInput,
@@ -32,15 +31,14 @@ import {
   type GitHubConfig,
   type RepoFile,
 } from '../lib/workshop/github';
-import {
-  WORKSHOP_TOOL_DEFS,
-  WORKSHOP_TOOL_HANDLERS,
-  buildSystemPrompt,
-  type WorkshopContext,
-} from '../lib/workshop/agent-tools';
 import { runBeautyReview, type BeautyReport } from '../lib/workshop/beauty';
-import type { Tool } from '../lib/tools';
-import { runToolLoop } from '../lib/tools/loop';
+import { runWorkshopAgent } from '../lib/workshop/run-agent';
+import {
+  loadStagedForJob,
+  resumeWaitingJobs,
+} from '../lib/workshop/handoff-runner';
+import { requeueJob } from '../lib/workshop/handoff-store';
+import type { HandoffJob } from '../lib/workshop/handoff-protocol';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -81,6 +79,11 @@ function isCheapModel(model: string): boolean {
 
 export default function WorkshopPage() {
   const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
+  const handoffJobs = useLiveQuery(
+    () => db.handoffJobs.orderBy('created_at').reverse().limit(20).toArray(),
+    [],
+    [],
+  );
   const [settings, setSettings] = useState<Awaited<ReturnType<typeof getSettings>> | null>(null);
   useEffect(() => {
     getSettings().then(setSettings);
@@ -173,6 +176,8 @@ export default function WorkshopPage() {
       setCommittingBranch(`workshop/${Date.now().toString(36)}`);
       localStorage.setItem(GH_TOKEN_KEY, ghToken);
       localStorage.setItem(GH_REPO_KEY, repoInput);
+      // Resume any CLWD jobs waiting on GitHub connectivity.
+      void resumeWaitingJobs();
     } catch (e) {
       setConnectError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -207,76 +212,35 @@ export default function WorkshopPage() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
-    const fileCache = new Map<string, string>();
-    const staged = new Map<string, { content: string; reason: string }>();
-
-    const workshopCtx: WorkshopContext = {
-      cfg: ghConfig,
-      fileTree,
-      fileCache,
-      stagedChanges: staged,
-      onLog: addLog,
-    };
-
-    // 包装工具让 runToolLoop 可用
-    const workshopTools: Tool[] = WORKSHOP_TOOL_DEFS.map((def) => ({
-      def,
-      handler: async (input: unknown) => {
-        const fn = WORKSHOP_TOOL_HANDLERS[def.name];
-        return fn(input, workshopCtx);
-      },
-    }));
-
-    const systemPrompt = buildSystemPrompt(
-      repoInfo.fullName,
-      fileTree,
-      repoInfo.defaultBranch,
-    );
-
-    const initialTurns: ChatTurn[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: taskText.trim() },
-    ];
-
     addLog(`开始炼制: ${taskText.trim().slice(0, 60)}${taskText.length > 60 ? '…' : ''}`, 'system');
     addLog(`模型: ${selectedModel} (${isCheapModel(selectedModel) ? '省钱模式 ✓' : '标准模式'})`, 'info');
 
     try {
-      const result = await runToolLoop({
+      const result = await runWorkshopAgent({
         endpoint: activeEndpoint,
         model: selectedModel,
-        initialTurns,
-        tools: workshopTools,
-        ctx: { conversationId: 'workshop' },
+        taskText: taskText.trim(),
+        cfg: ghConfig,
+        fileTree,
+        defaultBranch: repoInfo.defaultBranch,
+        repoFullName: repoInfo.fullName,
         signal: ctrl.signal,
-        maxRounds: 20,
-        callbacks: {
-          onTextDelta: () => {},
-          onToolCallResolved: (call) => {
-            if (call.name === 'task_done') {
-              const inp = call.input as { summary?: string };
-              if (inp.summary) setAgentSummary(inp.summary);
-            }
-          },
-        },
+        onLog: addLog,
       });
 
-      if (result.errored) {
+      if (result.errored && result.stagedChanges.length === 0) {
         addLog(`Agent 出错: ${result.errorMessage}`, 'error');
         setRunState('error');
       } else {
-        const changes: StagedChange[] = Array.from(staged.entries()).map(
-          ([path, v]) => ({ path, content: v.content, reason: v.reason }),
-        );
-        setStagedChanges(changes);
+        setStagedChanges(result.stagedChanges);
+        setAgentSummary(result.summary);
 
-        // Token 用量统计
         const inp = result.usage?.inputTokens ?? 0;
         const out = result.usage?.outputTokens ?? 0;
         setUsage({ inputTokens: inp, outputTokens: out, cost: estimateCost(selectedModel, inp, out) });
 
         addLog(
-          `炼制完成！修改了 ${staged.size} 个文件，${isCheapModel(selectedModel) ? '' : ''}Token 用量: ${inp + out}`,
+          `炼制完成！修改了 ${result.stagedChanges.length} 个文件，Token 用量: ${inp + out}`,
           'success',
         );
         setRunState('done');
@@ -290,6 +254,19 @@ export default function WorkshopPage() {
         setRunState('idle');
       }
     }
+  }
+
+  async function loadHandoffStaged(job: HandoffJob) {
+    const staged = await loadStagedForJob(job.id);
+    if (!staged || staged.length === 0) {
+      addLog(`任务「${job.title}」没有可加载的暂存文件`, 'info');
+      return;
+    }
+    setStagedChanges(staged);
+    setAgentSummary(job.result?.content?.slice(0, 400) || job.title);
+    setActiveTab('changes');
+    setRunState('done');
+    addLog(`已从返回架加载 ${staged.length} 个暂存文件：${job.title}`, 'success');
   }
 
   function handleStop() {
@@ -402,6 +379,18 @@ export default function WorkshopPage() {
             onDisconnect={handleDisconnect}
           />
 
+          {/* CLWD 派发任务队列 */}
+          {(handoffJobs?.length ?? 0) > 0 && (
+            <HandoffJobsCard
+              jobs={handoffJobs ?? []}
+              onLoadStaged={loadHandoffStaged}
+              onRetry={async (job) => {
+                await requeueJob(job.id);
+                void resumeWaitingJobs();
+              }}
+            />
+          )}
+
           {/* 任务输入卡片 */}
           {isConnected && (
             <TaskCard
@@ -460,6 +449,72 @@ export default function WorkshopPage() {
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────
+
+function HandoffJobsCard({
+  jobs,
+  onLoadStaged,
+  onRetry,
+}: {
+  jobs: HandoffJob[];
+  onLoadStaged: (job: HandoffJob) => void;
+  onRetry: (job: HandoffJob) => void;
+}) {
+  return (
+    <div className="workshop-card space-y-3">
+      <div className="flex items-center gap-2">
+        <FlaskConical size={16} className="text-amber-700" />
+        <span className="font-medium text-ink-700">CLWD 派发队列</span>
+        <span className="text-[11px] text-ink-500">来自聊天的施工任务</span>
+      </div>
+      <ul className="space-y-2">
+        {jobs.map((job) => (
+          <li
+            key={job.id}
+            className="rounded-xl border border-amber-100 bg-amber-50/40 px-3 py-2.5"
+          >
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium text-ink-800">
+                    {job.title}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-ink-500">
+                    {job.status}
+                  </span>
+                </div>
+                <p className="mt-0.5 line-clamp-2 text-[11px] text-ink-500">
+                  {job.status === 'completed'
+                    ? (job.result?.content || '').slice(0, 140)
+                    : job.progress?.detail || job.error?.message || job.request.slice(0, 100)}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col gap-1">
+                {job.status === 'completed' && (
+                  <button
+                    type="button"
+                    onClick={() => onLoadStaged(job)}
+                    className="rounded-lg bg-white px-2 py-1 text-[11px] text-amber-800 ring-1 ring-amber-200 hover:bg-amber-50"
+                  >
+                    加载暂存
+                  </button>
+                )}
+                {job.status === 'failed' && (
+                  <button
+                    type="button"
+                    onClick={() => onRetry(job)}
+                    className="rounded-lg bg-white px-2 py-1 text-[11px] text-ink-600 ring-1 ring-lavender-200 hover:bg-lavender-50"
+                  >
+                    重试
+                  </button>
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function GitHubSetupCard({
   token,

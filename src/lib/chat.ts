@@ -25,6 +25,16 @@ import { buildGroupTurns, groupAwarenessSnippet } from './group';
 import { formatStatusBlock } from './behavior';
 import { formatHealthContextBlock } from './health-context';
 import { parseArtifacts } from './artifacts';
+import {
+  applyInjectionReceipt,
+  enqueueTasksFromAssistant,
+} from './workshop/handoff-store';
+import { pumpHandoffQueue } from './workshop/handoff-runner';
+import {
+  buildResultInjection,
+  stripClwdTaskTags,
+  type HandoffJob,
+} from './workshop/handoff-protocol';
 
 /**
  * Capability description injected as a stable system turn so the model
@@ -65,6 +75,24 @@ const ARTIFACTS_CAPABILITY = `# 输出能力：文件 Artifact 与选择器
 你想要哪种风格？
 [choices]极简白色|深色模式|彩色渐变[/choices]`;
 
+/**
+ * CLWD Handoff capability — only injected when workshopHandoffEnabled.
+ * Byte-stable constant for prompt caching.
+ */
+const HANDOFF_CAPABILITY = `# 输出能力：炼金工房任务派发（CLWD Handoff）
+
+当你需要改代码、查仓库、写报告等施工类任务时，可在自然回复之后输出：
+
+[clwd-task title="短标题"]
+自包含的任务说明（工作区模型看不到完整聊天历史，必须写清楚背景、目标与验收标准）
+[/clwd-task]
+
+规则：
+- 标签会对用户隐藏；聊天里只显示你的自然语言
+- 单轮最多 3 个任务；标题 ≤ 120 字
+- 不要在标签里写密钥、账号或内部路径
+- 不是所有事都要外派；聊天、情感、轻量问答请自己完成
+- 结果不会自动回流；用户勾选后随下一条消息带回`;
 
 export interface SendOptions {
   conversation: Conversation;
@@ -79,6 +107,8 @@ export interface SendOptions {
   attachments?: Attachment[];
   /** Reading anchor (for book/共读 conversations). */
   bookAnchor?: Message['bookAnchor'];
+  /** CLWD handoff job ids the user selected to inject with this turn. */
+  handoffIds?: string[];
   /** Called on every visible-text chunk. */
   onDelta?: (delta: string, assistantMessageId: string) => void;
   /** Called on every thinking-text chunk (Anthropic extended thinking). */
@@ -102,6 +132,7 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     groupOthers,
     attachments,
     bookAnchor,
+    handoffIds,
     onDelta,
     onThinking,
     signal,
@@ -160,12 +191,14 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
 
   await streamAssistant({
     assistantMessageId: assistantMessage.id,
+    userMessageId: userMessage.id,
     endpoint,
     model,
     persona,
     style,
     groupOthers,
     branch: [...branch, userMessage],
+    handoffIds,
     onDelta,
     onThinking,
     signal,
@@ -178,7 +211,11 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     userMessage,
     assistantMessage: final ?? assistantMessage,
   });
-  return { userMessage, assistantMessage: final ?? assistantMessage };
+  const finalUser = await db.messages.get(userMessage.id);
+  return {
+    userMessage: finalUser ?? userMessage,
+    assistantMessage: final ?? assistantMessage,
+  };
 }
 
 /** Fire-and-forget extraction; never throws into the chat path. Skipped
@@ -403,6 +440,8 @@ export async function regenerateAssistant(opts: {
 
 async function streamAssistant(args: {
   assistantMessageId: string;
+  /** User message that triggered this assistant turn (for CLWD receipt). */
+  userMessageId?: string;
   endpoint: Endpoint;
   model: string;
   persona?: Persona;
@@ -411,18 +450,22 @@ async function streamAssistant(args: {
   groupOthers?: Persona[];
   /** Full message chain leading up to (and including) the user turn whose response we're generating. */
   branch: Message[];
+  /** CLWD handoff job ids to inject with this user turn. */
+  handoffIds?: string[];
   onDelta?: (delta: string, assistantMessageId: string) => void;
   onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
 }) {
   const {
     assistantMessageId,
+    userMessageId,
     endpoint,
     model,
     persona,
     style,
     groupOthers,
     branch,
+    handoffIds,
     onDelta,
     onThinking,
     signal,
@@ -576,10 +619,18 @@ async function streamAssistant(args: {
   // These are collected into gateway_volatile_context below and prepended to the
   // last user message (after BP4), so they never bust any cached prefix.
 
+  const settings = await getSettings();
+
   // Artifact / choices capability description — byte-stable constant, so it
   // costs nothing extra in prompt caching. Placed BEFORE persona so it sets
   // the baseline capability context the persona can then override / extend.
   turns.push({ role: 'system', content: ARTIFACTS_CAPABILITY });
+
+  // CLWD handoff capability — only when enabled. Constant text so it stays
+  // cache-friendly while the feature is on for a session.
+  if (settings.workshopHandoffEnabled) {
+    turns.push({ role: 'system', content: HANDOFF_CAPABILITY });
+  }
 
   // BP1: persona (stable — almost never changes)
   if (persona && persona.systemPrompt.trim()) {
@@ -621,6 +672,22 @@ async function streamAssistant(args: {
   const statusBlock = formatStatusBlock();
   if (statusBlock) volatileParts.push(statusBlock);
 
+  // CLWD selected results — ride the current user turn (not a system message).
+  let handoffInjectJobs: HandoffJob[] = [];
+  const earlyConvId = branch[0]?.conversationId ?? '';
+  if (handoffIds && handoffIds.length > 0 && earlyConvId) {
+    const jobs = await db.handoffJobs.bulkGet(handoffIds);
+    const bundle = buildResultInjection({
+      sourceConversationId: earlyConvId,
+      requestedIds: handoffIds,
+      jobs: jobs.filter((j): j is HandoffJob => !!j),
+    });
+    if (bundle.context) {
+      volatileParts.unshift(bundle.context);
+      handoffInjectJobs = bundle.jobs;
+    }
+  }
+
   // Apply short-memory window: keep only recent messages so the API doesn't
   // replay the entire conversation each turn. Null = unlimited.
   //
@@ -630,7 +697,6 @@ async function streamAssistant(args: {
   // makes BP4 useless. Instead we drop the oldest messages in CHUNKS of half
   // the window: the window start then stays byte-identical for keep/2 turns
   // between rebuilds, so the rolling cache keeps hitting in between.
-  const settings = await getSettings();
   let trimmed: Message[] = branch;
   if (settings.maxHistoryTurns && settings.maxHistoryTurns > 0) {
     const keep = settings.maxHistoryTurns * 2;
@@ -740,7 +806,34 @@ async function streamAssistant(args: {
 
   // Parse artifact and choices tags out of the raw response text so the
   // chat bubble only shows clean prose while cards/buttons render separately.
-  const { cleanText, artifacts, choices } = parseArtifacts(result.text);
+  const { cleanText: artifactClean, artifacts, choices } = parseArtifacts(
+    result.text,
+  );
+
+  // CLWD: strip [clwd-task] from visible text and enqueue durable jobs.
+  let cleanText = stripClwdTaskTags(artifactClean);
+  if (settings.workshopHandoffEnabled && convId && finalStatus === 'done') {
+    try {
+      const workerModel =
+        settings.workshopModel || settings.defaultModel || model;
+      const enqueued = await enqueueTasksFromAssistant({
+        assistantText: artifactClean,
+        conversationId: convId,
+        assistantMessageId,
+        dispatch: {
+          account: settings.workshopEndpointId || endpoint.id,
+          model: workerModel,
+        },
+      });
+      cleanText = enqueued.cleanText;
+      if (enqueued.jobs.length > 0) {
+        void pumpHandoffQueue(convId);
+      }
+    } catch (e) {
+      console.warn('[clwd] enqueue failed:', e);
+      cleanText = stripClwdTaskTags(artifactClean);
+    }
+  }
 
   await db.messages.update(assistantMessageId, {
     content: cleanText,
@@ -752,9 +845,26 @@ async function streamAssistant(args: {
     usage: result.usage,
     toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
   });
-  const conv = (await db.messages.get(assistantMessageId))?.conversationId;
-  if (conv) {
-    await db.conversations.update(conv, { updatedAt: Date.now() });
+  if (convId) {
+    await db.conversations.update(convId, { updatedAt: Date.now() });
+  }
+
+  // CLWD receipt only after the source turn persisted successfully.
+  if (
+    !result.errored &&
+    userMessageId &&
+    handoffInjectJobs.length > 0 &&
+    earlyConvId
+  ) {
+    try {
+      await applyInjectionReceipt({
+        conversationId: earlyConvId,
+        jobIds: handoffInjectJobs.map((j) => j.id),
+        userMessageId,
+      });
+    } catch (e) {
+      console.warn('[clwd] injection receipt failed:', e);
+    }
   }
 }
 
