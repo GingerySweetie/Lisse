@@ -263,6 +263,50 @@ export interface AppSettings {
   /** Floating pixel-crab desk pet that reacts to the current page and
    *  理理酱 chat. Default on. */
   clawdPetEnabled: boolean;
+
+  // ─── Travel Daemon (旅かえる-style) ───
+  /** Two-layer client daemon: pure-code scheduler decides *whether*
+   *  to leave; LLM execution decides where / what / gift. Default off. */
+  travelDaemon?: TravelDaemonSettings;
+}
+
+/** Settings for the Travel Frog–inspired travel daemon. */
+export interface TravelDaemonSettings {
+  /** Master switch. */
+  enabled: boolean;
+  /** Persona who travels. Default persona_ririchan. */
+  personaId: string;
+  /** Endpoint override. Null = app default. */
+  endpointId: string | null;
+  /** Model override. Null = app default. */
+  model: string | null;
+  /** Do not travel if days since last trip < this. Default 2. */
+  minDaysBetween: number;
+  /** Force travel if days since last trip > this. Default 5. */
+  maxDaysBetween: number;
+  /** How many recent destinations to inject as anti-repeat. Default 8. */
+  antiRepeatCount: number;
+  /** Max agentic tool-loop rounds. Default 4. */
+  maxTurns: number;
+  /** Suppress travel when recent chat closeness score ≥ this (0–1). Default 0.75. */
+  closenessSuppressAt: number;
+  /** Suppress travel when self-concern score ≥ this (0–1). Default 0.6. */
+  selfConcernSuppressAt: number;
+  /** Quiet-window config for pushToUser. */
+  quietHours: {
+    /** Weekday sleep start hour (local), inclusive. Default 23. */
+    weekdayStart: number;
+    /** Weekday sleep end hour (local), exclusive. Default 8. */
+    weekdayEnd: number;
+    /** Weekend sleep start hour. Default 0. */
+    weekendStart: number;
+    /** Weekend sleep end hour. Default 9. */
+    weekendEnd: number;
+  };
+  /** Hours to wait between normal pushes (Gate 2). Default 3. */
+  pushGapHours: number;
+  /** Dedup window hours for the same dedupKey. Default 48. */
+  dedupHours: number;
 }
 
 export interface Persona {
@@ -661,4 +705,75 @@ export interface MemoryFact {
   archived?: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+/** One completed (or in-flight) travel-daemon trip. */
+export interface TravelTrip {
+  id: string;
+  personaId: string;
+  /** Chat model that authored this trip (for audit / "signed by"). */
+  model: string;
+  status: 'running' | 'completed' | 'error';
+  /** First-person monologue from the trip. */
+  monologue: string;
+  /** Place name (city / landmark / region). */
+  location: string;
+  /** Era / year / period the agent chose. */
+  era: string;
+  /** Short sensory feeling line. */
+  feeling: string;
+  /** Real image URL (not AI-generated). */
+  imageUrl: string;
+  /** Provenance / source credit for the image. */
+  imageSource: string;
+  /** The "gift" brought back — object, sound, feeling, or word. */
+  gift: string;
+  /** Demand-style invite: "I'm at X, come here" rather than "want to go?". */
+  invite: boolean;
+  /** Optional push / balcony message. */
+  message: string;
+  /** Emotional intensity score 0–1 from the model. */
+  emotionalScore: number;
+  /** 'shared' when invite=true, else 'alone'. */
+  memoryLabel: 'shared' | 'alone';
+  errorMessage?: string;
+  createdAt: number;
+  completedAt?: number;
+}
+
+/** Audit / observability marker for travel-daemon decisions. */
+export interface TravelEvent {
+  id: string;
+  /** Marker kind — every yes/no decision leaves one. */
+  kind:
+    | 'tick'
+    | 'skip'
+    | 'travel_started'
+    | 'travel_completed'
+    | 'travel_error'
+    | 'push_sent'
+    | 'push_held'
+    | 'push_skipped'
+    | 'invite_accepted'
+    | 'user_awake'
+    | 'user_asleep';
+  /** Grounded human-readable reason (especially for no-action). */
+  reason: string;
+  /** Optional structured detail for debugging. */
+  detail?: Record<string, unknown>;
+  tripId?: string;
+  createdAt: number;
+}
+
+/** A push that was held for the balcony instead of delivered as a notification. */
+export interface TravelHeldPush {
+  id: string;
+  text: string;
+  dedupKey: string;
+  kind: 'normal' | 'high_priority';
+  reason: string;
+  tripId?: string;
+  createdAt: number;
+  /** Cleared when the user opens the balcony and sees it. */
+  seen: boolean;
 }

@@ -5,6 +5,7 @@ import ErrorBoundary from './ErrorBoundary';
 import ClawdPet from './clawd/ClawdPet';
 import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
 import { bootstrapProactiveNudge } from '../lib/proactive-nudge';
+import { bootstrapTravelDaemon } from '../lib/travel';
 import { resetStatusBar } from '../lib/status-bar';
 
 export default function Layout() {
@@ -22,6 +23,7 @@ export default function Layout() {
   useEffect(() => {
     bootstrapBehavior();
     bootstrapProactiveNudge();
+    bootstrapTravelDaemon();
     function onVis() {
       recordVisibilityChange();
     }
