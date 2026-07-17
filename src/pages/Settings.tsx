@@ -77,10 +77,49 @@ export default function SettingsPage() {
           <MemorySettings />
           <WorkshopHandoffSettings />
           <ProactiveNudgeSettings />
+          <ClawdPetSettings />
           <AppMaintenance />
         </div>
       </div>
     </div>
+  );
+}
+
+function ClawdPetSettings() {
+  const settings = useLiveQuery(() => getSettings(), [], null);
+  if (!settings) return null;
+
+  return (
+    <section className="endpoint-card mt-4">
+      <h3 className="endpoint-card-title">Clawd 桌宠</h3>
+      <p className="mt-1 text-xs text-ink-500">
+        右下角的小螃蟹会跟着你打开的页面变表情，也会对理理酱的回复做出反应。
+        可拖动；右键（或长按菜单）可暂藏 30 分钟。表情来自{' '}
+        <a
+          href="https://github.com/xixicc186/clawd-emotes-skill"
+          target="_blank"
+          rel="noreferrer"
+          className="text-lavender-700 underline decoration-lavender-300 underline-offset-2"
+        >
+          clawd-emotes-skill
+        </a>
+        。
+      </p>
+      <label className="mt-3 flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={settings.clawdPetEnabled ?? true}
+          onChange={(e) => void saveSettings({ clawdPetEnabled: e.target.checked })}
+          className="mt-0.5 h-4 w-4 accent-lavender-400"
+        />
+        <span className="text-sm text-ink-900">
+          显示 Clawd 桌宠
+          <span className="ml-1 text-[11px] font-light text-ink-500">
+            关掉后不再浮在界面上；随时可在这里重新打开。
+          </span>
+        </span>
+      </label>
+    </section>
   );
 }
 

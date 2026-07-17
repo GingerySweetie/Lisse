@@ -258,6 +258,11 @@ export interface AppSettings {
    *  keep the default lavender gradient + WisteriaDecor. Only applied to
    *  the message stream region (not header / composer / nav). */
   chatWallpaper: string | null;
+
+  // ─── Clawd desk pet ───
+  /** Floating pixel-crab desk pet that reacts to the current page and
+   *  理理酱 chat. Default on. */
+  clawdPetEnabled: boolean;
 }
 
 export interface Persona {

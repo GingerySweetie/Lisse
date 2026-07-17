@@ -15,6 +15,7 @@ import { availableTools } from '../lib/tools';
 import { runToolLoop } from '../lib/tools/loop';
 import TentaclePanel from '../components/TentaclePanel';
 import BedroomDecor, { decorVariantForTheme } from '../components/BedroomDecor';
+import { emitClawd } from '../lib/clawd/bus';
 import type { Conversation, Message, ToolCallRecord } from '../types';
 
 /**
@@ -210,6 +211,8 @@ export default function BedroomChatPage() {
 
     setInput('');
     setLoading(true);
+    emitClawd({ type: 'user-send', personaId: pid });
+    let clawdStreamStarted = false;
 
     // Build the API turn list from persisted history + new user message.
     const history = [...(storedMessages ?? []), userMessage];
@@ -249,6 +252,10 @@ export default function BedroomChatPage() {
       maxTokens: 1024,
       callbacks: {
         onTextDelta: (d) => {
+          if (!clawdStreamStarted) {
+            clawdStreamStarted = true;
+            emitClawd({ type: 'stream-start', personaId: pid });
+          }
           acc += d;
           const tm = acc.match(/<think>([\s\S]*?)<\/think>/);
           // Strip both closed and still-streaming <think> blocks so the
@@ -298,6 +305,11 @@ export default function BedroomChatPage() {
     await db.conversations.update(conv.id, {
       currentLeafId: assistantId,
       updatedAt: Date.now(),
+    });
+    emitClawd({
+      type: 'stream-end',
+      personaId: pid,
+      text: finalAssistant.content,
     });
     setStreaming(null);
     setLoading(false);

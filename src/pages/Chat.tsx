@@ -28,6 +28,7 @@ import WallpaperPicker from '../components/WallpaperPicker';
 import { WisteriaDecor, LeafButton } from '../components/WisteriaDecor';
 import LeafMenu from '../components/LeafMenu';
 import WisteriaMark from '../components/WisteriaMark';
+import { emitClawd } from '../lib/clawd/bus';
 import type { Attachment, Conversation, Message } from '../types';
 
 export default function ChatPage() {
@@ -292,6 +293,9 @@ export default function ChatPage() {
     abortRef.current = controller;
     setStreamingText('');
     setStreamingThinking('');
+    emitClawd({ type: 'user-send', personaId });
+    let clawdStreamStarted = false;
+    let clawdAcc = '';
 
     const handoffIds = settings?.workshopHandoffEnabled
       ? await getSelectedJobIds(conv.id)
@@ -310,15 +314,31 @@ export default function ChatPage() {
         handoffIds,
         signal: controller.signal,
         onDelta: (delta, assistantId) => {
+          if (!clawdStreamStarted) {
+            clawdStreamStarted = true;
+            emitClawd({ type: 'stream-start', personaId });
+          }
+          clawdAcc += delta;
           setStreamingId(assistantId);
           setStreamingText((prev) => stripClwdTaskTags(prev + delta));
         },
         onThinking: (delta, assistantId) => {
+          if (!clawdStreamStarted) {
+            clawdStreamStarted = true;
+            emitClawd({ type: 'stream-start', personaId });
+          }
           setStreamingId(assistantId);
           setStreamingThinking((prev) => prev + delta);
         },
       });
 
+      if (clawdStreamStarted || clawdAcc) {
+        emitClawd({
+          type: 'stream-end',
+          personaId,
+          text: stripClwdTaskTags(clawdAcc),
+        });
+      }
       setStreamingId(null);
       setStreamingText('');
       setStreamingThinking('');
@@ -341,6 +361,8 @@ export default function ChatPage() {
           );
           setStreamingText('');
           setStreamingThinking('');
+          clawdStreamStarted = false;
+          clawdAcc = '';
           await letPersonaSpeak({
             conversation: conv,
             endpoint: epToUse,
@@ -350,14 +372,30 @@ export default function ChatPage() {
             groupOthers: speakerOthers.length > 0 ? speakerOthers : undefined,
             signal: controller.signal,
             onDelta: (delta, assistantId) => {
+              if (!clawdStreamStarted) {
+                clawdStreamStarted = true;
+                emitClawd({ type: 'stream-start', personaId: speaker.id });
+              }
+              clawdAcc += delta;
               setStreamingId(assistantId);
               setStreamingText((prev) => prev + delta);
             },
             onThinking: (delta, assistantId) => {
+              if (!clawdStreamStarted) {
+                clawdStreamStarted = true;
+                emitClawd({ type: 'stream-start', personaId: speaker.id });
+              }
               setStreamingId(assistantId);
               setStreamingThinking((prev) => prev + delta);
             },
           });
+          if (clawdStreamStarted || clawdAcc) {
+            emitClawd({
+              type: 'stream-end',
+              personaId: speaker.id,
+              text: clawdAcc,
+            });
+          }
           setStreamingId(null);
           setStreamingText('');
           setStreamingThinking('');
