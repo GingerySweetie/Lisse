@@ -239,8 +239,9 @@ export async function* streamAnthropic(
 
   // Extended thinking: when enabled, thinking deltas come in their own block
   // type and the model has a separate budget. Temperature must be 1 (or unset)
-  // to use thinking, so we omit it.
+  // when thinking / adaptive-think models are in play — never send 0.7 etc.
   const thinkingEnabled = req.thinking?.enabled === true;
+  const adaptiveThinkModel = /think/i.test(req.model);
   const thinkingBudget = Math.max(1024, req.thinking?.budgetTokens ?? 6000);
   const maxTokens = Math.max(
     req.maxTokens ?? 4096,
@@ -259,7 +260,8 @@ export async function* streamAnthropic(
     metadata: { user_id: 'lisse-stable-user' },
     ...(thinkingEnabled
       ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget } }
-      : req.temperature !== undefined && { temperature: req.temperature }),
+      : !adaptiveThinkModel &&
+        req.temperature !== undefined && { temperature: req.temperature }),
   };
   if (req.tools && req.tools.length > 0) {
     body.tools = req.tools.map((t) => ({
