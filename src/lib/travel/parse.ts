@@ -20,6 +20,9 @@ export interface TravelJsonResult {
 
 export function parseTravelJson(text: string): TravelJsonResult | null {
   const cleaned = text
+    // Think-model wrappers sometimes leak into the visible text channel.
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<\/?think>/gi, '')
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/```\s*$/i, '')
     .trim();

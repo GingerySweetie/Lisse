@@ -148,12 +148,16 @@ export async function* streamOpenAI(
 
   oaiMessages.push(...mapped);
 
+  // Claude thinking / adaptive-think models (often via OpenAI-compatible
+  // proxies) reject any temperature other than 1. Omit rather than pin 0.x.
+  const adaptiveThinkModel = /think/i.test(req.model);
   const body: Record<string, unknown> = {
     model: req.model,
     messages: oaiMessages,
     stream: true,
     stream_options: { include_usage: true },
-    ...(req.temperature !== undefined && { temperature: req.temperature }),
+    ...(!adaptiveThinkModel &&
+      req.temperature !== undefined && { temperature: req.temperature }),
     ...(req.maxTokens !== undefined && { max_tokens: req.maxTokens }),
   };
   if (req.tools && req.tools.length > 0) {

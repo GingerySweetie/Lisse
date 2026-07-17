@@ -233,3 +233,12 @@ test('parseTravelJson tolerates fences and invite', () => {
   assert.equal(p.invite, true);
   assert.equal(p.emotionalScore, 0.7);
 });
+
+test('parseTravelJson strips leaked think tags', () => {
+  const raw = `<think>planning the trip</think>
+{"monologue":"到了。","trip":{"location":"京都","era":"当代","feeling":"潮","imageUrl":"","imageSource":"","gift":"一片枫叶"},"invite":false,"message":"","emotionalScore":0.2}`;
+  const p = parseTravelJson(raw);
+  assert.ok(p);
+  assert.equal(p.trip.location, '京都');
+  assert.equal(p.trip.gift, '一片枫叶');
+});

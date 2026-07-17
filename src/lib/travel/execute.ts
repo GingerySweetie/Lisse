@@ -87,6 +87,9 @@ export async function runTravelTrip(opts: {
 
     const tools: Tool[] = travelImageTools();
     const maxTurns = cfg.maxTurns ?? DEFAULT_TRAVEL_DAEMON.maxTurns;
+    // Mirror chat.ts: never pin temperature. Thinking / adaptive Claude
+    // models reject any value other than 1 (or omitted).
+    const thinking = travelThinkingOpts(endpoint);
 
     let rawText: string;
     if (tools.length > 0) {
@@ -98,7 +101,7 @@ export async function runTravelTrip(opts: {
         ctx: { persona, conversationId: `travel:${trip.id}` },
         signal,
         maxRounds: maxTurns,
-        temperature: 0.7,
+        thinking,
         maxTokens: 2048,
       });
       if (result.errored) {
@@ -106,7 +109,7 @@ export async function runTravelTrip(opts: {
       }
       rawText = result.text;
     } else {
-      rawText = await streamAccumulate(endpoint, model, turns, signal);
+      rawText = await streamAccumulate(endpoint, model, turns, signal, thinking);
     }
 
     const parsed = parseTravelJson(rawText);
@@ -148,11 +151,21 @@ export async function runTravelTrip(opts: {
   }
 }
 
+function travelThinkingOpts(
+  endpoint: Endpoint,
+): { enabled: boolean; budgetTokens?: number } | undefined {
+  if (endpoint.format === 'anthropic' && endpoint.thinkingEnabled) {
+    return { enabled: true, budgetTokens: endpoint.thinkingBudget };
+  }
+  return undefined;
+}
+
 async function streamAccumulate(
   endpoint: Endpoint,
   model: string,
   messages: ChatTurn[],
   signal?: AbortSignal,
+  thinking?: { enabled: boolean; budgetTokens?: number },
 ): Promise<string> {
   let acc = '';
   for await (const evt of streamChat({
@@ -160,7 +173,7 @@ async function streamAccumulate(
     model,
     messages,
     maxTokens: 2048,
-    temperature: 0.7,
+    thinking,
     signal,
   })) {
     if (evt.type === 'delta' && evt.delta) acc += evt.delta;
