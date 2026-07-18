@@ -59,19 +59,18 @@ type ClickRipple = { id: number; x: number; y: number };
 const SQUASH = 0.3;
 
 /**
- * Hand-lettered Ripple wordmark (from the user's sketch — NOT Moon type).
- * R hook · i/p left-open cups · raindrops under i & 2nd p · tall l · broken e.
+ * Hand-lettered Ripple (user sketch — NOT Moon type):
+ * R = Ɔ + \ · i = ι · p p = ɔ ɔ + | | (高低) · l = 🌂伞柄 · e = 半成品同心圆
  */
 function HandWordmark({
-  height = 52,
+  height = 56,
   className = '',
 }: {
   height?: number;
   className?: string;
 }) {
-  // viewBox matches the pixel recreation layout (scaled down)
-  const vbW = 280;
-  const vbH = 120;
+  const vbW = 300;
+  const vbH = 130;
   return (
     <svg
       className={`uidemo-moon-wordmark ${className}`.trim()}
@@ -113,35 +112,30 @@ function HandWordmark({
         strokeLinejoin="round"
         filter="url(#uidemo-hand-grain)"
       >
-        {/* R — left horizontal + left-open big hook + top down tip */}
+        {/* R: 左右镜像的 C（Ɔ）+ 底下 \ */}
+        <path strokeWidth="3.3" d="M 48,22 A 26,26 0 0 1 48,74" />
+        <path strokeWidth="3.0" d="M 28,82 L 52,112" />
+
+        {/* i: ι */}
+        <path strokeWidth="2.9" d="M 82,28 V 78" />
+        <path strokeWidth="2.7" d="M 82,78 Q 86,84 90,86" />
+
+        {/* p p: ɔ ɔ + 底下一高一低两条 | */}
+        <path strokeWidth="2.8" d="M 122,36 A 13,13 0 0 1 122,62" />
+        <path strokeWidth="2.8" d="M 156,36 A 13,13 0 0 1 156,62" />
+        <path strokeWidth="2.5" d="M 122,72 V 92" />
+        <path strokeWidth="2.5" d="M 156,84 V 110" />
+
+        {/* l: 🌂 顶端朝上、去掉伞布 → 竖杆 + 底端圆润 J 弯 */}
         <path
-          strokeWidth="3.4"
-          d="M 8,78 H 42 A 26,26 0 0 0 42,26 V 40"
+          strokeWidth="2.9"
+          d="M 196,12 V 78 A 14,14 0 0 1 172,78"
         />
 
-        {/* i — left-open cup + raindrop */}
-        <path strokeWidth="2.9" d="M 88,36 A 14,14 0 0 1 88,64" />
-        <path strokeWidth="2.6" d="M 88,74 V 96" />
-
-        {/* p — left-open cup (no raindrop) */}
-        <path strokeWidth="2.9" d="M 122,36 A 14,14 0 0 1 122,64" />
-
-        {/* p — left-open cup + raindrop */}
-        <path strokeWidth="2.9" d="M 156,36 A 14,14 0 0 1 156,64" />
-        <path strokeWidth="2.6" d="M 156,74 V 96" />
-
-        {/* l — tall vertical */}
-        <path strokeWidth="2.9" d="M 190,14 V 78" />
-
-        {/* e — incomplete ripple: short upper + lower arcs, clear 断连 */}
-        <path
-          strokeWidth="2.8"
-          d="M 214,38 A 16,16 0 0 1 242,38"
-        />
-        <path
-          strokeWidth="2.8"
-          d="M 242,62 A 16,16 0 0 1 214,62"
-        />
+        {/* e: 半成品同心圆 ⊙ — 未闭合的多层弧 */}
+        <path strokeWidth="2.4" d="M 236,58 A 10,10 0 0 1 252,42" />
+        <path strokeWidth="2.4" d="M 230,64 A 16,16 0 0 1 258,38" />
+        <path strokeWidth="2.4" d="M 226,70 A 22,22 0 0 1 262,34" />
       </g>
     </svg>
   );
