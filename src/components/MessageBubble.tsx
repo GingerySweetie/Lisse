@@ -24,6 +24,10 @@ import ChatMarkdown from './ChatMarkdown';
 import ArtifactCard from './ArtifactCard';
 import ChoicesWidget from './ChoicesWidget';
 import { listJobsForAssistant } from '../lib/workshop/handoff-store';
+import {
+  MAX_BUBBLE_RENDER_CHARS,
+  formatChars,
+} from '../lib/storage-guards';
 
 interface Props {
   message: Message;
@@ -59,7 +63,13 @@ export default function MessageBubble({
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
   const isStreaming = message.status === 'streaming';
-  const text = streamingText ?? message.content;
+  const rawText = streamingText ?? message.content;
+  // Huge imported/pasted bodies crash Markdown render and take the whole
+  // chat down with them — preview only past the soft cap.
+  const truncated = rawText.length > MAX_BUBBLE_RENDER_CHARS;
+  const text = truncated
+    ? rawText.slice(0, MAX_BUBBLE_RENDER_CHARS)
+    : rawText;
   const thinking = streamingThinking ?? message.thinking ?? '';
   const hasThinking = thinking.trim().length > 0;
   const accent = accentColor ?? DEFAULT_ACCENT;
@@ -156,7 +166,16 @@ export default function MessageBubble({
             )}
             <div className="wis-ai-body prose-msg">
               {text ? (
-                <ChatMarkdown text={text} />
+                <>
+                  <ChatMarkdown text={text} />
+                  {truncated && (
+                    <p className="mt-2 text-xs text-ink-500">
+                      内容过长（{formatChars(rawText.length)}），这里只预览前{' '}
+                      {formatChars(MAX_BUBBLE_RENDER_CHARS)}
+                      ，完整正文仍保存在本地。
+                    </p>
+                  )}
+                </>
               ) : isStreaming ? (
                 <span className="stream-cursor" />
               ) : null}
@@ -302,7 +321,16 @@ export default function MessageBubble({
                 </div>
               </div>
             ) : (
-              <ChatMarkdown text={text} preserveSoftBreaks />
+              <>
+                <ChatMarkdown text={text} preserveSoftBreaks />
+                {truncated && (
+                  <p className="mt-2 text-xs text-ink-500">
+                    内容过长（{formatChars(rawText.length)}），这里只预览前{' '}
+                    {formatChars(MAX_BUBBLE_RENDER_CHARS)}
+                    ，完整正文仍保存在本地。
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}
