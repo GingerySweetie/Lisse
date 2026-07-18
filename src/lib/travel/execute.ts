@@ -8,6 +8,7 @@
 
 import { streamChat } from '../../api';
 import type { ChatTurn } from '../../api';
+import { thinkingOptsFromEndpoint } from '../../api/thinking';
 import { db, getSettings } from '../../db';
 import type {
   Endpoint,
@@ -89,7 +90,7 @@ export async function runTravelTrip(opts: {
     const maxTurns = cfg.maxTurns ?? DEFAULT_TRAVEL_DAEMON.maxTurns;
     // Mirror chat.ts: never pin temperature. Thinking / adaptive Claude
     // models reject any value other than 1 (or omitted).
-    const thinking = travelThinkingOpts(endpoint);
+    const thinking = thinkingOptsFromEndpoint(endpoint);
 
     let rawText: string;
     if (tools.length > 0) {
@@ -151,21 +152,16 @@ export async function runTravelTrip(opts: {
   }
 }
 
-function travelThinkingOpts(
-  endpoint: Endpoint,
-): { enabled: boolean; budgetTokens?: number } | undefined {
-  if (endpoint.format === 'anthropic' && endpoint.thinkingEnabled) {
-    return { enabled: true, budgetTokens: endpoint.thinkingBudget };
-  }
-  return undefined;
-}
-
 async function streamAccumulate(
   endpoint: Endpoint,
   model: string,
   messages: ChatTurn[],
   signal?: AbortSignal,
-  thinking?: { enabled: boolean; budgetTokens?: number },
+  thinking?: {
+    enabled: boolean;
+    budgetTokens?: number;
+    effort?: 'low' | 'medium' | 'high' | 'max';
+  },
 ): Promise<string> {
   let acc = '';
   for await (const evt of streamChat({

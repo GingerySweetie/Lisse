@@ -14,8 +14,11 @@ export interface Endpoint {
   anthropicVersion?: string;
   /** Enable Anthropic extended thinking on this endpoint (model must support). */
   thinkingEnabled?: boolean;
-  /** Token budget for thinking (Anthropic). 1024 minimum, 16000 typical. */
+  /** Token budget for manual thinking (Sonnet/Opus ≤4.5). 1024 min, 16000 typical.
+   *  Ignored on Opus/Sonnet 4.6+ which use adaptive thinking + thinkingEffort. */
   thinkingBudget?: number;
+  /** Adaptive thinking effort for Opus/Sonnet 4.6+. Default high. */
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'max';
   /** Use Anthropic's 1-hour cache TTL instead of the 5-minute default.
    *  2x cost per write, same 10% read price; pays off when conversations
    *  pause > 5 min between turns. Pairs well with proactiveNudge intervals

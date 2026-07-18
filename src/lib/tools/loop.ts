@@ -37,7 +37,11 @@ export async function runToolLoop(args: {
   ctx: ToolContext;
   signal?: AbortSignal;
   maxRounds?: number;
-  thinking?: { enabled: boolean; budgetTokens?: number };
+  thinking?: {
+    enabled: boolean;
+    budgetTokens?: number;
+    effort?: 'low' | 'medium' | 'high' | 'max';
+  };
   maxTokens?: number;
   temperature?: number;
   callbacks?: ToolLoopCallbacks;
