@@ -90,8 +90,22 @@ export default function App() {
             <Route path="/circle" element={<CirclePage />} />
             <Route path="/travel" element={<TravelPage />} />
             <Route path="/workshop" element={<WorkshopPage />} />
-            <Route path="/chat" element={<ChatPage />} />
-            <Route path="/chat/:conversationId" element={<ChatPage />} />
+            <Route
+              path="/chat"
+              element={
+                <ErrorBoundary label="聊天 /chat">
+                  <ChatPage />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="/chat/:conversationId"
+              element={
+                <ErrorBoundary label="聊天 /chat/:conversationId">
+                  <ChatPage />
+                </ErrorBoundary>
+              }
+            />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/personas" element={<PersonasPage />} />
             <Route path="/styles" element={<StylesPage />} />

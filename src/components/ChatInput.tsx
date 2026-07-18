@@ -7,6 +7,12 @@ import {
   formatBytes,
 } from '../lib/attachments';
 import { recordTyping } from '../lib/behavior';
+import {
+  MAX_CHAT_MESSAGE_CHARS,
+  assertChatMessageSize,
+  formatChars,
+  formatStorageError,
+} from '../lib/storage-guards';
 
 /** Soft cap for non-image uploads (base64 lives in IndexedDB). */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -115,6 +121,12 @@ export default function ChatInput({
   function submit() {
     const text = value.trim();
     if ((!text && attachments.length === 0) || busy || disabled) return;
+    try {
+      assertChatMessageSize(text);
+    } catch (err) {
+      alert(formatStorageError(err));
+      return;
+    }
     if (typingStartRef.current && typedCharsRef.current > 0) {
       recordTyping(typedCharsRef.current, Date.now() - typingStartRef.current);
     }
@@ -144,6 +156,19 @@ export default function ChatInput({
 
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const next = e.target.value;
+    // Giant paste into the composer has OOMed the tab before send; clamp.
+    if (next.length > MAX_CHAT_MESSAGE_CHARS) {
+      alert(
+        `粘贴内容太长了（${formatChars(next.length)}）。` +
+          `聊天单条上限 ${formatChars(MAX_CHAT_MESSAGE_CHARS)}——超长正文请放到「书架」导入。`,
+      );
+      const clipped = next.slice(0, MAX_CHAT_MESSAGE_CHARS);
+      if (typingStartRef.current === null) typingStartRef.current = Date.now();
+      const delta = clipped.length - value.length;
+      if (delta > 0) typedCharsRef.current += delta;
+      setValue(clipped);
+      return;
+    }
     if (typingStartRef.current === null) typingStartRef.current = Date.now();
     const delta = next.length - value.length;
     if (delta > 0) typedCharsRef.current += delta;

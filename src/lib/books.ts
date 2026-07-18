@@ -2,6 +2,7 @@ import { db } from '../db';
 import type { Book, Bookmark, Conversation, TocEntry } from '../types';
 import { newId } from './id';
 import { createConversation } from './chat';
+import { assertBookContentSize, formatStorageError } from './storage-guards';
 
 export interface NewBookInput {
   title: string;
@@ -15,6 +16,11 @@ export interface NewBookInput {
 }
 
 export async function createBook(input: NewBookInput): Promise<Book> {
+  try {
+    assertBookContentSize(input.content);
+  } catch (err) {
+    throw new Error(formatStorageError(err), { cause: err });
+  }
   const now = Date.now();
   const format = input.format ?? guessFormat(input.title, input.content);
   const book: Book = {
@@ -29,7 +35,11 @@ export async function createBook(input: NewBookInput): Promise<Book> {
     createdAt: now,
     updatedAt: now,
   };
-  await db.books.add(book);
+  try {
+    await db.books.add(book);
+  } catch (err) {
+    throw new Error(formatStorageError(err), { cause: err });
+  }
   return book;
 }
 

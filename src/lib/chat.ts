@@ -41,6 +41,7 @@ import {
   type HandoffJob,
 } from './workshop/handoff-protocol';
 import { formatYesterdayDiaryBlock } from './diary';
+import { assertChatMessageSize, formatStorageError } from './storage-guards';
 
 /**
  * Capability description injected as a stable system turn so the model
@@ -153,6 +154,14 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
   const isNudge = userText.trimStart().startsWith('[nudge]');
   const lean = economy === true || isNudge;
 
+  // Reject novel-length pastes before they hit IndexedDB — oversized rows
+  // have OOMed the chat UI and, after a panicked replace-import, wiped DBs.
+  try {
+    assertChatMessageSize(userText);
+  } catch (err) {
+    throw new Error(formatStorageError(err), { cause: err });
+  }
+
   const branch = await getActiveBranch(conversation);
   const parentId = branch.at(-1)?.id ?? null;
 
@@ -184,24 +193,28 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     createdAt: now + 1,
   };
 
-  await db.transaction('rw', db.messages, db.conversations, async () => {
-    await db.messages.bulkAdd([userMessage, assistantMessage]);
-    if (parentId) {
-      await db.messages.update(parentId, { activeChildId: userMessage.id });
-    }
-    await db.messages.update(userMessage.id, {
-      activeChildId: assistantMessage.id,
+  try {
+    await db.transaction('rw', db.messages, db.conversations, async () => {
+      await db.messages.bulkAdd([userMessage, assistantMessage]);
+      if (parentId) {
+        await db.messages.update(parentId, { activeChildId: userMessage.id });
+      }
+      await db.messages.update(userMessage.id, {
+        activeChildId: assistantMessage.id,
+      });
+      await db.conversations.update(conversation.id, {
+        currentLeafId: assistantMessage.id,
+        updatedAt: now,
+        ...(branch.length === 0 && { title: deriveTitle(userText) }),
+        defaultEndpointId: endpoint.id,
+        defaultModel: model,
+        ...(persona && { personaId: persona.id }),
+        ...(style && { styleId: style.id }),
+      });
     });
-    await db.conversations.update(conversation.id, {
-      currentLeafId: assistantMessage.id,
-      updatedAt: now,
-      ...(branch.length === 0 && { title: deriveTitle(userText) }),
-      defaultEndpointId: endpoint.id,
-      defaultModel: model,
-      ...(persona && { personaId: persona.id }),
-      ...(style && { styleId: style.id }),
-    });
-  });
+  } catch (err) {
+    throw new Error(formatStorageError(err), { cause: err });
+  }
 
   await streamAssistant({
     assistantMessageId: assistantMessage.id,
@@ -302,6 +315,11 @@ export async function editUserMessage(opts: {
   } = opts;
   if (message.role !== 'user') {
     throw new Error('editUserMessage: must be called on a user message');
+  }
+  try {
+    assertChatMessageSize(newText);
+  } catch (err) {
+    throw new Error(formatStorageError(err), { cause: err });
   }
   const now = Date.now();
 

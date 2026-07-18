@@ -214,15 +214,20 @@ function BookEditor({ onClose }: { onClose: () => void }) {
       alert('标题和内容都不能空');
       return;
     }
-    const book = await createBook({
-      title,
-      author,
-      content,
-      format,
-      toc: importedToc,
-    });
-    onClose();
-    navigate(`/read/${book.id}`);
+    try {
+      const book = await createBook({
+        title,
+        author,
+        content,
+        format,
+        toc: importedToc,
+      });
+      onClose();
+      navigate(`/read/${book.id}`);
+    } catch (err) {
+      const { formatStorageError } = await import('../lib/storage-guards');
+      alert(formatStorageError(err));
+    }
   }
 
   return (
