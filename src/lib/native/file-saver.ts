@@ -1,9 +1,21 @@
 import { registerPlugin } from '@capacitor/core';
 
 /**
- * FileSaver — native Android file writes (Downloads + SAF folder).
- * Large files must use beginSave / writeChunk / endSave.
+ * FileSaver — native Android file writes (Downloads + SAF folder)
+ * and manual recovery reads (app-private / Downloads / SAF scan).
+ * Large payloads must use beginSave / writeChunk / endSave (or
+ * beginRead / readChunk / endRead).
  */
+
+export interface RecoverableFileMeta {
+  uri: string;
+  name: string;
+  size: number;
+  modifiedAt: number;
+  source: string;
+  pathHint: string;
+  kindGuess: string;
+}
 
 export interface FileSaverPlugin {
   saveFile(opts: {
@@ -28,6 +40,21 @@ export interface FileSaverPlugin {
     mimeType: string;
     suggestedName: string;
     folderUri: string;
+  }): Promise<{ path: string }>;
+  findRecoverableFiles(opts?: {
+    folderUri?: string;
+  }): Promise<{
+    files: RecoverableFileMeta[];
+    scannedPrivate: boolean;
+    scannedDownloads: boolean;
+    scannedBackupFolder: boolean;
+  }>;
+  beginRead(opts: { uri: string }): Promise<{ handle: string; size: number }>;
+  readChunk(opts: { handle: string }): Promise<{ data: string; done: boolean }>;
+  endRead(opts: { handle: string }): Promise<void>;
+  copyRecoverableToDownloads(opts: {
+    uri: string;
+    suggestedName?: string;
   }): Promise<{ path: string }>;
 }
 

@@ -15,6 +15,9 @@ import {
   FolderOpen,
   FolderCheck,
   Square,
+  Search,
+  HardDrive,
+  FileJson,
 } from 'lucide-react';
 import { db } from '../db';
 import {
@@ -57,6 +60,21 @@ import {
 } from '../lib/export-job';
 import ExportProgressBar from '../components/ExportProgressBar';
 import type { ExportProgress } from '../lib/export-progress';
+import {
+  copyRecoverableToDownloads,
+  filesToRecoverableItems,
+  formatBytes,
+  importRecoverableItem,
+  isDirectoryPickerAvailable,
+  isNativeRecoverAvailable,
+  kindLabel,
+  peekRecoverKind,
+  pickRecoverDirectory,
+  scanRecoverableNative,
+  sourceLabel,
+  summarizeRecoverOutcome,
+  type RecoverableItem,
+} from '../lib/recover';
 
 type Status =
   | { kind: 'idle' }
@@ -251,6 +269,16 @@ export default function ImportExportPage() {
   const [memoryExportStatus, setMemoryExportStatus] = useState<Status>({
     kind: 'idle',
   });
+
+  // ── Manual recover ──────────────────────────────────────────────────────
+  const nativeRecoverAvailable = isNativeRecoverAvailable();
+  const directoryPickerAvailable = isDirectoryPickerAvailable();
+  const [recoverItems, setRecoverItems] = useState<RecoverableItem[]>([]);
+  const [recoverStatus, setRecoverStatus] = useState<Status>({ kind: 'idle' });
+  const [recoverBusyId, setRecoverBusyId] = useState<string | null>(null);
+  const [recoverScanNote, setRecoverScanNote] = useState<string | null>(null);
+  const recoverFileInputRef = useRef<HTMLInputElement>(null);
+  const recoverDirInputRef = useRef<HTMLInputElement>(null);
 
   // If the user left /data while exporting, sync the finished job into the
   // matching section status when they come back.
@@ -594,6 +622,173 @@ export default function ImportExportPage() {
     }
   }
 
+  function mergeRecoverItems(next: RecoverableItem[]) {
+    setRecoverItems((prev) => {
+      const map = new Map<string, RecoverableItem>();
+      for (const item of prev) map.set(item.id, item);
+      for (const item of next) map.set(item.id, item);
+      return [...map.values()].sort((a, b) => b.modifiedAt - a.modifiedAt);
+    });
+  }
+
+  async function refineRecoverKinds(items: RecoverableItem[]) {
+    const refined = await Promise.all(
+      items.slice(0, 40).map(async (item) => {
+        if (item.kindGuess && item.kindGuess !== 'unknown') return item;
+        try {
+          const kind = await peekRecoverKind(item);
+          return { ...item, kindGuess: kind };
+        } catch {
+          return item;
+        }
+      }),
+    );
+    setRecoverItems((prev) => {
+      const map = new Map(refined.map((i) => [i.id, i]));
+      return prev.map((p) => map.get(p.id) ?? p);
+    });
+  }
+
+  async function handleScanNativeRecover() {
+    setRecoverStatus({ kind: 'busy', label: '正在扫描隐藏目录与下载文件夹…' });
+    setRecoverScanNote(null);
+    try {
+      const result = await scanRecoverableNative();
+      mergeRecoverItems(result.files);
+      const places = [
+        result.scannedPrivate ? '应用私有目录' : null,
+        result.scannedDownloads ? '系统下载' : null,
+        result.scannedBackupFolder ? '备份目录' : null,
+      ].filter(Boolean);
+      setRecoverScanNote(
+        places.length
+          ? `已扫描：${places.join(' · ')}`
+          : result.note ?? '未执行原生扫描',
+      );
+      if (result.files.length === 0) {
+        setRecoverStatus({
+          kind: 'fail',
+          label:
+            result.note ??
+            '没扫到候选文件。可再试「选择文件 / 选择文件夹」，或到电脑用 chrome://inspect 看 IndexedDB。',
+        });
+      } else {
+        setRecoverStatus({
+          kind: 'ok',
+          label: `找到 ${result.files.length} 个候选文件`,
+        });
+        void refineRecoverKinds(result.files);
+      }
+    } catch (err) {
+      setRecoverStatus({
+        kind: 'fail',
+        label: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  function handleRecoverFilesPicked(fileList: FileList | null) {
+    if (!fileList?.length) return;
+    const items = filesToRecoverableItems(fileList, 'picked');
+    mergeRecoverItems(items);
+    setRecoverStatus({
+      kind: items.length ? 'ok' : 'fail',
+      label: items.length
+        ? `已加入 ${items.length} 个文件`
+        : '没有看起来像备份/对话的 JSON',
+    });
+    if (items.length) void refineRecoverKinds(items);
+  }
+
+  async function handlePickRecoverDirectory() {
+    setRecoverStatus({ kind: 'busy', label: '扫描文件夹…' });
+    try {
+      if (directoryPickerAvailable) {
+        const items = await pickRecoverDirectory();
+        mergeRecoverItems(items);
+        setRecoverStatus({
+          kind: items.length ? 'ok' : 'fail',
+          label: items.length
+            ? `文件夹内找到 ${items.length} 个候选`
+            : '这个文件夹里没有匹配的 JSON',
+        });
+        if (items.length) void refineRecoverKinds(items);
+        return;
+      }
+      // Android WebView / Safari: fall back to webkitdirectory input.
+      recoverDirInputRef.current?.click();
+      setRecoverStatus({ kind: 'idle' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('abort') || msg.includes('AbortError')) {
+        setRecoverStatus({ kind: 'idle' });
+        return;
+      }
+      setRecoverStatus({ kind: 'fail', label: msg });
+    }
+  }
+
+  async function handleImportRecoverItem(
+    item: RecoverableItem,
+    mode: 'merge' | 'replace' = 'merge',
+  ) {
+    if (
+      mode === 'replace' &&
+      !confirm(
+        `确定要用「${item.name}」替换导入吗？现有同类别数据可能被清空。\n\n` +
+          '写入会在同一事务里完成：如果导入失败，旧数据会回滚保留。仍建议先导出一份备份。',
+      )
+    ) {
+      return;
+    }
+    setRecoverBusyId(item.id);
+    setRecoverStatus({ kind: 'busy', label: `正在导入 ${item.name}…` });
+    try {
+      const { detected, outcome } = await importRecoverableItem(item, {
+        mode,
+        personaId: importPersonaId || undefined,
+        defaultEndpointId: importEndpointId || undefined,
+        defaultModel: importModel || undefined,
+      });
+      setRecoverItems((prev) =>
+        prev.map((p) =>
+          p.id === item.id ? { ...p, kindGuess: detected } : p,
+        ),
+      );
+      await refreshCounts();
+      setRecoverStatus({
+        kind: 'ok',
+        label: summarizeRecoverOutcome(detected, outcome),
+      });
+    } catch (err) {
+      setRecoverStatus({
+        kind: 'fail',
+        label: formatStorageError(err),
+      });
+    } finally {
+      setRecoverBusyId(null);
+    }
+  }
+
+  async function handleCopyRecoverItem(item: RecoverableItem) {
+    setRecoverBusyId(item.id);
+    setRecoverStatus({ kind: 'busy', label: `正在复制 ${item.name} 到下载…` });
+    try {
+      await copyRecoverableToDownloads(item);
+      setRecoverStatus({
+        kind: 'ok',
+        label: `已复制到系统下载：${item.name}`,
+      });
+    } catch (err) {
+      setRecoverStatus({
+        kind: 'fail',
+        label: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setRecoverBusyId(null);
+    }
+  }
+
   return (
     <div className="flex h-full w-full flex-col">
       <header className="flex items-center gap-3 border-b border-lavender-200 bg-white/60 px-3 py-3 backdrop-blur md:px-6" style={{ paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))' }}>
@@ -708,13 +903,194 @@ export default function ImportExportPage() {
 
                 {totalRecords === 0 && counts !== null && !counts.error && (
                   <p className="text-xs text-amber-700">
-                    所有表均为空。如果你确定之前有数据，可以尝试：手机连电脑 → Chrome 地址栏输入{' '}
+                    所有表均为空。如果你确定之前有数据，先用下面的「手动找回」扫一遍隐藏目录 / 下载文件夹；
+                    仍没有的话：手机连电脑 → Chrome 地址栏输入{' '}
                     <code className="rounded bg-amber-100 px-1">chrome://inspect/#devices</code>
                     {' '}→ 找到 Wisteria → inspect → Application → IndexedDB → lisse，直接查看原始数据。
                   </p>
                 )}
               </div>
             )}
+          </section>
+
+          {/* ── Manual recover ───────────────────────────────────────────── */}
+          <section className="endpoint-card !mt-0">
+            <div className="flex items-start gap-2">
+              <HardDrive size={16} className="mt-0.5 shrink-0 text-lavender-400" strokeWidth={1.5} />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-semibold text-ink-900">
+                  手动找回对话数据
+                </h3>
+                <p className="mt-1 text-sm text-ink-500">
+                  数据「看得到却掏不出来」时用这里：扫描应用私有目录（旧版导出掉进去的隐藏位置）、
+                  系统下载、已选备份目录；也可以自己选文件或整个文件夹（含隐藏目录）。
+                  识别到的备份 / 对话 JSON 可直接合并导入。
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {nativeRecoverAvailable && (
+                <button
+                  type="button"
+                  onClick={() => void handleScanNativeRecover()}
+                  disabled={recoverStatus.kind === 'busy'}
+                  className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
+                >
+                  <Search size={15} />
+                  扫描隐藏目录 / 下载
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => recoverFileInputRef.current?.click()}
+                disabled={recoverStatus.kind === 'busy'}
+                className="flex items-center gap-1.5 rounded-lg border border-lavender-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 transition hover:bg-lavender-50 disabled:opacity-60"
+              >
+                <FileJson size={15} />
+                选择文件
+              </button>
+              <button
+                type="button"
+                onClick={() => void handlePickRecoverDirectory()}
+                disabled={recoverStatus.kind === 'busy'}
+                className="flex items-center gap-1.5 rounded-lg border border-lavender-200 bg-white px-4 py-2 text-sm font-medium text-ink-700 transition hover:bg-lavender-50 disabled:opacity-60"
+              >
+                <FolderOpen size={15} />
+                选择文件夹
+              </button>
+              {recoverItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRecoverItems([]);
+                    setRecoverStatus({ kind: 'idle' });
+                    setRecoverScanNote(null);
+                  }}
+                  className="rounded-lg px-3 py-2 text-sm text-ink-500 transition hover:bg-lavender-50"
+                >
+                  清空列表
+                </button>
+              )}
+            </div>
+
+            <input
+              ref={recoverFileInputRef}
+              type="file"
+              accept=".json,application/json,.bak"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                handleRecoverFilesPicked(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            <input
+              ref={(el) => {
+                recoverDirInputRef.current = el;
+                if (el) {
+                  el.setAttribute('webkitdirectory', '');
+                  el.setAttribute('directory', '');
+                }
+              }}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const items = filesToRecoverableItems(e.target.files ?? [], 'directory');
+                mergeRecoverItems(items);
+                setRecoverStatus({
+                  kind: items.length ? 'ok' : 'fail',
+                  label: items.length
+                    ? `文件夹内找到 ${items.length} 个候选`
+                    : '这个文件夹里没有匹配的 JSON',
+                });
+                if (items.length) void refineRecoverKinds(items);
+                e.target.value = '';
+              }}
+            />
+
+            {recoverScanNote && (
+              <p className="mt-2 text-xs text-ink-400">{recoverScanNote}</p>
+            )}
+
+            <StatusLine status={recoverStatus} className="mt-2" />
+
+            {recoverItems.length > 0 && (
+              <ul className="mt-4 divide-y divide-lavender-100 rounded-xl border border-lavender-100 bg-white/70">
+                {recoverItems.map((item) => {
+                  const busy = recoverBusyId === item.id;
+                  return (
+                    <li
+                      key={item.id}
+                      className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-ink-900">
+                          {item.name}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-ink-400">
+                          {kindLabel(String(item.kindGuess))}
+                          {' · '}
+                          {sourceLabel(String(item.source))}
+                          {' · '}
+                          {formatBytes(item.size)}
+                          {item.modifiedAt > 0 && (
+                            <>
+                              {' · '}
+                              {formatShortDate(item.modifiedAt)}
+                            </>
+                          )}
+                        </p>
+                        {item.pathHint && item.pathHint !== item.name && (
+                          <p className="mt-0.5 truncate text-[11px] text-ink-300">
+                            {item.pathHint}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          disabled={busy || recoverStatus.kind === 'busy'}
+                          onClick={() => void handleImportRecoverItem(item, 'merge')}
+                          className="rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 transition hover:bg-emerald-200 disabled:opacity-50"
+                        >
+                          合并导入
+                        </button>
+                        {(item.kindGuess === 'backup' ||
+                          item.kindGuess === 'config') && (
+                          <button
+                            type="button"
+                            disabled={busy || recoverStatus.kind === 'busy'}
+                            onClick={() =>
+                              void handleImportRecoverItem(item, 'replace')
+                            }
+                            className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+                          >
+                            替换导入
+                          </button>
+                        )}
+                        {item.uri && nativeRecoverAvailable && (
+                          <button
+                            type="button"
+                            disabled={busy || recoverStatus.kind === 'busy'}
+                            onClick={() => void handleCopyRecoverItem(item)}
+                            className="rounded-lg border border-lavender-200 bg-white px-2.5 py-1 text-xs text-ink-600 transition hover:bg-lavender-50 disabled:opacity-50"
+                          >
+                            复制到下载
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <p className="mt-3 text-xs text-ink-400">
+              ChatGPT / Claude 导出导入时，会用上方「绑定人格 / endpoint」的选择。
+              应用私有目录里的文件普通文件管理器看不到——点「复制到下载」就能在系统下载里打开。
+            </p>
           </section>
 
           {/* ChatGPT/Claude/Lisse import shared options */}
