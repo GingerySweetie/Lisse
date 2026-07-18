@@ -1492,8 +1492,11 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
     endpoint?.thinkingEnabled ?? false,
   );
   const [thinkingBudget, setThinkingBudget] = useState(
-    endpoint?.thinkingBudget ?? 6000,
+    endpoint?.thinkingBudget ?? 16000,
   );
+  const [thinkingEffort, setThinkingEffort] = useState<
+    'low' | 'medium' | 'high' | 'max'
+  >(endpoint?.thinkingEffort ?? 'high');
   const [cacheLongTTL, setCacheLongTTL] = useState(
     endpoint?.cacheLongTTL ?? false,
   );
@@ -1527,6 +1530,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
       embeddingModels: parseList(embeddingModelsText),
       thinkingEnabled: format === 'anthropic' ? thinkingEnabled : undefined,
       thinkingBudget: format === 'anthropic' ? thinkingBudget : undefined,
+      thinkingEffort: format === 'anthropic' ? thinkingEffort : undefined,
       cacheLongTTL: format === 'anthropic' ? cacheLongTTL : undefined,
       createdAt: endpoint?.createdAt ?? now,
       updatedAt: now,
@@ -1673,28 +1677,50 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
                 </span>
               </label>
               <p className="mt-1 text-xs text-ink-500">
-                Claude Sonnet 4.5+ / Opus 4.5+ 才支持。打开后模型回复前会先输出一段"内心独白"。
+                Opus / Sonnet 4.6+ 走 adaptive thinking + effort；更老模型走
+                budget。界面里看到的 thinking 是 API 摘要，真正推理可以长很多。
               </p>
               {thinkingEnabled && (
-                <label className="mt-3 flex items-center gap-2 text-sm">
-                  <span className="text-xs font-medium text-ink-500">
-                    Thinking budget
-                  </span>
-                  <input
-                    type="number"
-                    min={1024}
-                    max={32000}
-                    step={1024}
-                    value={thinkingBudget}
-                    onChange={(e) =>
-                      setThinkingBudget(
-                        Math.max(1024, Number(e.target.value) || 6000),
-                      )
-                    }
-                    className="w-28 rounded-lg border border-lavender-200 bg-white px-2 py-1 text-xs focus:border-lavender-300"
-                  />
-                  <span className="text-xs text-ink-500">tokens</span>
-                </label>
+                <div className="mt-3 flex flex-col gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-xs font-medium text-ink-500">
+                      Effort（4.6+）
+                    </span>
+                    <select
+                      value={thinkingEffort}
+                      onChange={(e) =>
+                        setThinkingEffort(
+                          e.target.value as 'low' | 'medium' | 'high' | 'max',
+                        )
+                      }
+                      className="rounded-lg border border-lavender-200 bg-white px-2 py-1 text-xs focus:border-lavender-300"
+                    >
+                      <option value="low">low · 少想</option>
+                      <option value="medium">medium</option>
+                      <option value="high">high · 默认</option>
+                      <option value="max">max · 尽量深想</option>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-xs font-medium text-ink-500">
+                      Budget（≤4.5）
+                    </span>
+                    <input
+                      type="number"
+                      min={1024}
+                      max={32000}
+                      step={1024}
+                      value={thinkingBudget}
+                      onChange={(e) =>
+                        setThinkingBudget(
+                          Math.max(1024, Number(e.target.value) || 16000),
+                        )
+                      }
+                      className="w-28 rounded-lg border border-lavender-200 bg-white px-2 py-1 text-xs focus:border-lavender-300"
+                    />
+                    <span className="text-xs text-ink-500">tokens</span>
+                  </label>
+                </div>
               )}
             </div>
           )}
