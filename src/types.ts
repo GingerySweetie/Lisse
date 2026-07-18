@@ -201,8 +201,9 @@ export interface AppSettings {
   retrievalThreshold: number;
   /** Maximum recent message pairs to send each turn (null = unlimited). */
   maxHistoryTurns: number | null;
-  /** When true, expose remember/recall tools to the chat model. Requires
-   *  memoryEnabled + embedding endpoint to function. Default off. */
+  /** When true, expose memory tools (remember / recall / update_memory /
+   *  forget_memory) and other tool-calling surfaces to the chat model.
+   *  Memory tools also need memoryEnabled + embedding endpoint. Default off. */
   toolsEnabled: boolean;
   /** When true, the chat coordinator may emit [clwd-task] blocks that are
    *  parsed into durable 炼金工房 jobs (CLWD Handoff Protocol). Default off. */

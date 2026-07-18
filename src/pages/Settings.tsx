@@ -706,6 +706,7 @@ function MemorySettings() {
       <p className="mt-1 text-sm text-ink-500">
         开启后，每轮对话结束会自动从对话里抽取事实，存进对应人格的记忆池。
         下一轮对话发起时，按当前问题做向量检索，把 top-K 相关事实注入 system prompt。
+        若同时开启下方「工具调用」，模型还可在对话过程中主动写入、改写或遗忘记忆。
       </p>
 
       <label className="mt-4 flex items-center gap-2">
@@ -728,7 +729,9 @@ function MemorySettings() {
         <span className="text-sm text-ink-900">
           启用工具调用（MCP / 记忆工具）
           <span className="ml-1 text-[11px] font-light text-ink-500">
-            开启后模型可调用 MCP 服务器工具及记忆读写工具。MCP 不需要记忆系统，但会额外多一次 API 往返。
+            开启后模型可在对话中主动调用记忆工具（写入 / 检索 / 改写 / 遗忘）以及 MCP
+            服务器工具。记忆工具还需上方「启用记忆系统」并配置嵌入模型；MCP
+            不需要记忆系统，但会额外多一次 API 往返。
           </span>
         </span>
       </label>
