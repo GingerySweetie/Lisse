@@ -129,9 +129,8 @@
   overflow: hidden;
   border: 1px solid rgba(130, 105, 165, 0.16);
   background: var(--paper);
-  box-shadow:
-    0 24px 60px rgba(90, 70, 120, 0.1),
-    0 2px 0 rgba(255, 255, 255, 0.35) inset;
+  /* Soft depth only — avoid heavy multi-layer card chrome. */
+  box-shadow: 0 18px 48px rgba(90, 70, 120, 0.08);
   animation: uidemo-phone-in 0.7s ease both;
 }
 
@@ -206,10 +205,10 @@
 
 .uidemo-home-brand {
   position: absolute;
-  top: 38%;
+  top: 36%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 2;
+  z-index: 4;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -261,10 +260,15 @@
     transform 0.45s ease;
 }
 
-.uidemo-wordmark.is-dim,
+.uidemo-wordmark.is-dim {
+  opacity: 0.55;
+  transform: translateY(-6px) scale(0.92);
+}
+
 .uidemo-tagline.is-dim {
-  opacity: 0.22;
-  transform: translateY(-4px);
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
 }
 
 .uidemo-cta {

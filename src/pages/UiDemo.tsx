@@ -85,7 +85,8 @@ function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const t = window.setTimeout(() => setOpen(true), 700);
+    // Let reviewers see the brand-first closed state before spaces bloom.
+    const t = window.setTimeout(() => setOpen(true), 1800);
     return () => window.clearTimeout(t);
   }, []);
 
