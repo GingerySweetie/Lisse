@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test:handoff": "node --experimental-strip-types --test scripts/test-handoff-protocol.mjs",
     "test:travel": "node --experimental-strip-types --test scripts/test-travel-daemon.mjs",
-    "test:diary": "node --experimental-strip-types --test scripts/test-diary.mjs"
+    "test:diary": "node --experimental-strip-types --test scripts/test-diary.mjs",
+    "test:thinking-policy": "node --experimental-strip-types --test scripts/test-thinking-policy.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",

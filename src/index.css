@@ -1543,6 +1543,11 @@
   background: hsla(270, 30%, 80%, 0.3);
   color: hsla(270, 30%, 38%, 0.95);
 }
+.wis-tag-deep.is-on {
+  background: hsla(340, 45%, 78%, 0.35);
+  color: hsla(340, 40%, 36%, 0.95);
+  border-color: hsla(340, 40%, 70%, 0.35);
+}
 .wis-composer-row {
   display: flex;
   align-items: flex-end;

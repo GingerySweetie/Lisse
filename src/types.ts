@@ -202,7 +202,8 @@ export interface AppSettings {
   retrievalTopK: number;
   /** Minimum cosine similarity to include a retrieved fact. */
   retrievalThreshold: number;
-  /** Maximum recent message pairs to send each turn (null = unlimited). */
+  /** Maximum recent message pairs to send each turn (null = unlimited).
+   *  Default 50 — keeps 5h+ cold starts (past Anthropic's 1h cache TTL) affordable. */
   maxHistoryTurns: number | null;
   /** When true, expose memory tools (remember / recall / update_memory /
    *  forget_memory) and other tool-calling surfaces to the chat model.

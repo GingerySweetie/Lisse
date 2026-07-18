@@ -1076,11 +1076,12 @@ function MemorySettings() {
                   v === '' || Number(v) === 0 ? null : Math.max(1, Number(v)),
               });
             }}
-            placeholder="不限"
+            placeholder="50"
             className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
           />
           <span className="text-[11px] font-light text-ink-500">
-            长对话不再每轮重发整段历史。配合 Anthropic 的 prompt caching 用，账单会很温柔。
+            默认 50 轮。隔五小时再聊时 1h 缓存已冷，上限能挡住「整本小说重买单」。
+            清空或填 0 = 不限。
           </span>
         </label>
       </div>
@@ -1496,7 +1497,7 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
   );
   const [thinkingEffort, setThinkingEffort] = useState<
     'low' | 'medium' | 'high' | 'max'
-  >(endpoint?.thinkingEffort ?? 'high');
+  >(endpoint?.thinkingEffort ?? 'medium');
   const [cacheLongTTL, setCacheLongTTL] = useState(
     endpoint?.cacheLongTTL ?? false,
   );
@@ -1677,14 +1678,14 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
                 </span>
               </label>
               <p className="mt-1 text-xs text-ink-500">
-                Opus / Sonnet 4.6+ 走 adaptive thinking + effort；更老模型走
-                budget。界面里看到的 thinking 是 API 摘要，真正推理可以长很多。
+                Effort 是闲聊地板（建议 medium）。深聊/亲密会自动拉到 high；
+                输入框「长思考」粘性开关会拉到 max。界面 thinking 是 API 摘要。
               </p>
               {thinkingEnabled && (
                 <div className="mt-3 flex flex-col gap-3">
                   <label className="flex items-center gap-2 text-sm">
                     <span className="text-xs font-medium text-ink-500">
-                      Effort（4.6+）
+                      闲聊 Effort（4.6+）
                     </span>
                     <select
                       value={thinkingEffort}
@@ -1696,9 +1697,9 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
                       className="rounded-lg border border-lavender-200 bg-white px-2 py-1 text-xs focus:border-lavender-300"
                     >
                       <option value="low">low · 少想</option>
-                      <option value="medium">medium</option>
-                      <option value="high">high · 默认</option>
-                      <option value="max">max · 尽量深想</option>
+                      <option value="medium">medium · 闲聊默认</option>
+                      <option value="high">high · 偏深</option>
+                      <option value="max">max · 一直拉满（费钱）</option>
                     </select>
                   </label>
                   <label className="flex items-center gap-2 text-sm">
@@ -1739,10 +1740,9 @@ function EndpointEditor({ endpoint, onClose }: EditorProps) {
                 </span>
               </label>
               <p className="mt-1 text-xs text-ink-500">
-                默认 5 分钟。开启后，缓存写入费用从 1.25x 升到 2x 普通 input，
-                但读取仍是 10% —— 离开超过 5 分钟回来不用重写缓存。
-                聊天频率每天数次、每次间隔较长（上班 / 排班期间）或开启了主动消息（5
-                小时静默间隔）时建议开。目前 Anthropic 最长支持 1 小时 TTL。
+                默认 5 分钟。开启后写入 2x、读取仍 10%。Anthropic 最长只给 1
+                小时 TTL——隔五小时再聊还是会冷启动，所以务必配历史轮数上限；
+                冷了至少只重买最近几十轮，不是整段史诗。
               </p>
             </div>
           )}

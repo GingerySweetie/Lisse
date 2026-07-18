@@ -16,7 +16,11 @@ const FILE_ACCEPT =
   '.txt,.md,.markdown,.pdf,.csv,.tsv,.json,.xml,.html,.htm,.css,.js,.ts,.tsx,.jsx,.mjs,.cjs,.py,.rs,.go,.java,.c,.cpp,.h,.hpp,.rb,.php,.swift,.kt,.sql,.yml,.yaml,.toml,.ini,.log,.rtf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,text/*,application/pdf,application/json,application/xml,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 interface Props {
-  onSend: (text: string, attachments: Attachment[]) => void;
+  onSend: (
+    text: string,
+    attachments: Attachment[],
+    opts?: { deepThink?: boolean },
+  ) => void;
   onAbort?: () => void;
   busy?: boolean;
   disabled?: boolean;
@@ -57,6 +61,8 @@ export default function ChatInput({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [activeTags, setActiveTags] = useState<MoodTag[]>([]);
+  /** Sticky deep-think — stays on across turns until tapped off (ADHD-friendly). */
+  const [deepThink, setDeepThink] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -94,10 +100,11 @@ export default function ChatInput({
     }
     typingStartRef.current = null;
     typedCharsRef.current = 0;
-    onSend(text, attachments);
+    onSend(text, attachments, { deepThink });
     setValue('');
     setAttachments([]);
     setActiveTags([]);
+    // deepThink stays sticky on purpose — deep sessions often span many turns
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -191,6 +198,18 @@ export default function ChatInput({
         )}
 
         <div className="wis-tags-row">
+          <button
+            type="button"
+            onClick={() => {
+              setDeepThink((v) => !v);
+              queueMicrotask(() => taRef.current?.focus());
+            }}
+            className={`wis-tag wis-tag-deep${deepThink ? ' is-on' : ''}`}
+            title="粘性开关：开着时每轮用 max thinking。深聊/亲密也会自动拉高，忘开也没事。"
+            aria-pressed={deepThink}
+          >
+            长思考
+          </button>
           {MOOD_TAGS.map((t) => (
             <button
               key={t}
