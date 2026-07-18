@@ -241,7 +241,7 @@
   height: 0;
   border-radius: 50%;
   border: 1px solid rgba(107, 114, 160, 0.3);
-  transform: translate(-50%, -50%) scaleY(0.38);
+  transform: translate(-50%, -50%) scaleY(0.3);
   animation: uidemo-ripple-expand 1.8s ease-out forwards;
 }
 

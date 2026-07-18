@@ -56,7 +56,7 @@ const MOCK_MESSAGES = [
 type ClickRipple = { id: number; x: number; y: number };
 
 /** Front-ish view of water: wide ellipses, not top-down circles. */
-const SQUASH = 0.38;
+const SQUASH = 0.3;
 
 function RippleMark({ size = 48 }: { size?: number }) {
   return (
