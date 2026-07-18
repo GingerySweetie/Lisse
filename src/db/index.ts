@@ -653,9 +653,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   embeddingModel: null,
   extractorEndpointId: null,
   extractorModel: null,
-  retrievalTopK: 6,
+  retrievalTopK: 4,
   retrievalThreshold: 0.5,
-  maxHistoryTurns: null,
+  /** Cap history so 5h+ cold starts (past 1h cache TTL) don't re-bill a novel. */
+  maxHistoryTurns: 50,
   toolsEnabled: false,
   workshopHandoffEnabled: false,
   workshopEndpointId: null,

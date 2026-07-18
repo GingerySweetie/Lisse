@@ -1,14 +1,17 @@
 import type { Endpoint } from '../types';
+import {
+  budgetForEffort,
+  type ThinkingEffort,
+} from '../lib/thinking-policy';
 
-/** Soft guidance for adaptive thinking (Opus 4.6+ / Sonnet 4.6+). */
-export type ThinkingEffort = 'low' | 'medium' | 'high' | 'max';
+export type { ThinkingEffort };
 
 /** Options passed into streamChat / runToolLoop. */
 export interface ThinkingOpts {
   enabled: boolean;
   /** Manual extended thinking budget (legacy Sonnet/Opus 4.5 and below). */
   budgetTokens?: number;
-  /** Adaptive thinking effort (Opus 4.6+). Defaults to high when omitted. */
+  /** Adaptive thinking effort (Opus 4.6+). Defaults to medium when omitted. */
   effort?: ThinkingEffort;
 }
 
@@ -30,16 +33,24 @@ export function modelSupportsAdaptiveThinking(model: string): boolean {
   return false;
 }
 
-/** Build streamChat thinking opts from an endpoint row. */
+/** Build streamChat thinking opts from an endpoint row + per-turn overrides. */
 export function thinkingOptsFromEndpoint(
   endpoint: Endpoint,
+  overrides?: {
+    /** Resolved per-turn effort (smart policy / sticky 长思考). */
+    effort?: ThinkingEffort;
+    /** Force thinking off (economy / nudge path). */
+    disable?: boolean;
+  },
 ): ThinkingOpts | undefined {
+  if (overrides?.disable) return undefined;
   if (endpoint.format !== 'anthropic' || !endpoint.thinkingEnabled) {
     return undefined;
   }
+  const effort = overrides?.effort ?? endpoint.thinkingEffort ?? 'medium';
   return {
     enabled: true,
-    budgetTokens: endpoint.thinkingBudget,
-    effort: endpoint.thinkingEffort ?? 'high',
+    budgetTokens: budgetForEffort(endpoint.thinkingBudget, effort),
+    effort,
   };
 }

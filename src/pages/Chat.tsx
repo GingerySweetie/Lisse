@@ -272,7 +272,11 @@ export default function ChatPage() {
     });
   }
 
-  async function handleSend(text: string, attachments: Attachment[]) {
+  async function handleSend(
+    text: string,
+    attachments: Attachment[],
+    opts?: { deepThink?: boolean },
+  ) {
     if (!endpointId || !model) return;
     const ep = selectedEndpoint();
     if (!ep) return;
@@ -312,6 +316,7 @@ export default function ChatPage() {
         style: selectedStyle(),
         groupOthers: groupOthers(),
         handoffIds,
+        deepThink: opts?.deepThink,
         signal: controller.signal,
         onDelta: (delta, assistantId) => {
           if (!clawdStreamStarted) {

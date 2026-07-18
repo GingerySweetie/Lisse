@@ -132,6 +132,9 @@ async function proactiveCheck(): Promise<number> {
       userText: `[nudge] ${nudgeMessage}`,
       persona,
       style,
+      // Lean: no tools / thinking / fact-extract — a scheduled "hi" shouldn't
+      // re-bill a full deep-think cold start after 5h of silence.
+      economy: true,
     });
     console.log('[nudge] DONE');
   } catch (e) {

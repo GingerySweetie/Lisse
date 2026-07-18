@@ -14,6 +14,10 @@ import { getActiveBranch } from './branch';
 import { type ChatTurn } from '../api';
 import { thinkingOptsFromEndpoint } from '../api/thinking';
 import {
+  resolveThinkingEffort,
+  wantsHealthContext,
+} from './thinking-policy';
+import {
   retrieveFacts,
   formatFactsBlock,
   getPinnedFacts,
@@ -111,6 +115,10 @@ export interface SendOptions {
   bookAnchor?: Message['bookAnchor'];
   /** CLWD handoff job ids the user selected to inject with this turn. */
   handoffIds?: string[];
+  /** Sticky UI「长思考」— force max effort this turn. */
+  deepThink?: boolean;
+  /** Lean path for proactive nudge: no tools, no thinking, no fact extract. */
+  economy?: boolean;
   /** Called on every visible-text chunk. */
   onDelta?: (delta: string, assistantMessageId: string) => void;
   /** Called on every thinking-text chunk (Anthropic extended thinking). */
@@ -135,11 +143,15 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     attachments,
     bookAnchor,
     handoffIds,
+    deepThink,
+    economy,
     onDelta,
     onThinking,
     signal,
   } = opts;
   const now = Date.now();
+  const isNudge = userText.trimStart().startsWith('[nudge]');
+  const lean = economy === true || isNudge;
 
   const branch = await getActiveBranch(conversation);
   const parentId = branch.at(-1)?.id ?? null;
@@ -201,18 +213,22 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
     groupOthers,
     branch: [...branch, userMessage],
     handoffIds,
+    deepThink,
+    economy: lean,
     onDelta,
     onThinking,
     signal,
   });
 
   const final = await db.messages.get(assistantMessage.id);
-  scheduleFactExtraction({
-    persona,
-    conversationId: conversation.id,
-    userMessage,
-    assistantMessage: final ?? assistantMessage,
-  });
+  if (!lean) {
+    scheduleFactExtraction({
+      persona,
+      conversationId: conversation.id,
+      userMessage,
+      assistantMessage: final ?? assistantMessage,
+    });
+  }
   const finalUser = await db.messages.get(userMessage.id);
   return {
     userMessage: finalUser ?? userMessage,
@@ -462,6 +478,8 @@ async function streamAssistant(args: {
   branch: Message[];
   /** CLWD handoff job ids to inject with this user turn. */
   handoffIds?: string[];
+  deepThink?: boolean;
+  economy?: boolean;
   onDelta?: (delta: string, assistantMessageId: string) => void;
   onThinking?: (delta: string, assistantMessageId: string) => void;
   signal?: AbortSignal;
@@ -476,10 +494,15 @@ async function streamAssistant(args: {
     groupOthers,
     branch,
     handoffIds,
+    deepThink,
+    economy,
     onDelta,
     onThinking,
     signal,
   } = args;
+
+  const lastUserText =
+    [...branch].reverse().find((m) => m.role === 'user')?.content ?? '';
 
   // Reading-session context.
   //
@@ -651,9 +674,11 @@ async function streamAssistant(args: {
       if (diaryBlock) turns.push({ role: 'system', content: diaryBlock });
     } catch { /* diary missing — skip silently */ }
   }
-  // Capability blurbs are constants; merged after BP3 so they don't steal
-  // the three tagged breakpoints from persona/style/pinned.
-  turns.push({ role: 'system', content: ARTIFACTS_CAPABILITY });
+  // Capability blurbs only when the surface can use them — pure companion
+  // chat was paying ~400–600 cached toks on every cold start for nothing.
+  if (settings.toolsEnabled || settings.workshopHandoffEnabled) {
+    turns.push({ role: 'system', content: ARTIFACTS_CAPABILITY });
+  }
   if (settings.workshopHandoffEnabled) {
     turns.push({ role: 'system', content: HANDOFF_CAPABILITY });
   }
@@ -670,10 +695,14 @@ async function streamAssistant(args: {
   const volatileParts: string[] = [];
   if (bookBlock) volatileParts.push(bookBlock);
   if (memoryBlock) volatileParts.push(memoryBlock);
-  try {
-    const healthBlock = await formatHealthContextBlock();
-    if (healthBlock) volatileParts.push(healthBlock);
-  } catch { /* health data missing — skip silently */ }
+  // Health is volatile (steps change) — only inject when the user asks,
+  // so idle turns don't burn uncached tokens every time.
+  if (wantsHealthContext(lastUserText)) {
+    try {
+      const healthBlock = await formatHealthContextBlock();
+      if (healthBlock) volatileParts.push(healthBlock);
+    } catch { /* health data missing — skip silently */ }
+  }
   const statusBlock = formatStatusBlock();
   if (statusBlock) volatileParts.push(statusBlock);
 
@@ -777,11 +806,17 @@ async function streamAssistant(args: {
   const convId = branch[0]?.conversationId ?? '';
 
   let tools: Tool[] = [];
-  if (settings.toolsEnabled && convId) {
+  if (!economy && settings.toolsEnabled && convId) {
     tools = await availableTools({ persona, conversationId: convId });
     // Stable ordering: cache prefix must not be invalidated by tool-list shuffling
     tools.sort((a, b) => a.def.name.localeCompare(b.def.name));
   }
+
+  const effort = resolveThinkingEffort({
+    baseline: endpoint.thinkingEffort ?? 'medium',
+    forceDeepThink: deepThink,
+    userText: lastUserText,
+  });
 
   const liveToolCalls: ToolCallRecord[] = [];
   const result = await runToolLoop({
@@ -791,7 +826,10 @@ async function streamAssistant(args: {
     tools,
     ctx: { persona, conversationId: convId },
     signal,
-    thinking: thinkingOptsFromEndpoint(endpoint),
+    thinking: thinkingOptsFromEndpoint(endpoint, {
+      effort,
+      disable: economy === true,
+    }),
     callbacks: {
       onTextDelta: (d) => onDelta?.(d, assistantMessageId),
       onThinkingDelta: (d) => onThinking?.(d, assistantMessageId),
