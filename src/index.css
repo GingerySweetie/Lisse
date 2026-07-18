@@ -88,7 +88,12 @@
 
   html,
   body {
-    overflow-x: hidden;
+    /* overflow-x: hidden alone computes overflow-y to auto (CSS overflow
+       spec), turning the page into a real scroll container. Focus / layout
+       thrash (e.g. group-chat speaker handoff) can nudge that offset with
+       no way to scroll back. clip keeps the same visual clipping but is
+       truly unscrollable. */
+    overflow: clip;
   }
 
   body {
@@ -1367,6 +1372,12 @@
      and composer off-screen (the visible "growing whitespace" bug). */
   min-height: 0;
   overflow-y: auto;
+  /* Disable browser scroll anchoring: when a finished speaker's bubble
+     briefly collapses then restores (or a new speaker row inserts), the
+     UA would bump scrollTop to keep a later element stable and shove the
+     user message + prior replies above the viewport. We manage pin/pad
+     ourselves in Chat.tsx. */
+  overflow-anchor: none;
   /* Above trellis hairline (15) so user bubbles can cover the line; AI
      prose still stops short via --chat-gutter-right padding. */
   position: relative;
