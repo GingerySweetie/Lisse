@@ -36,6 +36,7 @@ const HealthReportPage = lazy(() => import('./pages/HealthReport'));
 const CirclePage = lazy(() => import('./pages/Circle'));
 const TravelPage = lazy(() => import('./pages/Travel'));
 const UiDemoPage = lazy(() => import('./pages/UiDemo'));
+const DrawPadPage = lazy(() => import('./pages/DrawPad'));
 
 export default function App() {
   // Capture window-level errors + unhandled promise rejections so async
@@ -76,6 +77,7 @@ export default function App() {
         <Routes>
           {/* Visual-only beauty mock — outside Layout, not wired to data. */}
           <Route path="/demo" element={<UiDemoPage />} />
+          <Route path="/draw" element={<DrawPadPage />} />
           <Route element={<Layout />}>
             <Route index element={<Navigate to="/home" replace />} />
             <Route path="/home" element={<HomePage />} />

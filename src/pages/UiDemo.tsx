@@ -516,7 +516,10 @@ export default function UiDemoPage() {
           <li>点手机框任意处起涟漪</li>
         </ul>
 
-        <Link to="/home" className="uidemo-exit">
+        <Link to="/draw" className="uidemo-exit">
+          手写板（画字母给我读）→
+        </Link>
+        <Link to="/home" className="uidemo-exit" style={{ marginTop: '0.5rem' }}>
           返回现有首页 →
         </Link>
       </aside>
