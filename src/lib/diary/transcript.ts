@@ -1,7 +1,7 @@
 import { db } from '../../db';
 import type { Conversation, Message, Persona } from '../../types';
 import { MAX_TRANSCRIPT_CHARS } from './defaults';
-import { localDayBounds } from './store';
+import { localDayBounds } from './format';
 
 export interface DayTranscript {
   conversationIds: string[];

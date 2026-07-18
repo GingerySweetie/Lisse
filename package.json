@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:handoff": "node --experimental-strip-types --test scripts/test-handoff-protocol.mjs",
-    "test:travel": "node --experimental-strip-types --test scripts/test-travel-daemon.mjs"
+    "test:travel": "node --experimental-strip-types --test scripts/test-travel-daemon.mjs",
+    "test:diary": "node --experimental-strip-types --test scripts/test-diary.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",

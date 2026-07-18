@@ -10,8 +10,6 @@ export const DEFAULT_DIARY: DiarySettings = {
 export const FIRST_CHECK_MS = 2 * 60 * 1000;
 /** Regular tick interval while the app is open. */
 export const TICK_MS = 10 * 60 * 1000;
-/** How many past calendar days to catch up if the app was closed at 23:00. */
-export const LOOKBACK_DAYS = 7;
 /** Stuck pending rows older than this are retried. */
 export const PENDING_STALE_MS = 15 * 60 * 1000;
 /** Soft cap on transcript characters fed into the diary prompt. */

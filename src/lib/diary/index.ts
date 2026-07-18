@@ -11,12 +11,11 @@
 import { getSettings } from '../../db';
 import type { DiaryEntry } from '../../types';
 import {
-  DEFAULT_DIARY,
   FIRST_CHECK_MS,
-  LOOKBACK_DAYS,
   TICK_MS,
   mergeDiaryCfg,
 } from './defaults';
+import { datesNeedingDiary } from './schedule';
 import {
   formatDiaryBlock,
   formatLocalDate,
@@ -25,6 +24,7 @@ import {
 import { listDiaryPersonas, writePersonaDiary } from './write';
 
 export { DEFAULT_DIARY, mergeDiaryCfg } from './defaults';
+export { datesNeedingDiary } from './schedule';
 export {
   formatDiaryBlock,
   formatLocalDate,
@@ -99,34 +99,6 @@ export async function diaryTick(opts?: {
     tickInFlight = false;
   }
   return written;
-}
-
-/**
- * Dates that should have diaries by now:
- * - today, once local hour >= writeHour (or force)
- * - previous LOOKBACK_DAYS days (catch-up when the app was closed)
- */
-export function datesNeedingDiary(
-  now: Date,
-  writeHour: number,
-  forceToday = false,
-): string[] {
-  const hour = now.getHours();
-  const dates: string[] = [];
-  const includeToday = forceToday || hour >= clampHour(writeHour);
-
-  for (let i = 0; i <= LOOKBACK_DAYS; i++) {
-    if (i === 0 && !includeToday) continue;
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    dates.push(formatLocalDate(d));
-  }
-  return dates;
-}
-
-function clampHour(h: number): number {
-  if (!Number.isFinite(h)) return DEFAULT_DIARY.writeHour;
-  return Math.min(23, Math.max(0, Math.floor(h)));
 }
 
 /** Load + format yesterday's diary for prompt injection. Empty if none. */
