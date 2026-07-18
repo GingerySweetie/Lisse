@@ -2,6 +2,7 @@ import type { ToolDef } from '../../api/types';
 import type { Persona } from '../../types';
 import { memoryTools } from './memory';
 import { musicTools } from './music';
+import { documentTools } from './documents';
 import { mcpTools } from '../mcp/tools';
 
 /**
@@ -11,7 +12,8 @@ import { mcpTools } from '../mcp/tools';
  * translate the ToolDef shape to each provider's format.
  *
  * Built-ins: memory (remember / recall / update_memory / forget_memory),
- *            music (play / search / history).
+ *            music (play / search / history),
+ *            documents (parse_document).
  * External:  MCP servers registered on /mcp page (streamable HTTP).
  */
 
@@ -34,6 +36,7 @@ export async function availableTools(ctx: ToolContext): Promise<Tool[]> {
   const out: Tool[] = [];
   for (const t of await memoryTools(ctx)) out.push(t);
   for (const t of await musicTools(ctx)) out.push(t);
+  for (const t of await documentTools(ctx)) out.push(t);
   for (const t of await mcpTools(ctx)) out.push(t);
   return out;
 }

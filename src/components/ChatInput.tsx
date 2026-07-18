@@ -7,13 +7,23 @@ import {
   formatBytes,
 } from '../lib/attachments';
 import { recordTyping } from '../lib/behavior';
+import {
+  shouldAutoFoldText,
+  textToTxtAttachment,
+} from '../lib/fold-long-text';
+import {
+  AUTO_FOLD_TEXT_CHARS,
+  assertChatMessageSize,
+  formatChars,
+  formatStorageError,
+} from '../lib/storage-guards';
 
 /** Soft cap for non-image uploads (base64 lives in IndexedDB). */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 
 /** Common document / text types for the file picker (images use the other path). */
 const FILE_ACCEPT =
-  '.txt,.md,.markdown,.pdf,.csv,.tsv,.json,.xml,.html,.htm,.css,.js,.ts,.tsx,.jsx,.mjs,.cjs,.py,.rs,.go,.java,.c,.cpp,.h,.hpp,.rb,.php,.swift,.kt,.sql,.yml,.yaml,.toml,.ini,.log,.rtf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,text/*,application/pdf,application/json,application/xml,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  '.txt,.md,.markdown,.pdf,.epub,.csv,.tsv,.json,.xml,.html,.htm,.css,.js,.ts,.tsx,.jsx,.mjs,.cjs,.py,.rs,.go,.java,.c,.cpp,.h,.hpp,.rb,.php,.swift,.kt,.sql,.yml,.yaml,.toml,.ini,.log,.rtf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,text/*,application/pdf,application/epub+zip,application/json,application/xml,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 interface Props {
   onSend: (
@@ -64,6 +74,8 @@ export default function ChatInput({
   const [activeTags, setActiveTags] = useState<MoodTag[]>([]);
   /** Sticky deep-think — stays on across turns until tapped off (ADHD-friendly). */
   const [deepThink, setDeepThink] = useState(false);
+  /** Brief note after Claude-style auto-fold into a .txt chip. */
+  const [foldHint, setFoldHint] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -112,18 +124,72 @@ export default function ChatInput({
     queueMicrotask(() => taRef.current?.focus());
   }
 
-  function submit() {
-    const text = value.trim();
-    if ((!text && attachments.length === 0) || busy || disabled) return;
+  async function createFoldedTxt(raw: string): Promise<Attachment | null> {
+    try {
+      return await textToTxtAttachment(raw);
+    } catch (err) {
+      alert(formatStorageError(err));
+      return null;
+    }
+  }
+
+  async function foldTextAsAttachment(raw: string): Promise<Attachment | null> {
+    setUploading(true);
+    try {
+      const att = await createFoldedTxt(raw);
+      if (!att) return null;
+      setAttachments((prev) => [...prev, att]);
+      setFoldHint(
+        `已折叠为「${att.filename}」（${formatChars(raw.length)}）· 随消息发给模型`,
+      );
+      return att;
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function submit() {
+    if (busy || disabled) return;
+    const tags = activeTags;
+    const body = stripPrefix(value, tags).trim();
+    const prefix = buildPrefix(tags).trim();
+
+    let text = value.trim();
+    let atts = attachments;
+
+    // Claude-style: oversized body → .txt chip, keep mood prefix / short note.
+    if (shouldAutoFoldText(body)) {
+      setUploading(true);
+      try {
+        const att = await createFoldedTxt(body);
+        if (!att) return;
+        atts = [...attachments, att];
+        text = prefix || `请查看附件「${att.filename}」`;
+      } finally {
+        setUploading(false);
+      }
+    } else {
+      if (!text && atts.length === 0) return;
+      try {
+        assertChatMessageSize(text);
+      } catch (err) {
+        alert(formatStorageError(err));
+        return;
+      }
+    }
+
+    if (!text && atts.length === 0) return;
+
     if (typingStartRef.current && typedCharsRef.current > 0) {
       recordTyping(typedCharsRef.current, Date.now() - typingStartRef.current);
     }
     typingStartRef.current = null;
     typedCharsRef.current = 0;
-    onSend(text, attachments, { deepThink });
+    onSend(text, atts, { deepThink });
     setValue('');
     setAttachments([]);
     setActiveTags([]);
+    setFoldHint(null);
     // deepThink stays sticky on purpose — deep sessions often span many turns
   }
 
@@ -138,14 +204,25 @@ export default function ChatInput({
       !isMobile
     ) {
       e.preventDefault();
-      submit();
+      void submit();
     }
   }
 
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const next = e.target.value;
-    if (typingStartRef.current === null) typingStartRef.current = Date.now();
     const delta = next.length - value.length;
+    // Paste fallback: some paths skip the paste event and dump a wall of text.
+    if (delta >= AUTO_FOLD_TEXT_CHARS) {
+      const tags = activeTags;
+      const body = stripPrefix(next, tags).trim();
+      if (shouldAutoFoldText(body)) {
+        void foldTextAsAttachment(body).then((att) => {
+          if (att) setValue(buildPrefix(tags));
+        });
+        return;
+      }
+    }
+    if (typingStartRef.current === null) typingStartRef.current = Date.now();
     if (delta > 0) typedCharsRef.current += delta;
     setValue(next);
   }
@@ -182,21 +259,32 @@ export default function ChatInput({
 
   function removeAttachment(id: string) {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
+    setFoldHint(null);
   }
 
   async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    if (!supportsImages) return;
-    const items = Array.from(e.clipboardData.items);
-    const files: File[] = [];
-    for (const it of items) {
-      if (it.kind === 'file') {
-        const f = it.getAsFile();
-        if (f) files.push(f);
+    // File / image paste (when composer supports attachments).
+    if (supportsImages) {
+      const items = Array.from(e.clipboardData.items);
+      const files: File[] = [];
+      for (const it of items) {
+        if (it.kind === 'file') {
+          const f = it.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (files.length > 0) {
+        e.preventDefault();
+        await handleFiles(files);
+        return;
       }
     }
-    if (files.length > 0) {
+
+    // Claude-style: oversized plain-text paste → .txt chip, keep existing draft.
+    const pasted = e.clipboardData.getData('text/plain');
+    if (shouldAutoFoldText(pasted)) {
       e.preventDefault();
-      await handleFiles(files);
+      await foldTextAsAttachment(pasted);
     }
   }
 
@@ -215,6 +303,9 @@ export default function ChatInput({
               />
             ))}
           </div>
+        )}
+        {foldHint && (
+          <p className="mb-1.5 text-[11px] font-light text-ink-500">{foldHint}</p>
         )}
 
         <div className="wis-tags-row">
@@ -337,7 +428,7 @@ export default function ChatInput({
           ) : (
             <button
               type="button"
-              onClick={submit}
+              onClick={() => void submit()}
               disabled={!canSend}
               className="wis-send-btn"
               aria-label="发送"
@@ -377,12 +468,21 @@ function AttachmentChip({
       </div>
     );
   }
+  const isFoldedPaste =
+    !!attachment.filename && attachment.filename.startsWith('粘贴文本-');
   return (
     <div className="flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 text-xs font-light text-ink-700 ring-1 ring-lavender-100">
-      <Paperclip size={12} strokeWidth={1.6} className="shrink-0 opacity-60" />
-      <span className="max-w-[16ch] truncate font-mono">
+      {isFoldedPaste ? (
+        <FileText size={12} strokeWidth={1.6} className="shrink-0 opacity-60" />
+      ) : (
+        <Paperclip size={12} strokeWidth={1.6} className="shrink-0 opacity-60" />
+      )}
+      <span className="max-w-[18ch] truncate font-mono">
         {attachment.filename ?? '文件'}
       </span>
+      {isFoldedPaste && (
+        <span className="shrink-0 text-[10px] text-lavender-500">折叠</span>
+      )}
       <span className="text-ink-500">{formatBytes(attachment.size)}</span>
       <button
         type="button"

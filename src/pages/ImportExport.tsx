@@ -26,6 +26,10 @@ import {
   type ImportBackupResult,
 } from '../lib/backup';
 import {
+  assertImportFileSize,
+  formatStorageError,
+} from '../lib/storage-guards';
+import {
   getBackupFolder,
   getValidBackupFolder,
   isBackupFolderPickerAvailable,
@@ -324,7 +328,8 @@ export default function ImportExportPage() {
 
   const selectedEndpoint = endpoints?.find((e) => e.id === importEndpointId);
 
-  async function readFile(file: File): Promise<string> {
+  async function readFile(file: File, label = '导入文件'): Promise<string> {
+    assertImportFileSize(file, label);
     return new Promise((resolve, reject) => {
       const r = new FileReader();
       r.onload = () => resolve(String(r.result ?? ''));
@@ -336,7 +341,7 @@ export default function ImportExportPage() {
   async function handleChatGPT(file: File) {
     setChatgptStatus({ kind: 'busy', label: '解析中…' });
     try {
-      const text = await readFile(file);
+      const text = await readFile(file, 'ChatGPT 导出');
       const result = await importChatGPT(text, {
         personaId: importPersonaId || undefined,
         defaultEndpointId: importEndpointId || undefined,
@@ -346,7 +351,7 @@ export default function ImportExportPage() {
     } catch (err) {
       setChatgptStatus({
         kind: 'fail',
-        label: err instanceof Error ? err.message : String(err),
+        label: formatStorageError(err),
       });
     }
   }
@@ -354,7 +359,7 @@ export default function ImportExportPage() {
   async function handleClaude(file: File) {
     setClaudeStatus({ kind: 'busy', label: '解析中…' });
     try {
-      const text = await readFile(file);
+      const text = await readFile(file, 'Claude 导出');
       const result = await importClaude(text, {
         personaId: importPersonaId || undefined,
         defaultEndpointId: importEndpointId || undefined,
@@ -364,7 +369,7 @@ export default function ImportExportPage() {
     } catch (err) {
       setClaudeStatus({
         kind: 'fail',
-        label: err instanceof Error ? err.message : String(err),
+        label: formatStorageError(err),
       });
     }
   }
@@ -372,13 +377,13 @@ export default function ImportExportPage() {
   async function handleLisse(file: File) {
     setLisseStatus({ kind: 'busy', label: '解析中…' });
     try {
-      const text = await readFile(file);
+      const text = await readFile(file, 'Wisteria 对话导出');
       const result = await importLisseConversation(text);
       setLisseStatus({ kind: 'ok', label: summarizeImport(result) });
     } catch (err) {
       setLisseStatus({
         kind: 'fail',
-        label: err instanceof Error ? err.message : String(err),
+        label: formatStorageError(err),
       });
     }
   }
@@ -557,21 +562,22 @@ export default function ImportExportPage() {
     if (
       mode === 'replace' &&
       !confirm(
-        '确定要替换选中类别的现有数据吗？文件里有的 endpoints / 人格 / 风格会被清空后再写入。',
+        '确定要替换选中类别的现有数据吗？文件里有的 endpoints / 人格 / 风格会被清空后再写入。\n\n' +
+          '清空与写入在同一事务中；失败会回滚，不会留下半空配置。',
       )
     ) {
       return;
     }
     setConfigStatus({ kind: 'busy', label: '导入中…' });
     try {
-      const text = await readFile(file);
+      const text = await readFile(file, '配置文件');
       const r = await importConfigBundle(text, { mode });
       await refreshCounts();
       setConfigStatus({ kind: 'ok', label: summarizeConfig(r) });
     } catch (err) {
       setConfigStatus({
         kind: 'fail',
-        label: err instanceof Error ? err.message : String(err),
+        label: formatStorageError(err),
       });
     }
   }
@@ -594,20 +600,24 @@ export default function ImportExportPage() {
   async function handleImportBackup(file: File, mode: 'merge' | 'replace') {
     if (
       mode === 'replace' &&
-      !confirm('确定要替换全部数据吗？现有的 endpoints / 对话 / 人格都会被清空。')
+      !confirm(
+        '确定要替换全部数据吗？现有的 endpoints / 对话 / 人格都会被清空。\n\n' +
+          '写入会在同一事务里完成：如果导入失败，旧数据会回滚保留，不会先清空再留下空库。' +
+          '但仍建议先导出一份备份。',
+      )
     ) {
       return;
     }
     setBackupStatus({ kind: 'busy', label: '导入中…' });
     try {
-      const text = await readFile(file);
+      const text = await readFile(file, '备份文件');
       const r = await importBackup(text, { mode });
       await refreshCounts();
       setBackupStatus({ kind: 'ok', label: summarizeBackup(r) });
     } catch (err) {
       setBackupStatus({
         kind: 'fail',
-        label: err instanceof Error ? err.message : String(err),
+        label: formatStorageError(err),
       });
     }
   }
@@ -725,7 +735,8 @@ export default function ImportExportPage() {
     if (
       mode === 'replace' &&
       !confirm(
-        `确定要用「${item.name}」替换导入吗？现有同类别数据可能被清空。`,
+        `确定要用「${item.name}」替换导入吗？现有同类别数据可能被清空。\n\n` +
+          '写入会在同一事务里完成：如果导入失败，旧数据会回滚保留。仍建议先导出一份备份。',
       )
     ) {
       return;
@@ -752,7 +763,7 @@ export default function ImportExportPage() {
     } catch (err) {
       setRecoverStatus({
         kind: 'fail',
-        label: err instanceof Error ? err.message : String(err),
+        label: formatStorageError(err),
       });
     } finally {
       setRecoverBusyId(null);
@@ -1591,7 +1602,7 @@ export default function ImportExportPage() {
             )}
 
             <p className="mt-2 text-xs text-ink-400">
-              合并：按 id 写入/更新（人设、写作风格、API key、设置会填到对应页）；替换：先清空再完整恢复。
+              合并：按 id 写入/更新（人设、写作风格、API key、设置会填到对应页）；替换：清空与写入在同一事务里完成，失败会回滚旧数据，不会先清空再留下空库。
             </p>
 
             <StatusLine status={backupStatus} className="mt-3" />

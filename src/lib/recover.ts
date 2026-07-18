@@ -16,6 +16,12 @@ import { importChatGPT, importClaude, importLisseConversation } from './import';
 import type { ImportResult } from './import';
 import FileSaver, { type RecoverableFileMeta } from './native/file-saver';
 import {
+  assertImportFileSize,
+  MAX_IMPORT_FILE_BYTES,
+  StorageLimitError,
+  formatBytes as formatGuardBytes,
+} from './storage-guards';
+import {
   detectRecoverKind,
   filesToRecoverableItems,
   formatBytes,
@@ -201,6 +207,15 @@ export async function importRecoverableItem(
     defaultModel?: string;
   } = {},
 ): Promise<{ detected: RecoverKind; outcome: RecoverImportOutcome }> {
+  if (item.file) {
+    assertImportFileSize(item.file, item.name);
+  } else if (item.size > MAX_IMPORT_FILE_BYTES) {
+    throw new StorageLimitError(
+      `${item.name}太大了（${formatGuardBytes(item.size)}），上限 ${formatGuardBytes(MAX_IMPORT_FILE_BYTES)}。` +
+        `请先在电脑上拆分，或导出一份更小的备份再导入——整文件读进内存会直接把页面打死。`,
+    );
+  }
+
   const text = item.file
     ? await readFileAsText(item.file)
     : item.uri

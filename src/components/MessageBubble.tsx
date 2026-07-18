@@ -24,6 +24,10 @@ import ChatMarkdown from './ChatMarkdown';
 import ArtifactCard from './ArtifactCard';
 import ChoicesWidget from './ChoicesWidget';
 import { listJobsForAssistant } from '../lib/workshop/handoff-store';
+import {
+  MAX_BUBBLE_RENDER_CHARS,
+  formatChars,
+} from '../lib/storage-guards';
 
 interface Props {
   message: Message;
@@ -59,7 +63,13 @@ export default function MessageBubble({
   const isUser = message.role === 'user';
   const isError = message.status === 'error';
   const isStreaming = message.status === 'streaming';
-  const text = streamingText ?? message.content;
+  const rawText = streamingText ?? message.content;
+  // Huge imported/pasted bodies crash Markdown render and take the whole
+  // chat down with them — preview only past the soft cap.
+  const truncated = rawText.length > MAX_BUBBLE_RENDER_CHARS;
+  const text = truncated
+    ? rawText.slice(0, MAX_BUBBLE_RENDER_CHARS)
+    : rawText;
   const thinking = streamingThinking ?? message.thinking ?? '';
   const hasThinking = thinking.trim().length > 0;
   const accent = accentColor ?? DEFAULT_ACCENT;
@@ -156,7 +166,16 @@ export default function MessageBubble({
             )}
             <div className="wis-ai-body prose-msg">
               {text ? (
-                <ChatMarkdown text={text} />
+                <>
+                  <ChatMarkdown text={text} />
+                  {truncated && (
+                    <p className="mt-2 text-xs text-ink-500">
+                      内容过长（{formatChars(rawText.length)}），这里只预览前{' '}
+                      {formatChars(MAX_BUBBLE_RENDER_CHARS)}
+                      ，完整正文仍保存在本地。
+                    </p>
+                  )}
+                </>
               ) : isStreaming ? (
                 <span className="stream-cursor" />
               ) : null}
@@ -302,7 +321,16 @@ export default function MessageBubble({
                 </div>
               </div>
             ) : (
-              <ChatMarkdown text={text} preserveSoftBreaks />
+              <>
+                <ChatMarkdown text={text} preserveSoftBreaks />
+                {truncated && (
+                  <p className="mt-2 text-xs text-ink-500">
+                    内容过长（{formatChars(rawText.length)}），这里只预览前{' '}
+                    {formatChars(MAX_BUBBLE_RENDER_CHARS)}
+                    ，完整正文仍保存在本地。
+                  </p>
+                )}
+              </>
             )}
           </div>
         )}
@@ -610,6 +638,7 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
   const isRecall = call.name === 'recall';
   const isUpdate = call.name === 'update_memory';
   const isForget = call.name === 'forget_memory';
+  const isParseDoc = call.name === 'parse_document';
   const icon = isRemember
     ? '📝'
     : isRecall
@@ -618,7 +647,9 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
         ? '✏️'
         : isForget
           ? '🗑'
-          : '🛠';
+          : isParseDoc
+            ? '📄'
+            : '🛠';
   const label = (() => {
     if (call.error) return `${call.name} 出错`;
     if (isRemember) {
@@ -645,6 +676,22 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
       if (resultText) return `遗忘：${truncate(resultText, 28)}`;
       if (reason) return `遗忘：${truncate(reason, 28)}`;
       return '遗忘记忆';
+    }
+    if (isParseDoc) {
+      const err = (call.result as { error?: string } | undefined)?.error;
+      if (err) return `解析文档失败`;
+      const filename =
+        (call.result as { filename?: string | null } | undefined)?.filename ||
+        (call.input as { filename?: string })?.filename ||
+        '文档';
+      const chars = (call.result as { char_count?: number } | undefined)?.char_count;
+      const truncated = !!(call.result as { truncated?: boolean } | undefined)
+        ?.truncated;
+      const base = `解析：${truncate(filename, 22)}`;
+      if (typeof chars === 'number') {
+        return truncated ? `${base} · ${chars}字(节选)` : `${base} · ${chars}字`;
+      }
+      return base;
     }
     return call.name;
   })();
@@ -678,7 +725,7 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
             <>
               <div className="mt-2 font-mono text-ink-700">→</div>
               <pre className="overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] leading-snug">
-{JSON.stringify(call.result, null, 2)}
+{JSON.stringify(displayToolResult(call), null, 2)}
               </pre>
             </>
           )}
@@ -693,6 +740,21 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+/** Avoid dumping 40k-char parse_document bodies into the chip expand view. */
+function displayToolResult(call: ToolCallRecord): unknown {
+  if (call.name !== 'parse_document' || !call.result || typeof call.result !== 'object') {
+    return call.result;
+  }
+  const r = call.result as Record<string, unknown>;
+  if (typeof r.text !== 'string') return call.result;
+  const { text, ...rest } = r;
+  return {
+    ...rest,
+    text_preview: truncate(text, 280),
+    text_omitted_chars: text.length,
+  };
 }
 
 /**

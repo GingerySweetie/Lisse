@@ -43,6 +43,7 @@ import {
   yieldToUi,
   type ExportProgressCallback,
 } from './export-progress';
+import { formatStorageError } from './storage-guards';
 
 const LAST_BACKUP_AT_KEY = 'last_backup_at';
 
@@ -283,6 +284,35 @@ export interface ImportBackupResult {
   settingsApplied: boolean;
 }
 
+const IMPORT_TABLES = [
+  db.endpoints,
+  db.personas,
+  db.conversations,
+  db.messages,
+  db.memoryFacts,
+  db.writingStyles,
+  db.books,
+  db.bookmarks,
+  db.mcpServers,
+  db.bills,
+  db.periodEntries,
+  db.weightEntries,
+  db.browserBookmarks,
+  db.browserScripts,
+  db.musicCredentials,
+  db.musicHistory,
+  db.circlePosts,
+  db.circleReactions,
+  db.healthComments,
+  db.healthDaily,
+  db.handoffJobs,
+  db.travelTrips,
+  db.travelEvents,
+  db.travelHeldPushes,
+  db.diaryEntries,
+  db.kv,
+] as const;
+
 export async function importBackup(
   fileText: string,
   opts: ImportBackupOptions,
@@ -306,74 +336,11 @@ export async function importBackup(
   // Accept both the old v4 format and the new v5 format.
   const bundle = raw as BackupBundle & { version: 4 | 5 };
 
-  // Keep the SAF backup-folder grant across replace wipes.
+  // Keep the SAF backup-folder grant across replace wipes. Restored only
+  // AFTER a successful atomic import so a failed replace never leaves an
+  // empty DB with a half-applied grant rewrite.
   const preservedFolder =
     opts.mode === 'replace' ? await getBackupFolder() : null;
-
-  if (opts.mode === 'replace') {
-    await db.transaction(
-      'rw',
-      [
-        db.endpoints,
-        db.personas,
-        db.conversations,
-        db.messages,
-        db.memoryFacts,
-        db.writingStyles,
-        db.books,
-        db.bookmarks,
-        db.mcpServers,
-        db.bills,
-        db.periodEntries,
-        db.weightEntries,
-        db.browserBookmarks,
-        db.browserScripts,
-        db.musicCredentials,
-        db.musicHistory,
-        db.circlePosts,
-        db.circleReactions,
-        db.healthComments,
-        db.healthDaily,
-        db.handoffJobs,
-        db.travelTrips,
-        db.travelEvents,
-        db.travelHeldPushes,
-        db.diaryEntries,
-        db.kv,
-      ],
-      async () => {
-        await db.endpoints.clear();
-        await db.personas.clear();
-        await db.conversations.clear();
-        await db.messages.clear();
-        await db.memoryFacts.clear();
-        await db.writingStyles.clear();
-        await db.books.clear();
-        await db.bookmarks.clear();
-        await db.mcpServers.clear();
-        await db.bills.clear();
-        await db.periodEntries.clear();
-        await db.weightEntries.clear();
-        await db.browserBookmarks.clear();
-        await db.browserScripts.clear();
-        await db.musicCredentials.clear();
-        await db.musicHistory.clear();
-        await db.circlePosts.clear();
-        await db.circleReactions.clear();
-        await db.healthComments.clear();
-        await db.healthDaily.clear();
-        await db.handoffJobs.clear();
-        await db.travelTrips.clear();
-        await db.travelEvents.clear();
-        await db.travelHeldPushes.clear();
-        await db.diaryEntries.clear();
-        await db.kv.clear();
-      },
-    );
-    if (preservedFolder) {
-      await setBackupFolder(preservedFolder);
-    }
-  }
 
   const result: ImportBackupResult = {
     endpointsAdded: 0,
@@ -404,38 +371,43 @@ export async function importBackup(
     settingsApplied: false,
   };
 
-  // Upsert everything (merge updates existing ids; replace already cleared).
-  // bulkPut keeps large conversation imports from timing out row-by-row.
-  await db.transaction(
-    'rw',
-    [
-      db.endpoints,
-      db.personas,
-      db.conversations,
-      db.messages,
-      db.memoryFacts,
-      db.writingStyles,
-      db.books,
-      db.bookmarks,
-      db.mcpServers,
-      db.bills,
-      db.periodEntries,
-      db.weightEntries,
-      db.browserBookmarks,
-      db.browserScripts,
-      db.musicCredentials,
-      db.musicHistory,
-      db.circlePosts,
-      db.circleReactions,
-      db.healthComments,
-      db.healthDaily,
-      db.handoffJobs,
-      db.travelTrips,
-      db.travelEvents,
-      db.travelHeldPushes,
-      db.diaryEntries,
-    ],
-    async () => {
+  // CRITICAL: clear + write + settings must share ONE IndexedDB transaction.
+  // The old path cleared in tx1 and wrote in tx2 — if tx2 failed (quota /
+  // OOM / tab kill after a huge paste+import), the wipe had already
+  // committed and the user lost everything.
+  try {
+    await db.transaction('rw', [...IMPORT_TABLES], async () => {
+      if (opts.mode === 'replace') {
+        await db.endpoints.clear();
+        await db.personas.clear();
+        await db.conversations.clear();
+        await db.messages.clear();
+        await db.memoryFacts.clear();
+        await db.writingStyles.clear();
+        await db.books.clear();
+        await db.bookmarks.clear();
+        await db.mcpServers.clear();
+        await db.bills.clear();
+        await db.periodEntries.clear();
+        await db.weightEntries.clear();
+        await db.browserBookmarks.clear();
+        await db.browserScripts.clear();
+        await db.musicCredentials.clear();
+        await db.musicHistory.clear();
+        await db.circlePosts.clear();
+        await db.circleReactions.clear();
+        await db.healthComments.clear();
+        await db.healthDaily.clear();
+        await db.handoffJobs.clear();
+        await db.travelTrips.clear();
+        await db.travelEvents.clear();
+        await db.travelHeldPushes.clear();
+        await db.diaryEntries.clear();
+        await db.kv.clear();
+      }
+
+      // Upsert everything (merge updates existing ids; replace just cleared).
+      // bulkPut keeps large conversation imports from timing out row-by-row.
       result.endpointsAdded = await upsertAll(db.endpoints, bundle.endpoints);
       result.personasAdded = await upsertAll(db.personas, bundle.personas);
       result.conversationsAdded = await upsertAll(
@@ -515,14 +487,24 @@ export async function importBackup(
         db.diaryEntries,
         bundle.diaryEntries,
       );
-    },
-  );
 
-  // Always apply settings so default endpoint / persona / style / API-related
-  // prefs land in the Settings UI after import.
-  if (bundle.settings) {
-    await saveSettings(bundle.settings);
-    result.settingsApplied = true;
+      // Apply settings inside the same transaction so replace can't land
+      // with empty kv if settings write would have failed separately.
+      if (bundle.settings) {
+        await saveSettings(bundle.settings);
+        result.settingsApplied = true;
+      }
+    });
+  } catch (err) {
+    throw new Error(formatStorageError(err), { cause: err });
+  }
+
+  if (preservedFolder) {
+    try {
+      await setBackupFolder(preservedFolder);
+    } catch {
+      // Non-fatal: data restore already committed.
+    }
   }
 
   return result;

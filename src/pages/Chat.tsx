@@ -443,6 +443,8 @@ export default function ChatPage() {
       });
     } catch (e) {
       console.error('[send] 发送失败:', e);
+      const { formatStorageError } = await import('../lib/storage-guards');
+      alert(formatStorageError(e));
     } finally {
       setStreamingId(null);
       setStreamingText('');

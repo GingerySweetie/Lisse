@@ -177,18 +177,6 @@ export async function importConfigBundle(
     throw new Error('配置文件为空：没有 endpoints / 人格 / 风格 / 默认设置');
   }
 
-  if (mode === 'replace') {
-    await db.transaction(
-      'rw',
-      [db.endpoints, db.personas, db.writingStyles],
-      async () => {
-        if (hasEndpoints) await db.endpoints.clear();
-        if (hasPersonas) await db.personas.clear();
-        if (hasStyles) await db.writingStyles.clear();
-      },
-    );
-  }
-
   const result: ImportConfigResult = {
     endpointsAdded: 0,
     personasAdded: 0,
@@ -196,10 +184,17 @@ export async function importConfigBundle(
     settingsApplied: false,
   };
 
+  // Clear + write in one transaction so a failed replace can't leave
+  // emptied endpoints/personas/styles behind.
   await db.transaction(
     'rw',
-    [db.endpoints, db.personas, db.writingStyles],
+    [db.endpoints, db.personas, db.writingStyles, db.kv],
     async () => {
+      if (mode === 'replace') {
+        if (hasEndpoints) await db.endpoints.clear();
+        if (hasPersonas) await db.personas.clear();
+        if (hasStyles) await db.writingStyles.clear();
+      }
       if (hasEndpoints && bundle.endpoints?.length) {
         await db.endpoints.bulkPut(bundle.endpoints);
         result.endpointsAdded = bundle.endpoints.length;
@@ -212,28 +207,28 @@ export async function importConfigBundle(
         await db.writingStyles.bulkPut(bundle.writingStyles);
         result.writingStylesAdded = bundle.writingStyles.length;
       }
+
+      if (bundle.settings) {
+        const patch: Partial<AppSettings> = {};
+        if ('defaultEndpointId' in bundle.settings) {
+          patch.defaultEndpointId = bundle.settings.defaultEndpointId ?? null;
+        }
+        if ('defaultModel' in bundle.settings) {
+          patch.defaultModel = bundle.settings.defaultModel ?? null;
+        }
+        if ('defaultPersonaId' in bundle.settings) {
+          patch.defaultPersonaId = bundle.settings.defaultPersonaId ?? null;
+        }
+        if ('defaultStyleId' in bundle.settings) {
+          patch.defaultStyleId = bundle.settings.defaultStyleId ?? null;
+        }
+        if (Object.keys(patch).length > 0) {
+          await saveSettings(patch);
+          result.settingsApplied = true;
+        }
+      }
     },
   );
-
-  if (bundle.settings) {
-    const patch: Partial<AppSettings> = {};
-    if ('defaultEndpointId' in bundle.settings) {
-      patch.defaultEndpointId = bundle.settings.defaultEndpointId ?? null;
-    }
-    if ('defaultModel' in bundle.settings) {
-      patch.defaultModel = bundle.settings.defaultModel ?? null;
-    }
-    if ('defaultPersonaId' in bundle.settings) {
-      patch.defaultPersonaId = bundle.settings.defaultPersonaId ?? null;
-    }
-    if ('defaultStyleId' in bundle.settings) {
-      patch.defaultStyleId = bundle.settings.defaultStyleId ?? null;
-    }
-    if (Object.keys(patch).length > 0) {
-      await saveSettings(patch);
-      result.settingsApplied = true;
-    }
-  }
 
   return result;
 }
