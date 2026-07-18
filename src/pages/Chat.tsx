@@ -121,6 +121,30 @@ export default function ChatPage() {
   const [streamingThinking, setStreamingThinking] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // Last streamed body per assistant id, kept until Dexie paints `content`.
+  // Clearing streamingText at speaker handoff otherwise collapses the bubble
+  // for a frame → scrollTop clamps → overflow-anchoring yanks the prior turn
+  // (user msg + first model) above the viewport, unreachable by scroll.
+  const streamBodyByIdRef = useRef<Map<string, string>>(new Map());
+
+  function appendStreamingText(
+    assistantId: string,
+    delta: string,
+    transform?: (s: string) => string,
+  ) {
+    setStreamingId(assistantId);
+    setStreamingText((prev) => {
+      const next = transform ? transform(prev + delta) : prev + delta;
+      streamBodyByIdRef.current.set(assistantId, next);
+      return next;
+    });
+  }
+
+  function streamingOverride(m: Message): string | undefined {
+    if (m.id === streamingId) return streamingText;
+    if (!m.content) return streamBodyByIdRef.current.get(m.id);
+    return undefined;
+  }
 
   const [branch, setBranch] = useState<Message[]>([]);
   useEffect(() => {
@@ -157,6 +181,7 @@ export default function ChatPage() {
     anchoredIdRef.current = null;
     pendingAnchorRef.current = null;
     freshLoadRef.current = true;
+    streamBodyByIdRef.current.clear();
     if (tailPadRef.current !== 0) {
       tailPadRef.current = 0;
       setTailPad(0);
@@ -166,6 +191,11 @@ export default function ChatPage() {
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || branch.length === 0) return;
+
+    // Drop fallbacks once the live query has painted persisted content.
+    for (const m of branch) {
+      if (m.content) streamBodyByIdRef.current.delete(m.id);
+    }
 
     const lastUser = [...branch].reverse().find((m) => m.role === 'user');
     const lastUserId = lastUser?.id ?? null;
@@ -324,8 +354,7 @@ export default function ChatPage() {
             emitClawd({ type: 'stream-start', personaId });
           }
           clawdAcc += delta;
-          setStreamingId(assistantId);
-          setStreamingText((prev) => stripClwdTaskTags(prev + delta));
+          appendStreamingText(assistantId, delta, stripClwdTaskTags);
         },
         onThinking: (delta, assistantId) => {
           if (!clawdStreamStarted) {
@@ -382,8 +411,7 @@ export default function ChatPage() {
                 emitClawd({ type: 'stream-start', personaId: speaker.id });
               }
               clawdAcc += delta;
-              setStreamingId(assistantId);
-              setStreamingText((prev) => prev + delta);
+              appendStreamingText(assistantId, delta);
             },
             onThinking: (delta, assistantId) => {
               if (!clawdStreamStarted) {
@@ -463,8 +491,7 @@ export default function ChatPage() {
         groupOthers: groupOthers(),
         signal: controller.signal,
         onDelta: (delta, assistantId) => {
-          setStreamingId(assistantId);
-          setStreamingText((prev) => prev + delta);
+          appendStreamingText(assistantId, delta);
         },
         onThinking: (delta, assistantId) => {
           setStreamingId(assistantId);
@@ -505,8 +532,7 @@ export default function ChatPage() {
         groupOthers: groupOthers(),
         signal: controller.signal,
         onDelta: (delta, assistantId) => {
-          setStreamingId(assistantId);
-          setStreamingText((prev) => prev + delta);
+          appendStreamingText(assistantId, delta);
         },
         onThinking: (delta, assistantId) => {
           setStreamingId(assistantId);
@@ -634,9 +660,7 @@ export default function ChatPage() {
                     <MessageBubble
                       message={m}
                       accentColor={conversation?.accentColor ?? null}
-                      streamingText={
-                        m.id === streamingId ? streamingText : undefined
-                      }
+                      streamingText={streamingOverride(m)}
                       streamingThinking={
                         m.id === streamingId ? streamingThinking : undefined
                       }
