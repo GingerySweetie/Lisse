@@ -152,6 +152,94 @@ function renderText(
   return lines.join('\n');
 }
 
+/** One month in milliseconds — used by "recent month" presets. */
+export const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+export interface ConversationsJsonBundle {
+  __lisse: 'conversations';
+  version: 1;
+  exportedAt: number;
+  scope: 'branch' | 'tree';
+  items: Array<{ conversation: Conversation; messages: Message[] }>;
+}
+
+/**
+ * Resolve conversations for selective export.
+ * - `conversationIds` wins when provided (explicit checklist).
+ * - else `sinceMs` filters by `updatedAt` (indexed).
+ * - else all conversations, newest first.
+ */
+export async function resolveConversationsForExport(opts?: {
+  conversationIds?: string[];
+  sinceMs?: number;
+}): Promise<Conversation[]> {
+  if (opts?.conversationIds?.length) {
+    const idSet = new Set(opts.conversationIds);
+    const rows = await db.conversations.bulkGet([...idSet]);
+    return rows
+      .filter((c): c is Conversation => !!c)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+  if (opts?.sinceMs != null) {
+    const rows = await db.conversations
+      .where('updatedAt')
+      .aboveOrEqual(opts.sinceMs)
+      .toArray();
+    return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+  return db.conversations.orderBy('updatedAt').reverse().toArray();
+}
+
+/**
+ * Export selected / recent conversations as one re-importable JSON bundle.
+ * Format marker: `__lisse: "conversations"`.
+ */
+export async function exportConversationsJson(opts?: {
+  conversationIds?: string[];
+  sinceMs?: number;
+  scope?: 'branch' | 'tree';
+}): Promise<ExportedConversation & { count: number }> {
+  const scope = opts?.scope ?? 'branch';
+  const conversations = await resolveConversationsForExport(opts);
+  if (conversations.length === 0) {
+    throw new Error('没有可导出的对话');
+  }
+
+  const items: ConversationsJsonBundle['items'] = [];
+  for (const conversation of conversations) {
+    const messages =
+      scope === 'tree'
+        ? await db.messages
+            .where({ conversationId: conversation.id })
+            .sortBy('createdAt')
+        : await getActiveBranch(conversation);
+    items.push({ conversation, messages });
+  }
+
+  const exportedAt = Date.now();
+  const bundle: ConversationsJsonBundle = {
+    __lisse: 'conversations',
+    version: 1,
+    exportedAt,
+    scope,
+    items,
+  };
+
+  const tag =
+    opts?.conversationIds?.length
+      ? `selected-${conversations.length}`
+      : opts?.sinceMs != null
+        ? 'recent-1m'
+        : 'all';
+
+  return {
+    filename: `lisse-conversations-${tag}-${formatDateTag(exportedAt)}.json`,
+    mime: 'application/json;charset=utf-8',
+    content: JSON.stringify(bundle, null, 2),
+    count: conversations.length,
+  };
+}
+
 /**
  * Bulk export: every conversation as a Markdown file zipped together.
  */
@@ -159,12 +247,19 @@ export async function exportAllConversationsZip(opts?: {
   scope?: 'branch' | 'tree';
   format?: ConversationFormat;
   includeUsage?: boolean;
+  /** When set, only these conversation ids are exported. */
+  conversationIds?: string[];
+  /** When set (and no conversationIds), only conversations updated since this ms. */
+  sinceMs?: number;
 }): Promise<{ blob: Blob; filename: string; count: number }> {
   const format = opts?.format ?? 'markdown';
   const scope = opts?.scope ?? 'branch';
 
   const [conversations, personas] = await Promise.all([
-    db.conversations.orderBy('updatedAt').reverse().toArray(),
+    resolveConversationsForExport({
+      conversationIds: opts?.conversationIds,
+      sinceMs: opts?.sinceMs,
+    }),
     db.personas.toArray(),
   ]);
   const personaMap = new Map(personas.map((p) => [p.id, p]));

@@ -39,11 +39,18 @@ import {
 } from '../lib/import';
 import {
   exportAllConversationsZip,
+  exportConversationsJson,
   exportPersonaMemoryMarkdown,
   downloadBlob,
   downloadText,
+  ONE_MONTH_MS,
   type ConversationFormat,
 } from '../lib/export';
+import {
+  downloadConfigBundle,
+  importConfigBundle,
+  type ImportConfigResult,
+} from '../lib/config-export';
 
 type Status =
   | { kind: 'idle' }
@@ -142,6 +149,11 @@ async function readAllCounts(): Promise<DbCounts> {
 export default function ImportExportPage() {
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
   const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
+  const conversations = useLiveQuery(
+    () => db.conversations.orderBy('updatedAt').reverse().toArray(),
+    [],
+    [],
+  );
   const lastBackupAt = useLiveQuery(() => getLastBackupAt(), [], null);
 
   // ── Data diagnostics ────────────────────────────────────────────────────
@@ -173,13 +185,11 @@ export default function ImportExportPage() {
       counts.weightEntries + counts.musicHistory
     : null;
 
-  // Compute "overdue" against a stable snapshot of now captured when the
-  // component mounts or when lastBackupAt changes, to satisfy the react-compiler
-  // purity rule (Date.now() must not be called unconditionally during render).
-  const backupOverdue = useMemo(() => {
-    const now = Date.now();
-    return lastBackupAt === null || now - lastBackupAt > 7 * 24 * 60 * 60 * 1000;
-  }, [lastBackupAt]);
+  // Stable "now" snapshot for overdue / recent-month filters (lazy init once).
+  const [mountedAtMs] = useState(() => Date.now());
+  const backupOverdue =
+    lastBackupAt === null ||
+    mountedAtMs - lastBackupAt > 7 * 24 * 60 * 60 * 1000;
 
   const [importPersonaId, setImportPersonaId] = useState<string>('');
   const [importEndpointId, setImportEndpointId] = useState<string>('');
@@ -220,13 +230,31 @@ export default function ImportExportPage() {
     };
   }, [backupFolderPickerAvailable]);
   const [bulkStatus, setBulkStatus] = useState<Status>({ kind: 'idle' });
+  const [selectStatus, setSelectStatus] = useState<Status>({ kind: 'idle' });
+  const [configStatus, setConfigStatus] = useState<Status>({ kind: 'idle' });
   const [memoryExportStatus, setMemoryExportStatus] = useState<Status>({
     kind: 'idle',
   });
 
   const [bulkFormat, setBulkFormat] = useState<ConversationFormat>('markdown');
   const [bulkScope, setBulkScope] = useState<'branch' | 'tree'>('branch');
+  const [selectScope, setSelectScope] = useState<'branch' | 'tree'>('branch');
+  const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [memoryPersonaId, setMemoryPersonaId] = useState<string>('');
+
+  const [cfgPersonas, setCfgPersonas] = useState(true);
+  const [cfgStyles, setCfgStyles] = useState(true);
+  const [cfgEndpoints, setCfgEndpoints] = useState(true);
+  const [cfgDefaults, setCfgDefaults] = useState(true);
+
+  const monthCutoffMs = mountedAtMs - ONE_MONTH_MS;
+
+  const recentMonthConversations = useMemo(
+    () => (conversations ?? []).filter((c) => c.updatedAt >= monthCutoffMs),
+    [conversations, monthCutoffMs],
+  );
 
   const selectedEndpoint = endpoints?.find((e) => e.id === importEndpointId);
 
@@ -363,6 +391,107 @@ export default function ImportExportPage() {
       setBulkStatus({ kind: 'ok', label: `已导出 ${r.count} 条对话` });
     } catch (err) {
       setBulkStatus({
+        kind: 'fail',
+        label: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  function toggleConvId(id: string) {
+    setSelectedConvIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectRecentMonth() {
+    setSelectedConvIds(new Set(recentMonthConversations.map((c) => c.id)));
+  }
+
+  function selectAllConversations() {
+    setSelectedConvIds(new Set((conversations ?? []).map((c) => c.id)));
+  }
+
+  function clearSelectedConversations() {
+    setSelectedConvIds(new Set());
+  }
+
+  async function handleSelectExportJson() {
+    if (selectedConvIds.size === 0) {
+      setSelectStatus({ kind: 'fail', label: '请先勾选要导出的对话' });
+      return;
+    }
+    setSelectStatus({ kind: 'busy', label: '导出中…' });
+    try {
+      const r = await exportConversationsJson({
+        conversationIds: [...selectedConvIds],
+        scope: selectScope,
+      });
+      await downloadText(r.content, r.filename, r.mime);
+      setSelectStatus({ kind: 'ok', label: `已导出 ${r.count} 条对话 JSON` });
+    } catch (err) {
+      setSelectStatus({
+        kind: 'fail',
+        label: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleRecentMonthExportJson() {
+    setSelectStatus({ kind: 'busy', label: '导出中…' });
+    try {
+      const r = await exportConversationsJson({
+        sinceMs: monthCutoffMs,
+        scope: selectScope,
+      });
+      await downloadText(r.content, r.filename, r.mime);
+      setSelectedConvIds(new Set(recentMonthConversations.map((c) => c.id)));
+      setSelectStatus({ kind: 'ok', label: `已导出近一月 ${r.count} 条对话` });
+    } catch (err) {
+      setSelectStatus({
+        kind: 'fail',
+        label: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleExportConfig() {
+    setConfigStatus({ kind: 'busy', label: '导出中…' });
+    try {
+      await downloadConfigBundle({
+        includePersonas: cfgPersonas,
+        includeWritingStyles: cfgStyles,
+        includeEndpoints: cfgEndpoints,
+        includeDefaults: cfgDefaults,
+      });
+      setConfigStatus({ kind: 'ok', label: '已保存配置 JSON' });
+    } catch (err) {
+      setConfigStatus({
+        kind: 'fail',
+        label: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleImportConfig(file: File, mode: 'merge' | 'replace') {
+    if (
+      mode === 'replace' &&
+      !confirm(
+        '确定要替换选中类别的现有数据吗？文件里有的 endpoints / 人格 / 风格会被清空后再写入。',
+      )
+    ) {
+      return;
+    }
+    setConfigStatus({ kind: 'busy', label: '导入中…' });
+    try {
+      const text = await readFile(file);
+      const r = await importConfigBundle(text, { mode });
+      await refreshCounts();
+      setConfigStatus({ kind: 'ok', label: summarizeConfig(r) });
+    } catch (err) {
+      setConfigStatus({
         kind: 'fail',
         label: err instanceof Error ? err.message : String(err),
       });
@@ -537,7 +666,8 @@ export default function ImportExportPage() {
               <br />
               已经导入过的同一对话会自动跳过（按原始 conversation id 判重）。
               <br />
-              Wisteria JSON 导入支持从本应用导出的单条对话 JSON 文件（<code className="rounded bg-lavender-100 px-1">__lisse: "conversation"</code>）。
+              Wisteria JSON 导入支持单条（<code className="rounded bg-lavender-100 px-1">__lisse: "conversation"</code>）
+              或多条（<code className="rounded bg-lavender-100 px-1">__lisse: "conversations"</code>）对话导出文件。
             </p>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -673,6 +803,215 @@ export default function ImportExportPage() {
               </button>
               <StatusLine status={bulkStatus} />
             </div>
+          </section>
+
+          {/* Selective conversation JSON export */}
+          <section className="endpoint-card !mt-0">
+            <h3 className="text-base font-semibold text-ink-900">
+              自选 / 近一月对话导出 JSON
+            </h3>
+            <p className="mt-1 text-sm text-ink-500">
+              导出可重导入的 JSON（<code className="rounded bg-lavender-100 px-1">__lisse: "conversations"</code>）。
+              按更新时间筛选近一个月，或自行勾选对话。
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRecentMonthExportJson}
+                disabled={
+                  selectStatus.kind === 'busy' ||
+                  recentMonthConversations.length === 0
+                }
+                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-1.5 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
+              >
+                <Download size={14} />
+                导出近一月（{recentMonthConversations.length}）
+              </button>
+              <button
+                type="button"
+                onClick={selectRecentMonth}
+                disabled={recentMonthConversations.length === 0}
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-1.5 text-xs text-ink-700 transition hover:bg-lavender-50 disabled:opacity-50"
+              >
+                勾选近一月
+              </button>
+              <button
+                type="button"
+                onClick={selectAllConversations}
+                disabled={(conversations?.length ?? 0) === 0}
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-1.5 text-xs text-ink-700 transition hover:bg-lavender-50 disabled:opacity-50"
+              >
+                全选
+              </button>
+              <button
+                type="button"
+                onClick={clearSelectedConversations}
+                disabled={selectedConvIds.size === 0}
+                className="rounded-lg border border-lavender-200 bg-white px-3 py-1.5 text-xs text-ink-700 transition hover:bg-lavender-50 disabled:opacity-50"
+              >
+                清空
+              </button>
+              <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-500">
+                <span>范围</span>
+                <select
+                  value={selectScope}
+                  onChange={(e) =>
+                    setSelectScope(e.target.value as 'branch' | 'tree')
+                  }
+                  className="rounded-lg border border-lavender-200 bg-white px-2 py-1 text-xs focus:border-lavender-300"
+                >
+                  <option value="branch">当前分支</option>
+                  <option value="tree">完整树</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-3 max-h-64 overflow-y-auto rounded-xl border border-lavender-100 bg-lavender-50/40">
+              {(conversations?.length ?? 0) === 0 ? (
+                <p className="px-3 py-4 text-xs text-ink-400">暂无对话</p>
+              ) : (
+                <ul className="divide-y divide-lavender-100">
+                  {(conversations ?? []).map((c) => {
+                    const checked = selectedConvIds.has(c.id);
+                    const isRecent = c.updatedAt >= monthCutoffMs;
+                    return (
+                      <li key={c.id}>
+                        <label className="flex cursor-pointer items-start gap-2 px-3 py-2 text-sm transition hover:bg-white/70">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleConvId(c.id)}
+                            className="mt-1 accent-lavender-400"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium text-ink-800">
+                              {c.title || '未命名对话'}
+                            </span>
+                            <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-400">
+                              <span>更新 {formatShortDate(c.updatedAt)}</span>
+                              {isRecent && (
+                                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">
+                                  近一月
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSelectExportJson}
+                disabled={
+                  selectStatus.kind === 'busy' || selectedConvIds.size === 0
+                }
+                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
+              >
+                <Download size={16} />
+                导出已选 JSON（{selectedConvIds.size}）
+              </button>
+              <StatusLine status={selectStatus} />
+            </div>
+          </section>
+
+          {/* Config: personas / styles / API keys */}
+          <section className="endpoint-card !mt-0">
+            <h3 className="text-base font-semibold text-ink-900">
+              单独导出人格 / 风格 / API key
+            </h3>
+            <p className="mt-1 text-sm text-ink-500">
+              只打包配置类数据；导入后会写回人格页、风格页、Endpoints（含 API key）和默认选项。
+              <strong className="font-medium text-ink-700">
+                {' '}勾选 Endpoints 时文件里会有 API key
+              </strong>
+              ，请妥善保管。
+            </p>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center gap-2 rounded-lg border border-lavender-100 bg-lavender-50/50 px-3 py-2 text-sm text-ink-800">
+                <input
+                  type="checkbox"
+                  checked={cfgPersonas}
+                  onChange={(e) => setCfgPersonas(e.target.checked)}
+                  className="accent-lavender-400"
+                />
+                人格（personas）
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border border-lavender-100 bg-lavender-50/50 px-3 py-2 text-sm text-ink-800">
+                <input
+                  type="checkbox"
+                  checked={cfgStyles}
+                  onChange={(e) => setCfgStyles(e.target.checked)}
+                  className="accent-lavender-400"
+                />
+                写作风格（styles）
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border border-lavender-100 bg-lavender-50/50 px-3 py-2 text-sm text-ink-800">
+                <input
+                  type="checkbox"
+                  checked={cfgEndpoints}
+                  onChange={(e) => setCfgEndpoints(e.target.checked)}
+                  className="accent-lavender-400"
+                />
+                Endpoints / API key
+              </label>
+              <label className="flex items-center gap-2 rounded-lg border border-lavender-100 bg-lavender-50/50 px-3 py-2 text-sm text-ink-800">
+                <input
+                  type="checkbox"
+                  checked={cfgDefaults}
+                  onChange={(e) => setCfgDefaults(e.target.checked)}
+                  className="accent-lavender-400"
+                />
+                默认人格 / 风格 / 接口
+              </label>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleExportConfig}
+                disabled={
+                  configStatus.kind === 'busy' ||
+                  (!cfgPersonas &&
+                    !cfgStyles &&
+                    !cfgEndpoints &&
+                    !cfgDefaults)
+                }
+                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
+              >
+                <Download size={16} />
+                导出配置 JSON
+              </button>
+              <FileButton
+                label="合并导入配置"
+                accept=".json,application/json"
+                status={{ kind: 'idle' }}
+                compact
+                onPick={(f) => handleImportConfig(f, 'merge')}
+              />
+              <FileButton
+                label="替换导入配置"
+                accept=".json,application/json"
+                status={{ kind: 'idle' }}
+                compact
+                danger
+                onPick={(f) => handleImportConfig(f, 'replace')}
+              />
+            </div>
+
+            <p className="mt-2 text-xs text-ink-400">
+              格式标记 <code className="rounded bg-lavender-100 px-1">__lisse: "config"</code>
+              。合并按 id 更新；替换只清空文件里出现的那几类表再写入。
+            </p>
+
+            <StatusLine status={configStatus} className="mt-3" />
           </section>
 
           {/* Memory export */}
@@ -923,6 +1262,15 @@ function summarizeBackup(r: ImportBackupResult): string {
   return `已恢复：${parts.join('，')}`;
 }
 
+function summarizeConfig(r: ImportConfigResult): string {
+  const parts: string[] = [];
+  if (r.personasAdded) parts.push(`人格 ${r.personasAdded}`);
+  if (r.writingStylesAdded) parts.push(`风格 ${r.writingStylesAdded}`);
+  if (r.endpointsAdded) parts.push(`接口 ${r.endpointsAdded}`);
+  if (r.settingsApplied) parts.push('默认设置已填入');
+  return parts.length ? `已归位：${parts.join('，')}` : '配置已导入（无变更）';
+}
+
 function formatRelativeTime(ts: number): string {
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60_000);
@@ -932,4 +1280,10 @@ function formatRelativeTime(ts: number): string {
   if (hours < 24) return `${hours} 小时前`;
   const days = Math.floor(hours / 24);
   return `${days} 天前`;
+}
+
+function formatShortDate(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
