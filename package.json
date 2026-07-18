@@ -13,7 +13,8 @@
     "test:diary": "node --experimental-strip-types --test scripts/test-diary.mjs",
     "test:thinking-policy": "node --experimental-strip-types --test scripts/test-thinking-policy.mjs",
     "test:cursor-api": "node --experimental-strip-types --test scripts/test-cursor-api.mjs",
-    "test:storage-guards": "node --experimental-strip-types --test scripts/test-storage-guards.mjs"
+    "test:storage-guards": "node --experimental-strip-types --test scripts/test-storage-guards.mjs",
+    "test:parse-document": "node --experimental-strip-types --test scripts/test-parse-document.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",
