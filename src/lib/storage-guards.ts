@@ -9,6 +9,15 @@
 /** Soft cap for a single chat composer message (paste or typed). */
 export const MAX_CHAT_MESSAGE_CHARS = 120_000;
 
+/**
+ * Above this, paste / composer body is auto-folded into a `.txt` attachment
+ * (Claude-style) instead of staying in the textarea.
+ */
+export const AUTO_FOLD_TEXT_CHARS = 8_000;
+
+/** Hard cap for one auto-folded `.txt` payload (IDB / memory safety). */
+export const MAX_FOLDED_TXT_CHARS = 500_000;
+
 /** Hard reject for book body text stored as one IndexedDB row. */
 export const MAX_BOOK_CONTENT_CHARS = 2_000_000;
 
@@ -40,8 +49,8 @@ export function formatBytes(n: number): string {
 export function assertChatMessageSize(text: string): void {
   if (text.length > MAX_CHAT_MESSAGE_CHARS) {
     throw new StorageLimitError(
-      `这段文字太长了（${formatChars(text.length)}），聊天单条上限 ${formatChars(MAX_CHAT_MESSAGE_CHARS)}。` +
-        `超长正文请放到「书架」导入，或拆成多条再发——硬塞进对话容易把本地存储撑爆、页面直接崩掉。`,
+      `这段文字太长了（${formatChars(text.length)}），聊天输入框上限 ${formatChars(MAX_CHAT_MESSAGE_CHARS)}。` +
+        `超长粘贴会自动折叠成 .txt 附件；再长请放到「书架」导入。`,
     );
   }
 }
