@@ -11,7 +11,8 @@
     "test:handoff": "node --experimental-strip-types --test scripts/test-handoff-protocol.mjs",
     "test:travel": "node --experimental-strip-types --test scripts/test-travel-daemon.mjs",
     "test:diary": "node --experimental-strip-types --test scripts/test-diary.mjs",
-    "test:thinking-policy": "node --experimental-strip-types --test scripts/test-thinking-policy.mjs"
+    "test:thinking-policy": "node --experimental-strip-types --test scripts/test-thinking-policy.mjs",
+    "test:cursor-api": "node --experimental-strip-types --test scripts/test-cursor-api.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",

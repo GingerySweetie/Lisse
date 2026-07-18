@@ -60,5 +60,14 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    // Same-origin proxy for Cursor Cloud Agents API (CORS only allows
+    // localhost / cursor.com; deployed hosts should mirror this in nginx).
+    proxy: {
+      '/proxy/cursor': {
+        target: 'https://api.cursor.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/proxy\/cursor/, ''),
+      },
+    },
   },
 })
