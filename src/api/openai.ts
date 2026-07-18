@@ -1,4 +1,5 @@
 import type { Attachment } from '../types';
+import { formatAttachmentForModel } from '../lib/attachments';
 import type { ChatRequest, ChatStreamEvent, ChatTurn, StopReason } from './types';
 import { parseSSE } from './sse';
 
@@ -30,15 +31,21 @@ function buildOpenAIContent(
   // Plain text path: keep the simple shape so old endpoints don't choke.
   if (!attachments || attachments.length === 0) return text;
   const parts: OpenAIContentPart[] = [];
-  if (text) parts.push({ type: 'text', text });
+  const fileNotes: string[] = [];
   for (const a of attachments) {
-    if (a.kind !== 'image') continue;
-    parts.push({
-      type: 'image_url',
-      image_url: { url: `data:${a.mimeType};base64,${a.data}` },
-    });
+    if (a.kind === 'image') {
+      parts.push({
+        type: 'image_url',
+        image_url: { url: `data:${a.mimeType};base64,${a.data}` },
+      });
+      continue;
+    }
+    const note = formatAttachmentForModel(a, { pdfAsNote: true });
+    if (note) fileNotes.push(note);
   }
-  // If only non-image attachments existed and there's no text, send a placeholder.
+  const body = [text, ...fileNotes].filter(Boolean).join('\n\n');
+  if (body) parts.unshift({ type: 'text', text: body });
+  // If only non-image attachments existed and nothing rendered, send a placeholder.
   if (parts.length === 0) return text;
   return parts;
 }

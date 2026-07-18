@@ -1,4 +1,5 @@
 import type { Attachment } from '../types';
+import { formatAttachmentForModel } from '../lib/attachments';
 import type {
   ChatRequest,
   ChatStreamEvent,
@@ -55,6 +56,7 @@ function buildAnthropicContent(
   attachments: Attachment[] | undefined,
 ): AnthropicContentPart[] {
   const parts: AnthropicContentPart[] = [];
+  const fileNotes: string[] = [];
   for (const a of attachments ?? []) {
     if (a.kind === 'image') {
       parts.push({
@@ -66,9 +68,13 @@ function buildAnthropicContent(
         type: 'document',
         source: { type: 'base64', media_type: a.mimeType, data: a.data },
       });
+    } else {
+      const note = formatAttachmentForModel(a);
+      if (note) fileNotes.push(note);
     }
   }
-  if (text) parts.push({ type: 'text', text });
+  const body = [text, ...fileNotes].filter(Boolean).join('\n\n');
+  if (body) parts.push({ type: 'text', text: body });
   if (parts.length === 0) parts.push({ type: 'text', text: '' });
   return parts;
 }

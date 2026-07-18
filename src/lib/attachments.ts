@@ -111,3 +111,61 @@ export function formatBytes(n: number | undefined): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
+
+const TEXT_MIME_RE =
+  /^(text\/|application\/(json|xml|javascript|x-javascript|typescript|x-yaml|yaml|toml|sql|rtf|x-sh|x-httpd-php))/i;
+
+const TEXT_EXT_RE =
+  /\.(txt|md|markdown|csv|tsv|json|xml|html?|css|js|mjs|cjs|ts|tsx|jsx|py|rs|go|java|c|cc|cpp|h|hpp|rb|php|swift|kt|kts|sql|ya?ml|toml|ini|log|rtf|sh|bash|zsh|env|conf|cfg|gitignore|dockerignore|editorconfig)$/i;
+
+/** Whether a non-image attachment can be decoded and injected as UTF-8 text. */
+export function isTextLikeAttachment(a: Attachment): boolean {
+  if (a.kind === 'image') return false;
+  if (a.mimeType === 'application/pdf') return false;
+  if (TEXT_MIME_RE.test(a.mimeType)) return true;
+  if (a.filename && TEXT_EXT_RE.test(a.filename)) return true;
+  // Empty/generic MIME: allow if extension looks textual.
+  if (
+    (!a.mimeType || a.mimeType === 'application/octet-stream') &&
+    a.filename &&
+    TEXT_EXT_RE.test(a.filename)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Decode a base64 attachment payload as UTF-8 text, or null on failure. */
+export function decodeAttachmentText(a: Attachment): string | null {
+  if (!isTextLikeAttachment(a)) return null;
+  try {
+    const binary = atob(a.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Format a non-image attachment for inclusion in the model prompt.
+ * Returns null for images (handled separately) and undecodable binaries.
+ * PDFs are handled by Anthropic's document block; OpenAI gets a short note.
+ */
+export function formatAttachmentForModel(
+  a: Attachment,
+  opts: { pdfAsNote?: boolean } = {},
+): string | null {
+  if (a.kind === 'image') return null;
+  const name = a.filename ?? 'file';
+  if (a.mimeType === 'application/pdf') {
+    if (!opts.pdfAsNote) return null;
+    return `[附件: ${name} (${a.mimeType}, ${formatBytes(a.size)}) — PDF 内容需由支持文档的接口读取]`;
+  }
+  const text = decodeAttachmentText(a);
+  if (text !== null) {
+    return `[附件: ${name}]\n\`\`\`\n${text}\n\`\`\``;
+  }
+  return `[附件: ${name} (${a.mimeType || 'unknown'}, ${formatBytes(a.size)}) — 二进制文件，无法直接读取内容]`;
+}
