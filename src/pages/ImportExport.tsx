@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import {
@@ -14,17 +14,15 @@ import {
   ShieldAlert,
   FolderOpen,
   FolderCheck,
+  Square,
 } from 'lucide-react';
 import { db } from '../db';
 import {
   getLastBackupAt,
   importBackup,
-  downloadBackup,
-  suggestedBackupFilename,
   type ImportBackupResult,
 } from '../lib/backup';
 import {
-  clearBackupFolder,
   getBackupFolder,
   getValidBackupFolder,
   isBackupFolderPickerAvailable,
@@ -38,19 +36,23 @@ import {
   type ImportResult,
 } from '../lib/import';
 import {
-  exportAllConversationsZip,
-  exportConversationsJson,
   exportPersonaMemoryMarkdown,
-  downloadBlob,
   downloadText,
   ONE_MONTH_MS,
   type ConversationFormat,
 } from '../lib/export';
 import {
-  downloadConfigBundle,
   importConfigBundle,
   type ImportConfigResult,
 } from '../lib/config-export';
+import {
+  cancelExportJob,
+  startExportJob,
+  useExportJob,
+  type ExportJobKind,
+} from '../lib/export-job';
+import ExportProgressBar from '../components/ExportProgressBar';
+import type { ExportProgress } from '../lib/export-progress';
 
 type Status =
   | { kind: 'idle' }
@@ -155,6 +157,16 @@ export default function ImportExportPage() {
     [],
   );
   const lastBackupAt = useLiveQuery(() => getLastBackupAt(), [], null);
+  const exportJob = useExportJob();
+  const exportBusy = exportJob?.status === 'running';
+  const mountedRef = useRef(true);
+  const appliedJobIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // ── Data diagnostics ────────────────────────────────────────────────────
   const [diagOpen, setDiagOpen] = useState(false);
@@ -235,6 +247,32 @@ export default function ImportExportPage() {
   const [memoryExportStatus, setMemoryExportStatus] = useState<Status>({
     kind: 'idle',
   });
+
+  // If the user left /data while exporting, sync the finished job into the
+  // matching section status when they come back.
+  useEffect(() => {
+    if (!exportJob || exportJob.status === 'running') return;
+    if (appliedJobIdRef.current === exportJob.id) return;
+    appliedJobIdRef.current = exportJob.id;
+    switch (exportJob.kind) {
+      case 'backup':
+        applyJobResult(exportJob, setBackupStatus);
+        break;
+      case 'conversations-json':
+        applyJobResult(exportJob, setSelectStatus);
+        break;
+      case 'conversations-zip':
+        applyJobResult(exportJob, setBulkStatus);
+        break;
+      case 'config':
+        applyJobResult(exportJob, setConfigStatus);
+        break;
+    }
+  }, [exportJob]);
+
+  function setIfMounted(setter: (s: Status) => void, status: Status) {
+    if (mountedRef.current) setter(status);
+  }
 
   const [bulkFormat, setBulkFormat] = useState<ConversationFormat>('markdown');
   const [bulkScope, setBulkScope] = useState<'branch' | 'tree'>('branch');
@@ -318,41 +356,40 @@ export default function ImportExportPage() {
   }
 
   async function handleExportBackup() {
-    setBackupStatus({ kind: 'busy', label: '打包中…' });
+    setBackupStatus({ kind: 'idle' });
     try {
-      const folder = backupFolderPickerAvailable
-        ? await getValidBackupFolder()
-        : null;
-      await downloadBackup(suggestedBackupFilename());
-      if (folder) {
-        const stillValid = await getValidBackupFolder();
+      const job = await startExportJob({ kind: 'backup' });
+      if (!mountedRef.current) return;
+      if (job.status === 'done') {
+        const stillValid = backupFolderPickerAvailable
+          ? await getValidBackupFolder()
+          : null;
+        if (!mountedRef.current) return;
         if (stillValid) {
           setBackupFolder(stillValid);
           setBackupFolderPermissionLost(false);
-          setBackupStatus({
-            kind: 'ok',
-            label: `已保存到「${stillValid.label}」`,
-          });
-        } else {
+        } else if (backupFolderPickerAvailable && backupFolder) {
+          const valid = await getValidBackupFolder();
+          if (!mountedRef.current) return;
+          if (!valid) {
+            setBackupFolder(null);
+            setBackupFolderPermissionLost(true);
+          }
+        }
+        setBackupStatus({ kind: 'ok', label: job.resultLabel ?? '已保存备份文件' });
+      } else if (job.status === 'cancelled') {
+        setBackupStatus({ kind: 'fail', label: '导出已取消' });
+      } else if (job.status === 'fail') {
+        if (job.errorLabel?.includes('权限')) {
           setBackupFolder(null);
           setBackupFolderPermissionLost(true);
-          setBackupStatus({ kind: 'ok', label: '已保存备份文件（目录权限已失效，已改存默认位置）' });
         }
-      } else {
-        setBackupStatus({ kind: 'ok', label: '已保存备份文件' });
+        setBackupStatus({ kind: 'fail', label: job.errorLabel ?? '导出失败' });
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('PERMISSION_LOST')) {
-        await clearBackupFolder();
-        setBackupFolder(null);
-        setBackupFolderPermissionLost(true);
-      }
-      setBackupStatus({
+      setIfMounted(setBackupStatus, {
         kind: 'fail',
-        label: msg.includes('PERMISSION_LOST')
-          ? '备份目录权限已失效，请重新选择保存位置'
-          : msg,
+        label: err instanceof Error ? err.message : String(err),
       });
     }
   }
@@ -380,17 +417,17 @@ export default function ImportExportPage() {
   }
 
   async function handleBulkExport() {
-    setBulkStatus({ kind: 'busy', label: '打包中…' });
+    setBulkStatus({ kind: 'idle' });
     try {
-      const r = await exportAllConversationsZip({
+      const job = await startExportJob({
+        kind: 'conversations-zip',
         format: bulkFormat,
         scope: bulkScope,
         includeUsage: true,
       });
-      await downloadBlob(r.blob, r.filename);
-      setBulkStatus({ kind: 'ok', label: `已导出 ${r.count} 条对话` });
+      if (mountedRef.current) applyJobResult(job, setBulkStatus);
     } catch (err) {
-      setBulkStatus({
+      setIfMounted(setBulkStatus, {
         kind: 'fail',
         label: err instanceof Error ? err.message : String(err),
       });
@@ -423,16 +460,17 @@ export default function ImportExportPage() {
       setSelectStatus({ kind: 'fail', label: '请先勾选要导出的对话' });
       return;
     }
-    setSelectStatus({ kind: 'busy', label: '导出中…' });
+    setSelectStatus({ kind: 'idle' });
     try {
-      const r = await exportConversationsJson({
+      const job = await startExportJob({
+        kind: 'conversations-json',
         conversationIds: [...selectedConvIds],
         scope: selectScope,
+        titleHint: '已选',
       });
-      await downloadText(r.content, r.filename, r.mime);
-      setSelectStatus({ kind: 'ok', label: `已导出 ${r.count} 条对话 JSON` });
+      if (mountedRef.current) applyJobResult(job, setSelectStatus);
     } catch (err) {
-      setSelectStatus({
+      setIfMounted(setSelectStatus, {
         kind: 'fail',
         label: err instanceof Error ? err.message : String(err),
       });
@@ -440,17 +478,21 @@ export default function ImportExportPage() {
   }
 
   async function handleRecentMonthExportJson() {
-    setSelectStatus({ kind: 'busy', label: '导出中…' });
+    setSelectStatus({ kind: 'idle' });
     try {
-      const r = await exportConversationsJson({
+      const job = await startExportJob({
+        kind: 'conversations-json',
         sinceMs: monthCutoffMs,
         scope: selectScope,
+        titleHint: '近一月',
       });
-      await downloadText(r.content, r.filename, r.mime);
-      setSelectedConvIds(new Set(recentMonthConversations.map((c) => c.id)));
-      setSelectStatus({ kind: 'ok', label: `已导出近一月 ${r.count} 条对话` });
+      if (!mountedRef.current) return;
+      if (job.status === 'done') {
+        setSelectedConvIds(new Set(recentMonthConversations.map((c) => c.id)));
+      }
+      applyJobResult(job, setSelectStatus);
     } catch (err) {
-      setSelectStatus({
+      setIfMounted(setSelectStatus, {
         kind: 'fail',
         label: err instanceof Error ? err.message : String(err),
       });
@@ -458,21 +500,29 @@ export default function ImportExportPage() {
   }
 
   async function handleExportConfig() {
-    setConfigStatus({ kind: 'busy', label: '导出中…' });
+    setConfigStatus({ kind: 'idle' });
     try {
-      await downloadConfigBundle({
+      const job = await startExportJob({
+        kind: 'config',
         includePersonas: cfgPersonas,
         includeWritingStyles: cfgStyles,
         includeEndpoints: cfgEndpoints,
         includeDefaults: cfgDefaults,
       });
-      setConfigStatus({ kind: 'ok', label: '已保存配置 JSON' });
+      if (mountedRef.current) applyJobResult(job, setConfigStatus);
     } catch (err) {
-      setConfigStatus({
+      setIfMounted(setConfigStatus, {
         kind: 'fail',
         label: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  function jobProgressFor(kind: ExportJobKind) {
+    if (exportJob?.kind === kind && exportJob.status === 'running') {
+      return exportJob.progress;
+    }
+    return null;
   }
 
   async function handleImportConfig(file: File, mode: 'merge' | 'replace') {
@@ -637,7 +687,8 @@ export default function ImportExportPage() {
                     <button
                       type="button"
                       onClick={handleExportBackup}
-                      className="flex items-center gap-1.5 rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-200"
+                      disabled={exportBusy}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-medium text-emerald-800 transition hover:bg-emerald-200 disabled:opacity-60"
                     >
                       <Download size={12} />
                       立即导出全量备份
@@ -791,18 +842,13 @@ export default function ImportExportPage() {
               </label>
             </div>
 
-            <div className="mt-4 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleBulkExport}
-                disabled={bulkStatus.kind === 'busy'}
-                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
-              >
-                <Download size={16} />
-                导出 ZIP
-              </button>
-              <StatusLine status={bulkStatus} />
-            </div>
+            <ExportControls
+              progress={jobProgressFor('conversations-zip')}
+              busy={exportBusy}
+              status={bulkStatus}
+              onExport={handleBulkExport}
+              exportLabel="导出 ZIP"
+            />
           </section>
 
           {/* Selective conversation JSON export */}
@@ -820,8 +866,7 @@ export default function ImportExportPage() {
                 type="button"
                 onClick={handleRecentMonthExportJson}
                 disabled={
-                  selectStatus.kind === 'busy' ||
-                  recentMonthConversations.length === 0
+                  exportBusy || recentMonthConversations.length === 0
                 }
                 className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-3 py-1.5 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
               >
@@ -905,20 +950,14 @@ export default function ImportExportPage() {
               )}
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={handleSelectExportJson}
-                disabled={
-                  selectStatus.kind === 'busy' || selectedConvIds.size === 0
-                }
-                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
-              >
-                <Download size={16} />
-                导出已选 JSON（{selectedConvIds.size}）
-              </button>
-              <StatusLine status={selectStatus} />
-            </div>
+            <ExportControls
+              progress={jobProgressFor('conversations-json')}
+              busy={exportBusy}
+              status={selectStatus}
+              onExport={handleSelectExportJson}
+              exportLabel={`导出已选 JSON（${selectedConvIds.size}）`}
+              exportDisabled={selectedConvIds.size === 0}
+            />
           </section>
 
           {/* Config: personas / styles / API keys */}
@@ -978,7 +1017,7 @@ export default function ImportExportPage() {
                 type="button"
                 onClick={handleExportConfig}
                 disabled={
-                  configStatus.kind === 'busy' ||
+                  exportBusy ||
                   (!cfgPersonas &&
                     !cfgStyles &&
                     !cfgEndpoints &&
@@ -1005,6 +1044,13 @@ export default function ImportExportPage() {
                 onPick={(f) => handleImportConfig(f, 'replace')}
               />
             </div>
+
+            {jobProgressFor('config') && (
+              <ExportProgressBar
+                progress={jobProgressFor('config')!}
+                className="mt-3"
+              />
+            )}
 
             <p className="mt-2 text-xs text-ink-400">
               格式标记 <code className="rounded bg-lavender-100 px-1">__lisse: "config"</code>
@@ -1127,7 +1173,8 @@ export default function ImportExportPage() {
               <button
                 type="button"
                 onClick={handleExportBackup}
-                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300"
+                disabled={exportBusy}
+                className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
               >
                 <Download size={16} />
                 导出全部
@@ -1149,6 +1196,25 @@ export default function ImportExportPage() {
               />
             </div>
 
+            {jobProgressFor('backup') && (
+              <div className="mt-3 space-y-2">
+                <ExportProgressBar progress={jobProgressFor('backup')!} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => cancelExportJob()}
+                    className="flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs text-rose-600 transition hover:bg-rose-100"
+                  >
+                    <Square size={10} fill="currentColor" />
+                    取消导出
+                  </button>
+                  <span className="text-xs text-ink-400">
+                    可离开本页，导出会在后台继续
+                  </span>
+                </div>
+              </div>
+            )}
+
             <p className="mt-2 text-xs text-ink-400">
               合并：按 id 写入/更新（人设、写作风格、API key、设置会填到对应页）；替换：先清空再完整恢复。
             </p>
@@ -1157,6 +1223,55 @@ export default function ImportExportPage() {
           </section>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ExportControls({
+  progress,
+  busy,
+  status,
+  onExport,
+  exportLabel,
+  exportDisabled,
+}: {
+  progress: ExportProgress | null;
+  busy: boolean;
+  status: Status;
+  onExport: () => void;
+  exportLabel: string;
+  exportDisabled?: boolean;
+}) {
+  return (
+    <div className="mt-4 space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={busy || !!exportDisabled}
+          className="flex items-center gap-1.5 rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-60"
+        >
+          <Download size={16} />
+          {exportLabel}
+        </button>
+        {progress && (
+          <button
+            type="button"
+            onClick={() => cancelExportJob()}
+            className="flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-600 transition hover:bg-rose-100"
+          >
+            <Square size={10} fill="currentColor" />
+            取消
+          </button>
+        )}
+        <StatusLine status={status} />
+      </div>
+      {progress && (
+        <>
+          <ExportProgressBar progress={progress} />
+          <p className="text-xs text-ink-400">可离开本页，导出会在后台继续</p>
+        </>
+      )}
     </div>
   );
 }
@@ -1234,6 +1349,19 @@ function StatusLine({ status, className }: { status: Status; className?: string 
       <span className="break-all">{status.label}</span>
     </span>
   );
+}
+
+function applyJobResult(
+  job: { status: string; resultLabel?: string; errorLabel?: string },
+  setStatus: (s: Status) => void,
+): void {
+  if (job.status === 'done') {
+    setStatus({ kind: 'ok', label: job.resultLabel ?? '已完成' });
+  } else if (job.status === 'cancelled') {
+    setStatus({ kind: 'fail', label: '导出已取消' });
+  } else if (job.status === 'fail') {
+    setStatus({ kind: 'fail', label: job.errorLabel ?? '导出失败' });
+  }
 }
 
 function summarizeImport(r: ImportResult): string {

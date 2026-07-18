@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
+import ExportJobBanner from './components/ExportJobBanner';
 import ShareReceiver from './components/ShareReceiver';
 import BillReceiver from './components/BillReceiver';
 import HomePage from './pages/Home';
@@ -113,6 +114,7 @@ export default function App() {
         </Routes>
       </Suspense>
       <UpdateBanner />
+      <ExportJobBanner />
       {globalError && (
         <div
           style={{

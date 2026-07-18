@@ -1,6 +1,11 @@
 import { db, getSettings, saveSettings } from '../db';
 import type { AppSettings, Endpoint, Persona, WritingStyle } from '../types';
 import { downloadText } from './export';
+import {
+  makeProgress,
+  throwIfAborted,
+  type ExportProgressCallback,
+} from './export-progress';
 
 /** Settings fields restored with a config bundle so defaults land in the right UI. */
 export type ConfigSettingsSlice = Pick<
@@ -24,6 +29,8 @@ export interface ConfigExportOptions {
   includeWritingStyles?: boolean;
   /** Restore default endpoint / persona / style ids on import. */
   includeDefaults?: boolean;
+  signal?: AbortSignal;
+  onProgress?: ExportProgressCallback;
 }
 
 export interface ImportConfigResult {
@@ -59,6 +66,20 @@ export async function exportConfigBundle(
     throw new Error('请至少勾选一项再导出');
   }
 
+  const steps =
+    Number(includeEndpoints) +
+    Number(includePersonas) +
+    Number(includeWritingStyles) +
+    Number(includeDefaults) +
+    1; // serialize
+  let done = 0;
+  const report = (label: string, phase: string) => {
+    opts.onProgress?.(makeProgress(done, steps, label, phase));
+  };
+
+  report('读取配置…', 'prepare');
+  throwIfAborted(opts.signal);
+
   const [endpoints, personas, writingStyles, settings] = await Promise.all([
     includeEndpoints ? db.endpoints.toArray() : Promise.resolve(undefined),
     includePersonas ? db.personas.toArray() : Promise.resolve(undefined),
@@ -68,6 +89,24 @@ export async function exportConfigBundle(
     includeDefaults ? getSettings() : Promise.resolve(undefined),
   ]);
 
+  if (includePersonas) {
+    done += 1;
+    report(`人格 ${personas?.length ?? 0} 条`, 'personas');
+  }
+  if (includeWritingStyles) {
+    done += 1;
+    report(`风格 ${writingStyles?.length ?? 0} 条`, 'styles');
+  }
+  if (includeEndpoints) {
+    done += 1;
+    report(`Endpoints ${endpoints?.length ?? 0} 条`, 'endpoints');
+  }
+  if (includeDefaults) {
+    done += 1;
+    report('默认设置', 'defaults');
+  }
+
+  throwIfAborted(opts.signal);
   const exportedAt = Date.now();
   const bundle: ConfigBundle = {
     __lisse: 'config',
@@ -86,6 +125,9 @@ export async function exportConfigBundle(
   if (includeDefaults) parts.push('defaults');
   const tag = parts.join('-') || 'config';
 
+  done = steps;
+  report('生成 JSON…', 'serialize');
+
   return {
     content: JSON.stringify(bundle, null, 2),
     filename: `lisse-config-${tag}-${formatDateTag(exportedAt)}.json`,
@@ -97,6 +139,8 @@ export async function downloadConfigBundle(
   opts: ConfigExportOptions,
 ): Promise<void> {
   const r = await exportConfigBundle(opts);
+  throwIfAborted(opts.signal);
+  opts.onProgress?.(makeProgress(1, 1, '写入文件…', 'save'));
   await downloadText(r.content, r.filename, r.mime);
 }
 
