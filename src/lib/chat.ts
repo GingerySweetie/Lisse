@@ -12,6 +12,7 @@ import type {
 import { newId } from './id';
 import { getActiveBranch } from './branch';
 import { type ChatTurn } from '../api';
+import { thinkingOptsFromEndpoint } from '../api/thinking';
 import {
   retrieveFacts,
   formatFactsBlock,
@@ -813,10 +814,7 @@ async function streamAssistant(args: {
     tools,
     ctx: { persona, conversationId: convId },
     signal,
-    thinking:
-      endpoint.format === 'anthropic' && endpoint.thinkingEnabled
-        ? { enabled: true, budgetTokens: endpoint.thinkingBudget }
-        : undefined,
+    thinking: thinkingOptsFromEndpoint(endpoint),
     callbacks: {
       onTextDelta: (d) => onDelta?.(d, assistantMessageId),
       onThinkingDelta: (d) => onThinking?.(d, assistantMessageId),

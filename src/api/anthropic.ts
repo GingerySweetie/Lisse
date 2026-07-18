@@ -5,7 +5,13 @@ import type {
   ChatTurn,
   StopReason,
 } from './types';
+import { modelSupportsAdaptiveThinking } from './thinking';
 import { parseSSE } from './sse';
+
+/** Room for thinking + reply under adaptive / high-effort modes. */
+const ADAPTIVE_THINKING_MAX_TOKENS = 32000;
+/** Manual budget mode: leave real headroom after budget_tokens. */
+const MANUAL_THINKING_HEADROOM = 16384;
 
 const DEFAULT_ANTHROPIC_VERSION = '2023-06-01';
 
@@ -238,16 +244,46 @@ export async function* streamAnthropic(
   // the previous assistant reply — the main driver of 96%+ hit rates.
   attachRollingBreakpoint(messages, cacheControl);
 
-  // Extended thinking: when enabled, thinking deltas come in their own block
-  // type and the model has a separate budget. Temperature must be 1 (or unset)
-  // when thinking / adaptive-think models are in play — never send 0.7 etc.
+  // Extended thinking.
+  //
+  // Opus/Sonnet 4.6+: adaptive + output_config.effort (budget_tokens is
+  // deprecated and yields shallower thinking). Older Claude 4.5-and-below
+  // still need type:"enabled" + budget_tokens.
+  //
+  // Thinking tokens count toward max_tokens. The old floor of
+  // budget+1024 hard-capped deep reasoning — raise headroom aggressively.
+  // Temperature must be unset when thinking is on.
   const thinkingEnabled = req.thinking?.enabled === true;
   const adaptiveThinkModel = /think/i.test(req.model);
-  const thinkingBudget = Math.max(1024, req.thinking?.budgetTokens ?? 6000);
+  const useAdaptive =
+    thinkingEnabled && modelSupportsAdaptiveThinking(req.model);
+  const thinkingBudget = Math.max(1024, req.thinking?.budgetTokens ?? 16000);
+  const effort = req.thinking?.effort ?? 'high';
   const maxTokens = Math.max(
     req.maxTokens ?? 4096,
-    thinkingEnabled ? thinkingBudget + 1024 : 0,
+    thinkingEnabled
+      ? useAdaptive
+        ? ADAPTIVE_THINKING_MAX_TOKENS
+        : thinkingBudget + MANUAL_THINKING_HEADROOM
+      : 0,
   );
+
+  const thinkingBody = !thinkingEnabled
+    ? undefined
+    : useAdaptive
+      ? {
+          // display:summarized — newest models default to "omitted" (empty
+          // thinking field). Opus 4.6 defaults to summarized already, but
+          // set it explicitly so relay model ids behave consistently.
+          thinking: { type: 'adaptive', display: 'summarized' },
+          output_config: { effort },
+        }
+      : {
+          thinking: {
+            type: 'enabled',
+            budget_tokens: thinkingBudget,
+          },
+        };
 
   const body: Record<string, unknown> = {
     model: req.model,
@@ -259,10 +295,10 @@ export async function* streamAnthropic(
     // Without this, AIHubMix load balancer distributes requests randomly:
     //   Turn 1: Node A creates cache → Turn 2: Node B has no cache → 0% hit.
     metadata: { user_id: 'lisse-stable-user' },
-    ...(thinkingEnabled
-      ? { thinking: { type: 'enabled', budget_tokens: thinkingBudget } }
-      : !adaptiveThinkModel &&
-        req.temperature !== undefined && { temperature: req.temperature }),
+    ...thinkingBody,
+    ...(!thinkingEnabled &&
+      !adaptiveThinkModel &&
+      req.temperature !== undefined && { temperature: req.temperature }),
   };
   if (req.tools && req.tools.length > 0) {
     body.tools = req.tools.map((t) => ({

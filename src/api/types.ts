@@ -38,8 +38,14 @@ export interface ChatRequest {
   signal?: AbortSignal;
   temperature?: number;
   maxTokens?: number;
-  /** Enable extended thinking (Anthropic). Caller must check model support. */
-  thinking?: { enabled: boolean; budgetTokens?: number };
+  /** Enable extended thinking (Anthropic). Caller must check model support.
+   *  On Opus/Sonnet 4.6+, `effort` drives adaptive thinking; `budgetTokens`
+   *  is only used for older manual-thinking models. */
+  thinking?: {
+    enabled: boolean;
+    budgetTokens?: number;
+    effort?: 'low' | 'medium' | 'high' | 'max';
+  };
   /** Tools available to the model. If non-empty, the request includes them
    *  and the stream may yield tool_call_* events. */
   tools?: ToolDef[];
