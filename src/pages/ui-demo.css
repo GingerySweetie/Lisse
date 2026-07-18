@@ -1,15 +1,21 @@
-/* Wisteria UI beauty demo — visual only */
+/* Ripple skin demo — 薄花色 / periwinkle gray */
 
 .uidemo {
-  --ink: #3a3048;
-  --ink-soft: rgba(74, 58, 96, 0.62);
-  --ink-faint: rgba(110, 88, 140, 0.38);
-  --bloom: #8b6fad;
-  --petal: #c4a8d8;
-  --mist: #ebe3f2;
-  --sun: rgba(255, 214, 170, 0.22);
-  --teal-haze: rgba(120, 168, 176, 0.12);
-  --paper: #f4eef8;
+  --rp-50: #f0f2f8;
+  --rp-100: #e4e7f1;
+  --rp-200: #cdd2e5;
+  --rp-300: #a8aecb;
+  --rp-400: #8a91b5;
+  --rp-500: #6b72a0;
+  --rp-600: #555c88;
+  --rp-700: #414769;
+  --rp-900: #1c1f35;
+  --rp-ink-90: rgba(28, 31, 53, 0.88);
+  --rp-ink-60: rgba(28, 31, 53, 0.55);
+  --rp-ink-40: rgba(28, 31, 53, 0.38);
+  --rp-ink-20: rgba(28, 31, 53, 0.18);
+  --rp-ink-08: rgba(28, 31, 53, 0.06);
+  --rp-glass: rgba(240, 242, 248, 0.72);
   --font-display: 'Cormorant Garamond', 'Noto Serif SC', Georgia, serif;
   --font-body: 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
@@ -18,10 +24,18 @@
   display: grid;
   grid-template-columns: minmax(240px, 320px) 1fr;
   background:
-    radial-gradient(ellipse 70% 50% at 12% 18%, var(--sun), transparent 55%),
-    radial-gradient(ellipse 55% 60% at 88% 78%, var(--teal-haze), transparent 50%),
-    linear-gradient(155deg, #f7f1fa 0%, #ebe4f3 42%, #f3edf6 100%);
-  color: var(--ink);
+    radial-gradient(
+      ellipse 55% 45% at 85% 12%,
+      rgba(168, 174, 203, 0.18),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 50% 40% at 12% 88%,
+      rgba(120, 165, 175, 0.1),
+      transparent 55%
+    ),
+    linear-gradient(155deg, #f0f2f8 0%, #e4e7f1 45%, #eef0f6 100%);
+  color: var(--rp-ink-90);
   font-family: var(--font-body);
   font-weight: 300;
 }
@@ -31,11 +45,11 @@
   flex-direction: column;
   gap: 1.25rem;
   padding: 2rem 1.6rem;
-  border-right: 1px solid rgba(140, 115, 170, 0.12);
+  border-right: 1px solid var(--rp-ink-08);
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.28) 0%,
-    rgba(244, 238, 248, 0.12) 100%
+    rgba(255, 255, 255, 0.35) 0%,
+    rgba(240, 242, 248, 0.15) 100%
   );
   backdrop-filter: blur(8px);
 }
@@ -51,21 +65,21 @@
   font-size: 1.55rem;
   font-weight: 300;
   letter-spacing: 0.14em;
-  color: rgba(88, 64, 118, 0.78);
+  color: var(--rp-600);
 }
 
 .uidemo-rail-sub {
   margin-top: 0.15rem;
   font-size: 0.72rem;
   letter-spacing: 0.12em;
-  color: var(--ink-faint);
+  color: var(--rp-ink-20);
 }
 
 .uidemo-rail-copy {
   margin: 0;
   font-size: 0.86rem;
   line-height: 1.7;
-  color: var(--ink-soft);
+  color: var(--rp-ink-60);
 }
 
 .uidemo-tabs {
@@ -76,9 +90,9 @@
 .uidemo-tabs button {
   flex: 1;
   padding: 0.55rem 0.7rem;
-  border: 1px solid rgba(140, 115, 170, 0.18);
+  border: 1px solid rgba(107, 114, 160, 0.2);
   background: transparent;
-  color: var(--ink-soft);
+  color: var(--rp-ink-60);
   font-family: var(--font-body);
   font-size: 0.82rem;
   letter-spacing: 0.08em;
@@ -89,22 +103,22 @@
 }
 
 .uidemo-tabs button.is-active {
-  background: rgba(139, 111, 173, 0.14);
-  border-color: rgba(139, 111, 173, 0.35);
-  color: rgba(78, 56, 108, 0.88);
+  background: rgba(107, 114, 160, 0.12);
+  border-color: rgba(107, 114, 160, 0.35);
+  color: var(--rp-600);
 }
 
 .uidemo-notes {
   margin: 0.25rem 0 0;
   padding: 0 0 0 1rem;
-  color: var(--ink-faint);
+  color: var(--rp-ink-40);
   font-size: 0.78rem;
   line-height: 1.85;
 }
 
 .uidemo-exit {
   margin-top: auto;
-  color: rgba(100, 78, 135, 0.7);
+  color: var(--rp-ink-60);
   text-decoration: none;
   font-size: 0.82rem;
   letter-spacing: 0.04em;
@@ -112,7 +126,7 @@
 }
 
 .uidemo-exit:hover {
-  color: rgba(78, 56, 108, 0.95);
+  color: var(--rp-600);
 }
 
 .uidemo-stage {
@@ -127,10 +141,9 @@
   width: min(390px, 100%);
   height: min(780px, calc(100vh - 3.5rem));
   overflow: hidden;
-  border: 1px solid rgba(130, 105, 165, 0.16);
-  background: var(--paper);
-  /* Soft depth only — avoid heavy multi-layer card chrome. */
-  box-shadow: 0 18px 48px rgba(90, 70, 120, 0.08);
+  border: 1px solid rgba(138, 145, 181, 0.2);
+  background: var(--rp-50);
+  box-shadow: 0 18px 48px rgba(45, 49, 80, 0.1);
   animation: uidemo-phone-in 0.7s ease both;
 }
 
@@ -145,62 +158,116 @@
   }
 }
 
-/* ── Home ── */
+/* ── Ambient rings / shimmer / noise ── */
 
-.uidemo-home {
-  background:
-    radial-gradient(
-      ellipse 80% 45% at 70% 8%,
-      rgba(255, 220, 180, 0.16),
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse 70% 55% at 18% 88%,
-      rgba(160, 130, 195, 0.12),
-      transparent 55%
-    ),
-    linear-gradient(180deg, #f2ebf7 0%, #ebe3f2 40%, #f5f0f9 100%);
-}
-
-.uidemo-haze {
+.uidemo-ambient {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+  z-index: 1;
 }
 
-.uidemo-haze-a {
-  background: radial-gradient(
-    ellipse 50% 35% at 55% 30%,
-    rgba(200, 170, 225, 0.14),
-    transparent 70%
-  );
-  animation: uidemo-drift 12s ease-in-out infinite alternate;
+.uidemo-ambient-ring,
+.uidemo-ring {
+  transform-origin: center;
+  animation: uidemo-ring-breathe 5.5s ease-in-out infinite alternate;
 }
 
-.uidemo-haze-b {
-  background: radial-gradient(
-    ellipse 40% 30% at 30% 70%,
-    rgba(130, 175, 180, 0.1),
-    transparent 65%
-  );
-  animation: uidemo-drift 16s ease-in-out infinite alternate-reverse;
-}
-
-@keyframes uidemo-drift {
+@keyframes uidemo-ring-breathe {
   from {
-    transform: translate3d(-1.5%, -1%, 0);
+    opacity: 0.35;
   }
   to {
-    transform: translate3d(2%, 1.5%, 0);
+    opacity: 0.85;
+  }
+}
+
+.uidemo-shimmer {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.07;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--rp-400) 30%,
+    var(--rp-500) 50%,
+    var(--rp-400) 70%,
+    transparent 100%
+  );
+  animation: uidemo-shimmer 7s ease-in-out infinite alternate;
+}
+
+@keyframes uidemo-shimmer {
+  from {
+    transform: translateX(-12%);
+  }
+  to {
+    transform: translateX(12%);
   }
 }
 
 .uidemo-grain {
   position: absolute;
   inset: 0;
-  opacity: 0.035;
+  z-index: 2;
+  opacity: 0.22;
   pointer-events: none;
+  mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.uidemo-click-ripple {
+  position: absolute;
+  z-index: 20;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.uidemo-click-ripple span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(107, 114, 160, 0.28);
+  transform: translate(-50%, -50%);
+  animation: uidemo-ripple-expand 1.8s ease-out forwards;
+}
+
+.uidemo-click-ripple span:nth-child(2) {
+  animation-delay: 0.22s;
+}
+
+.uidemo-click-ripple span:nth-child(3) {
+  animation-delay: 0.44s;
+}
+
+@keyframes uidemo-ripple-expand {
+  0% {
+    width: 0;
+    height: 0;
+    opacity: 0.5;
+  }
+  100% {
+    width: 180px;
+    height: 180px;
+    opacity: 0;
+  }
+}
+
+/* ── Home ── */
+
+.uidemo-home {
+  background: linear-gradient(180deg, var(--rp-50) 0%, var(--rp-100) 55%, #eef1f7 100%);
 }
 
 .uidemo-home-brand {
@@ -223,28 +290,13 @@
   margin-bottom: 0.85rem;
 }
 
-.uidemo-mark .uidemo-vine {
-  transform-origin: 20px 12px;
-  animation: uidemo-sway 4.8s ease-in-out infinite;
-}
-
-@keyframes uidemo-sway {
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-  50% {
-    transform: rotate(1.4deg);
-  }
-}
-
 .uidemo-wordmark {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2.4rem, 9vw, 2.85rem);
   font-weight: 300;
   letter-spacing: 0.22em;
-  color: rgba(92, 68, 122, 0.72);
+  color: rgba(85, 92, 136, 0.78);
   transition:
     opacity 0.45s ease,
     transform 0.45s ease;
@@ -252,9 +304,9 @@
 
 .uidemo-tagline {
   margin: 0.55rem 0 0;
-  font-size: 0.82rem;
-  letter-spacing: 0.14em;
-  color: var(--ink-faint);
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  color: var(--rp-ink-20);
   transition:
     opacity 0.45s ease,
     transform 0.45s ease;
@@ -274,9 +326,9 @@
 .uidemo-cta {
   margin-top: 1.4rem;
   padding: 0.55rem 1.35rem;
-  border: 1px solid rgba(130, 105, 165, 0.28);
-  background: rgba(255, 255, 255, 0.28);
-  color: rgba(88, 64, 118, 0.78);
+  border: 1px solid rgba(107, 114, 160, 0.28);
+  background: rgba(255, 255, 255, 0.35);
+  color: var(--rp-600);
   font-family: var(--font-body);
   font-size: 0.8rem;
   letter-spacing: 0.18em;
@@ -287,8 +339,8 @@
 }
 
 .uidemo-cta:hover {
-  background: rgba(255, 255, 255, 0.45);
-  border-color: rgba(130, 105, 165, 0.42);
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(107, 114, 160, 0.42);
 }
 
 @keyframes uidemo-fade-up {
@@ -337,13 +389,13 @@
 .uidemo-space-label {
   font-size: 0.9rem;
   letter-spacing: 0.1em;
-  color: rgba(90, 68, 122, 0.68);
+  color: rgba(65, 71, 105, 0.72);
 }
 
 .uidemo-space-hint {
   font-size: 0.68rem;
   letter-spacing: 0.06em;
-  color: rgba(120, 100, 150, 0.38);
+  color: var(--rp-ink-20);
 }
 
 .uidemo-space-line {
@@ -352,8 +404,8 @@
   height: 1px;
   background: linear-gradient(
     90deg,
-    rgba(150, 120, 185, 0.28),
-    rgba(150, 120, 185, 0.04)
+    rgba(138, 145, 181, 0.35),
+    rgba(138, 145, 181, 0.04)
   );
   transition: width 0.3s ease;
 }
@@ -371,7 +423,7 @@
   font-family: var(--font-mono);
   font-size: 0.62rem;
   letter-spacing: 0.16em;
-  color: rgba(130, 110, 160, 0.28);
+  color: var(--rp-ink-20);
   z-index: 2;
 }
 
@@ -380,35 +432,20 @@
 .uidemo-chat {
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #f3edf7 0%, #f7f2fa 55%, #f2ebf6 100%);
-}
-
-.uidemo-chat-wash {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(
-      ellipse 60% 30% at 80% 0%,
-      rgba(255, 220, 180, 0.12),
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse 50% 40% at 10% 90%,
-      rgba(150, 125, 185, 0.1),
-      transparent 55%
-    );
+  background: linear-gradient(180deg, var(--rp-50) 0%, #eef1f7 55%, var(--rp-100) 100%);
 }
 
 .uidemo-chat-bar {
   position: relative;
-  z-index: 2;
+  z-index: 4;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 0.65rem;
   padding: 0.9rem 0.95rem 0.75rem;
-  border-bottom: 1px solid rgba(140, 115, 170, 0.1);
+  border-bottom: 1px solid var(--rp-ink-08);
+  background: var(--rp-glass);
+  backdrop-filter: blur(16px);
 }
 
 .uidemo-back {
@@ -416,7 +453,7 @@
   height: 2rem;
   border: none;
   background: none;
-  color: rgba(100, 80, 135, 0.55);
+  color: var(--rp-ink-40);
   font-size: 1.05rem;
   line-height: 1;
 }
@@ -432,14 +469,14 @@
   font-family: var(--font-display);
   font-size: 1.15rem;
   letter-spacing: 0.08em;
-  color: rgba(88, 64, 118, 0.82);
+  color: var(--rp-600);
 }
 
 .uidemo-chat-meta {
   margin-top: 0.1rem;
   font-size: 0.68rem;
   letter-spacing: 0.1em;
-  color: var(--ink-faint);
+  color: var(--rp-ink-20);
 }
 
 .uidemo-chat-tools {
@@ -447,12 +484,12 @@
   gap: 0.55rem;
   font-size: 0.68rem;
   letter-spacing: 0.08em;
-  color: rgba(120, 100, 150, 0.42);
+  color: var(--rp-ink-20);
 }
 
 .uidemo-thread {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   flex: 1;
   overflow-y: auto;
   padding: 1.15rem 1rem 0.5rem;
@@ -470,7 +507,7 @@
   margin: 0;
   font-size: 0.9rem;
   line-height: 1.7;
-  color: rgba(58, 48, 72, 0.86);
+  color: var(--rp-ink-60);
   font-weight: 300;
 }
 
@@ -478,12 +515,13 @@
   margin-bottom: 0.25rem;
   font-size: 0.68rem;
   letter-spacing: 0.12em;
-  color: rgba(130, 105, 165, 0.5);
+  color: var(--rp-ink-20);
 }
 
 .uidemo-bubble.is-ai {
   align-self: flex-start;
-  padding-right: 0.5rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid rgba(168, 174, 203, 0.28);
 }
 
 .uidemo-bubble.is-user {
@@ -494,14 +532,14 @@
 .uidemo-bubble.is-user p {
   display: inline-block;
   padding: 0.55rem 0.85rem;
-  background: rgba(170, 145, 200, 0.14);
-  border: 1px solid rgba(150, 125, 185, 0.12);
-  color: rgba(70, 55, 95, 0.88);
+  background: var(--rp-500);
+  color: var(--rp-50);
+  border-radius: 14px 14px 4px 14px;
 }
 
 .uidemo-composer {
   position: relative;
-  z-index: 2;
+  z-index: 4;
   padding: 0.65rem 0.9rem 1rem;
 }
 
@@ -510,8 +548,9 @@
   align-items: flex-end;
   gap: 0.55rem;
   padding: 0.55rem 0.65rem 0.55rem 0.85rem;
-  border: 1px solid rgba(140, 115, 170, 0.16);
-  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid var(--rp-ink-08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .uidemo-composer-shell textarea {
@@ -522,28 +561,28 @@
   font-family: var(--font-body);
   font-size: 0.88rem;
   font-weight: 300;
-  color: var(--ink);
+  color: var(--rp-ink-90);
   line-height: 1.5;
   min-height: 1.5rem;
   max-height: 5rem;
 }
 
 .uidemo-composer-shell textarea::placeholder {
-  color: rgba(130, 110, 160, 0.35);
+  color: var(--rp-ink-20);
 }
 
 .uidemo-send {
   padding: 0.35rem 0.7rem;
   border: none;
   background: transparent;
-  color: rgba(100, 78, 135, 0.72);
+  color: var(--rp-500);
   font-family: var(--font-body);
   font-size: 0.78rem;
   letter-spacing: 0.1em;
 }
 
 .uidemo-send:disabled {
-  color: rgba(130, 110, 160, 0.28);
+  color: var(--rp-ink-20);
   cursor: default;
 }
 
@@ -552,7 +591,7 @@
   text-align: center;
   font-size: 0.62rem;
   letter-spacing: 0.08em;
-  color: rgba(130, 110, 160, 0.32);
+  color: var(--rp-ink-20);
 }
 
 @media (max-width: 860px) {
@@ -562,7 +601,7 @@
 
   .uidemo-rail {
     border-right: none;
-    border-bottom: 1px solid rgba(140, 115, 170, 0.12);
+    border-bottom: 1px solid var(--rp-ink-08);
     padding: 1.25rem 1.1rem 1rem;
   }
 
@@ -578,5 +617,17 @@
 
   .uidemo-phone {
     height: min(720px, 78vh);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uidemo-ambient-ring,
+  .uidemo-ring,
+  .uidemo-shimmer,
+  .uidemo-phone,
+  .uidemo-bubble,
+  .uidemo-cta,
+  .uidemo-click-ripple span {
+    animation: none !important;
   }
 }

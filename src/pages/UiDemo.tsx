@@ -1,12 +1,32 @@
 /**
- * Visual-only UI beauty demo for Wisteria.
- * Not wired to real chat / data — pure mock for design review.
+ * Visual-only Ripple skin demo.
+ * Layout mirrors current /home courtyard; vines → concentric ripples.
+ * Palette: 薄花色 / 群青鼠 / periwinkle gray (from design notes).
  */
-import { useEffect, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from 'react';
 import { Link } from 'react-router-dom';
 import './ui-demo.css';
 
 type Panel = 'home' | 'chat';
+
+const RP = {
+  50: '#f0f2f8',
+  100: '#e4e7f1',
+  200: '#cdd2e5',
+  300: '#a8aecb',
+  400: '#8a91b5',
+  500: '#6b72a0',
+  600: '#555c88',
+  700: '#414769',
+  900: '#1c1f35',
+} as const;
 
 const SPACES = [
   { id: 'chat', label: '客厅', hint: '对话与群聊', top: '32%', left: '14%' },
@@ -20,7 +40,7 @@ const MOCK_MESSAGES = [
   {
     role: 'assistant' as const,
     name: '理理酱',
-    text: '下午好。窗边的光已经斜过来了——今天想聊点什么？',
+    text: '下午好。暮光落在水面上——今天想聊点什么？',
   },
   {
     role: 'user' as const,
@@ -33,68 +53,160 @@ const MOCK_MESSAGES = [
   },
 ];
 
-function VineMark({ size = 48 }: { size?: number }) {
+type ClickRipple = { id: number; x: number; y: number };
+
+function RippleMark({ size = 48 }: { size?: number }) {
   return (
     <svg
       className="uidemo-mark"
       width={size}
-      height={size * 1.15}
-      viewBox="0 0 40 46"
+      height={size}
+      viewBox="0 0 48 48"
       aria-hidden
     >
-      <line
-        x1="20"
-        y1="2"
-        x2="20"
-        y2="12"
-        stroke="rgba(120,95,150,0.35)"
-        strokeWidth="0.9"
-      />
-      {[
-        { x: 13, len: 20, d: 0 },
-        { x: 17, len: 26, d: 0.35 },
-        { x: 20, len: 30, d: 0.1 },
-        { x: 23, len: 24, d: 0.45 },
-        { x: 27, len: 18, d: 0.2 },
-      ].map((s, i) => (
-        <g key={i} className="uidemo-vine" style={{ animationDelay: `${s.d}s` }}>
-          <line
-            x1={s.x}
-            y1="12"
-            x2={s.x}
-            y2={12 + s.len}
-            stroke="rgba(150,120,185,0.28)"
-            strokeWidth="0.75"
-          />
-          <circle
-            cx={s.x}
-            cy={12 + s.len}
-            r={1.1 + (s.len / 30) * 1.3}
-            fill={
-              i === 2 ? 'rgba(175,145,205,0.45)' : 'rgba(160,130,190,0.28)'
-            }
-          />
-        </g>
+      {[8, 14, 20].map((r, i) => (
+        <circle
+          key={r}
+          className="uidemo-ring"
+          cx="24"
+          cy="24"
+          r={r}
+          fill="none"
+          stroke={RP[300]}
+          strokeWidth={i === 0 ? 1.1 : 0.7}
+          opacity={0.45 - i * 0.1}
+          style={{ animationDelay: `${i * 0.35}s` }}
+        />
       ))}
-      <circle cx="20" cy="12" r="1.4" fill="rgba(145,115,175,0.35)" />
+      <circle cx="24" cy="24" r="2.2" fill={RP[400]} opacity={0.55} />
     </svg>
   );
 }
 
-function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
-  const [open, setOpen] = useState(false);
+function AmbientRings() {
+  return (
+    <svg className="uidemo-ambient" viewBox="0 0 390 780" aria-hidden>
+      {/* upper-right cluster — replaces hanging vines */}
+      {[36, 64, 96, 132, 172].map((r, i) => (
+        <circle
+          key={`a-${r}`}
+          className="uidemo-ambient-ring"
+          cx="310"
+          cy="120"
+          r={r}
+          fill="none"
+          stroke={RP[300]}
+          strokeWidth={i === 4 ? 0.45 : 0.7}
+          opacity={0.11 - i * 0.015}
+          style={{ animationDelay: `${i * 0.5}s` }}
+        />
+      ))}
+      {/* lower-left quieter cluster */}
+      {[28, 52, 80].map((r, i) => (
+        <circle
+          key={`b-${r}`}
+          className="uidemo-ambient-ring"
+          cx="48"
+          cy="620"
+          r={r}
+          fill="none"
+          stroke={RP[400]}
+          strokeWidth={0.55}
+          opacity={0.08 - i * 0.015}
+          style={{ animationDelay: `${1.2 + i * 0.6}s` }}
+        />
+      ))}
+      {/* faint center bloom behind brand */}
+      {[40, 70, 105].map((r, i) => (
+        <circle
+          key={`c-${r}`}
+          className="uidemo-ambient-ring"
+          cx="195"
+          cy="320"
+          r={r}
+          fill="none"
+          stroke={RP[300]}
+          strokeWidth={0.5}
+          opacity={0.05 - i * 0.008}
+          style={{ animationDelay: `${0.8 + i * 0.4}s` }}
+        />
+      ))}
+    </svg>
+  );
+}
+
+function ShimmerLine({ top }: { top: string }) {
+  return <div className="uidemo-shimmer" style={{ top }} />;
+}
+
+function ClickRipples({ items }: { items: ClickRipple[] }) {
+  return (
+    <>
+      {items.map((r) => (
+        <div
+          key={r.id}
+          className="uidemo-click-ripple"
+          style={{ left: r.x, top: r.y }}
+        >
+          <span />
+          <span />
+          <span />
+        </div>
+      ))}
+    </>
+  );
+}
+
+function useClickRipples(hostRef: RefObject<HTMLElement | null>) {
+  const [items, setItems] = useState<ClickRipple[]>([]);
+  const seq = useRef(0);
+
+  const spawn = useCallback(
+    (clientX: number, clientY: number) => {
+      const host = hostRef.current;
+      if (!host) return;
+      const rect = host.getBoundingClientRect();
+      const id = ++seq.current;
+      setItems((prev) => [
+        ...prev,
+        { id, x: clientX - rect.left, y: clientY - rect.top },
+      ]);
+      window.setTimeout(() => {
+        setItems((prev) => prev.filter((p) => p.id !== id));
+      }, 1900);
+    },
+    [hostRef],
+  );
 
   useEffect(() => {
-    // Let reviewers see the brand-first closed state before spaces bloom.
-    const t = window.setTimeout(() => setOpen(true), 1800);
+    const host = hostRef.current;
+    if (!host) return;
+    function onPointer(e: PointerEvent) {
+      spawn(e.clientX, e.clientY);
+    }
+    host.addEventListener('pointerdown', onPointer);
+    return () => host.removeEventListener('pointerdown', onPointer);
+  }, [hostRef, spawn]);
+
+  return items;
+}
+
+function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
+  const [open, setOpen] = useState(false);
+  const phoneRef = useRef<HTMLDivElement>(null);
+  const ripples = useClickRipples(phoneRef);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setOpen(true), 1600);
     return () => window.clearTimeout(t);
   }, []);
 
   return (
-    <div className="uidemo-phone uidemo-home">
-      <div className="uidemo-haze uidemo-haze-a" />
-      <div className="uidemo-haze uidemo-haze-b" />
+    <div ref={phoneRef} className="uidemo-phone uidemo-home">
+      <AmbientRings />
+      <ShimmerLine top="48%" />
       <div className="uidemo-grain" />
+      <ClickRipples items={ripples} />
 
       <header className="uidemo-home-brand">
         <button
@@ -103,11 +215,11 @@ function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
           onClick={() => setOpen((v) => !v)}
           aria-label="展开空间"
         >
-          <VineMark size={42} />
+          <RippleMark size={44} />
         </button>
         <h1 className={`uidemo-wordmark ${open ? 'is-dim' : ''}`}>Wisteria</h1>
         <p className={`uidemo-tagline ${open ? 'is-dim' : ''}`}>
-          午后紫藤下的续聊空间
+          薄花色 · 涟漪皮肤
         </p>
         {!open && (
           <button
@@ -115,7 +227,7 @@ function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
             className="uidemo-cta"
             onClick={() => setOpen(true)}
           >
-            推开大门
+            推开水面
           </button>
         )}
       </header>
@@ -145,7 +257,7 @@ function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
       </div>
 
       <footer className="uidemo-home-foot">
-        <span>纯视觉 Demo · 未接入数据</span>
+        <span>Ripple · 纯视觉 Demo</span>
       </footer>
     </div>
   );
@@ -153,20 +265,40 @@ function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
 
 function ChatPanel({ onBack }: { onBack: () => void }) {
   const [draft, setDraft] = useState('');
+  const phoneRef = useRef<HTMLDivElement>(null);
+  const ripples = useClickRipples(phoneRef);
 
   return (
-    <div className="uidemo-phone uidemo-chat">
-      <div className="uidemo-chat-wash" />
+    <div ref={phoneRef} className="uidemo-phone uidemo-chat">
+      <svg className="uidemo-ambient" viewBox="0 0 390 780" aria-hidden>
+        {[28, 52, 78].map((r, i) => (
+          <circle
+            key={r}
+            className="uidemo-ambient-ring"
+            cx="340"
+            cy="70"
+            r={r}
+            fill="none"
+            stroke={RP[300]}
+            strokeWidth={0.55}
+            opacity={0.1 - i * 0.02}
+            style={{ animationDelay: `${i * 0.45}s` }}
+          />
+        ))}
+      </svg>
+      <ShimmerLine top="42%" />
+      <div className="uidemo-grain" />
+      <ClickRipples items={ripples} />
 
       <header className="uidemo-chat-bar">
         <button type="button" className="uidemo-back" onClick={onBack}>
           ←
         </button>
         <div className="uidemo-chat-title">
-          <VineMark size={22} />
+          <RippleMark size={22} />
           <div>
             <div className="uidemo-chat-name">理理酱</div>
-            <div className="uidemo-chat-meta">客厅 · 下午光</div>
+            <div className="uidemo-chat-meta">客厅 · 薄花色</div>
           </div>
         </div>
         <div className="uidemo-chat-tools">
@@ -194,7 +326,7 @@ function ChatPanel({ onBack }: { onBack: () => void }) {
         <div className="uidemo-composer-shell">
           <textarea
             rows={1}
-            placeholder="在紫藤下继续说…"
+            placeholder="在水面上继续说…"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />
@@ -202,7 +334,7 @@ function ChatPanel({ onBack }: { onBack: () => void }) {
             发送
           </button>
         </div>
-        <p className="uidemo-composer-note">输入仅作展示，不会发出去</p>
+        <p className="uidemo-composer-note">点一下屏幕会起涟漪 · 不会真发</p>
       </div>
     </div>
   );
@@ -212,7 +344,7 @@ export default function UiDemoPage() {
   const [panel, setPanel] = useState<Panel>('home');
 
   useEffect(() => {
-    document.title = 'Wisteria · UI Demo';
+    document.title = 'Wisteria · Ripple Demo';
     return () => {
       document.title = 'Wisteria';
     };
@@ -222,16 +354,16 @@ export default function UiDemoPage() {
     <div className="uidemo">
       <aside className="uidemo-rail">
         <div className="uidemo-rail-brand">
-          <VineMark size={28} />
+          <RippleMark size={28} />
           <div>
-            <div className="uidemo-rail-title">Wisteria</div>
-            <div className="uidemo-rail-sub">前端美化 Demo</div>
+            <div className="uidemo-rail-title">Ripple</div>
+            <div className="uidemo-rail-sub">涟漪皮肤 Demo</div>
           </div>
         </div>
 
         <p className="uidemo-rail-copy">
-          保留紫藤气质，重做层次与动效：品牌更醒目，首页更干净，聊天更轻。
-          不接真实接口，只给你看感觉。
+          布局沿用现在的庭院首页：中间品牌、四周房间。垂落紫藤换成一圈圈涟漪。
+          色：薄花色 / 群青鼠 / periwinkle gray。
         </p>
 
         <nav className="uidemo-tabs" aria-label="Demo 面板">
@@ -252,10 +384,10 @@ export default function UiDemoPage() {
         </nav>
 
         <ul className="uidemo-notes">
-          <li>品牌字号上提到英雄级</li>
-          <li>去掉卡片堆叠，用线与留白分区</li>
-          <li>进入 / 气泡 / 藤蔓轻动效</li>
-          <li>手机框预览，方便对照现网</li>
+          <li>--rp-300 薄花色 · 装饰圈</li>
+          <li>--rp-500 群青鼠 · 强调</li>
+          <li>同心圆 / 微光线 / 点击波</li>
+          <li>点手机框任意处起涟漪</li>
         </ul>
 
         <Link to="/home" className="uidemo-exit">
