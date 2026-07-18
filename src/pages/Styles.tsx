@@ -113,8 +113,8 @@ export default function StylesPage() {
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           <p className="text-sm text-ink-500">
-            Style 在每轮对话里追加在你最新消息之后发给小机，
-            位置最靠近模型的注意力，优先级最高。
+            Style 会进系统提示（方便缓存），同时完整追加在你最新消息之后——
+            位置最靠近模型的注意力，优先级最高；与人设语气冲突时以 Style 为准。
             <br />
             前端改完保存即生效，下一条消息就会带上新内容。
           </p>

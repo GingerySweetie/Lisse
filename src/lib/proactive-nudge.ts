@@ -118,8 +118,10 @@ async function proactiveCheck(): Promise<number> {
     const persona = conversation.personaId
       ? await db.personas.get(conversation.personaId)
       : undefined;
-    const style = conversation.styleId
-      ? await db.writingStyles.get(conversation.styleId)
+    // settings.defaultStyleId is the single source of truth (same as Chat/Read).
+    // conversation.styleId is legacy and may be stale/null after StylePicker changes.
+    const style = settings.defaultStyleId
+      ? await db.writingStyles.get(settings.defaultStyleId)
       : undefined;
 
     console.log('[nudge] SEND — injecting nudge into', conversationId);
