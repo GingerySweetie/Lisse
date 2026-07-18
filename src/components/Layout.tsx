@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import ErrorBoundary from './ErrorBoundary';
 import ClawdPet from './clawd/ClawdPet';
 import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
+import { bootstrapDiary } from '../lib/diary';
 import { bootstrapProactiveNudge } from '../lib/proactive-nudge';
 import { bootstrapTravelDaemon } from '../lib/travel';
 import { resetStatusBar } from '../lib/status-bar';
@@ -24,6 +25,7 @@ export default function Layout() {
     bootstrapBehavior();
     bootstrapProactiveNudge();
     bootstrapTravelDaemon();
+    bootstrapDiary();
     function onVis() {
       recordVisibilityChange();
     }

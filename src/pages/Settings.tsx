@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft, Brain, Bell, FlaskConical, Plane } from 'lucide-react';
+import { Plus, Pencil, Trash2, CheckCircle2, XCircle, ChevronLeft, Brain, Bell, FlaskConical, Plane, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db, getSettings, saveSettings } from '../db';
 import type { Endpoint, EndpointFormat } from '../types';
@@ -9,6 +9,7 @@ import { streamChat } from '../api';
 import { embed } from '../api/embedding';
 import { fetchBalance } from '../api/balance';
 import { resumeWaitingJobs } from '../lib/workshop/handoff-runner';
+import { diaryTick, mergeDiaryCfg } from '../lib/diary';
 import { DEFAULT_TRAVEL_DAEMON, mergeTravelCfg } from '../lib/travel';
 
 export default function SettingsPage() {
@@ -79,6 +80,7 @@ export default function SettingsPage() {
           <WorkshopHandoffSettings />
           <ProactiveNudgeSettings />
           <TravelDaemonSettings />
+          <DiarySettings />
           <ClawdPetSettings />
           <AppMaintenance />
         </div>
@@ -580,6 +582,210 @@ function clampHour(raw: string): number {
   const n = Number(raw);
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(23, Math.floor(n)));
+}
+
+function DiarySettings() {
+  const settings = useLiveQuery(() => getSettings(), [], null);
+  const personas = useLiveQuery(
+    () => db.personas.orderBy('createdAt').toArray(),
+    [],
+    [],
+  );
+  const recentDiaries = useLiveQuery(
+    () => db.diaryEntries.orderBy('createdAt').reverse().limit(12).toArray(),
+    [],
+    [],
+  );
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (!settings) return null;
+  const cfg = mergeDiaryCfg(settings.diary);
+  const writablePersonas =
+    personas?.filter((p) => p.id !== 'persona_default') ?? [];
+
+  async function update(patch: Partial<typeof cfg>) {
+    await saveSettings({
+      diary: {
+        ...cfg,
+        ...patch,
+      },
+    });
+  }
+
+  function togglePersona(id: string) {
+    const set = new Set(cfg.personaIds);
+    if (set.has(id)) set.delete(id);
+    else set.add(id);
+    void update({ personaIds: [...set] });
+  }
+
+  async function writeNow() {
+    setBusy(true);
+    setMsg('正在写今天的日记…');
+    try {
+      const written = await diaryTick({ forceToday: true });
+      const done = written.filter((e) => e.status === 'done').length;
+      setMsg(
+        done > 0
+          ? `已写好 ${done} 篇`
+          : '没有新的日记（当天无对话，或尚未配置 endpoint）',
+      );
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const personaName = (id: string) =>
+    personas?.find((p) => p.id === id)?.name ?? id;
+
+  return (
+    <section className="mt-6 rounded-2xl border border-lavender-200 bg-white/55 p-5 shadow-sm backdrop-blur-sm">
+      <h3 className="flex items-center gap-2 text-base font-semibold text-ink-900">
+        <BookOpen size={18} className="text-lavender-600" />
+        每日日记
+      </h3>
+      <p className="mt-1 text-sm text-ink-500">
+        每天约设定时刻，各角色用平时聊天的模型写一篇私密日记（聊了什么 + 自己的心声）。
+        第二天聊天时会自动读到昨天的日记。需要 App 在后台保持打开或之后再打开以补写。
+      </p>
+
+      <label className="mt-4 flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={cfg.enabled}
+          onChange={(e) => update({ enabled: e.target.checked })}
+          className="h-4 w-4 accent-lavender-400"
+        />
+        <span className="text-sm text-ink-900">启用每日日记</span>
+      </label>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            写日记时刻（本地时）
+          </span>
+          <input
+            type="number"
+            min={0}
+            max={23}
+            value={cfg.writeHour}
+            onChange={(e) => update({ writeHour: clampHour(e.target.value) })}
+            className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
+          />
+          <span className="text-[11px] font-light text-ink-500">
+            默认 23。到点后的检查周期内会写；若当时 App 未打开，下次打开会补写近几天。
+          </span>
+        </label>
+
+        <div className="flex flex-col gap-1 text-sm">
+          <span className="text-xs font-medium text-ink-500">
+            写日记的角色（不勾 = 全部有人设的角色）
+          </span>
+          <div className="flex flex-wrap gap-2 rounded-lg border border-lavender-200 bg-white px-3 py-2">
+            {writablePersonas.length === 0 && (
+              <span className="text-xs text-ink-400">暂无角色</span>
+            )}
+            {writablePersonas.map((p) => {
+              const checked =
+                cfg.personaIds.length === 0 || cfg.personaIds.includes(p.id);
+              const lockedEmpty = cfg.personaIds.length === 0;
+              return (
+                <label
+                  key={p.id}
+                  className="inline-flex items-center gap-1.5 text-sm text-ink-800"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      if (lockedEmpty) {
+                        // Empty list means "all"; first uncheck switches to an
+                        // explicit list of everyone except the unchecked one.
+                        void update({
+                          personaIds: writablePersonas
+                            .map((x) => x.id)
+                            .filter((id) => id !== p.id),
+                        });
+                        return;
+                      }
+                      togglePersona(p.id);
+                    }}
+                    className="h-3.5 w-3.5 accent-lavender-400"
+                  />
+                  {p.name}
+                </label>
+              );
+            })}
+          </div>
+          {cfg.personaIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => update({ personaIds: [] })}
+              className="self-start text-[11px] text-lavender-700 underline-offset-2 hover:underline"
+            >
+              恢复为全部角色
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={busy || !cfg.enabled}
+          onClick={() => void writeNow()}
+          className="btn-primary text-sm disabled:opacity-50"
+        >
+          {busy ? '写作中…' : '立即写今天的日记'}
+        </button>
+        {msg && <span className="text-xs text-ink-500">{msg}</span>}
+      </div>
+
+      {recentDiaries && recentDiaries.length > 0 && (
+        <div className="mt-5">
+          <h4 className="text-xs font-medium text-ink-500">最近日记</h4>
+          <ul className="mt-2 flex flex-col gap-2">
+            {recentDiaries.map((d) => (
+              <li
+                key={d.id}
+                className="rounded-lg border border-lavender-100 bg-white/70 px-3 py-2"
+              >
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 text-left text-sm text-ink-800"
+                  onClick={() =>
+                    setExpandedId(expandedId === d.id ? null : d.id)
+                  }
+                >
+                  <span>
+                    {d.date} · {personaName(d.personaId)}
+                    <span className="ml-2 text-[11px] text-ink-400">
+                      {d.status}
+                      {d.model ? ` · ${d.model}` : ''}
+                    </span>
+                  </span>
+                  <span className="text-[11px] text-lavender-600">
+                    {expandedId === d.id ? '收起' : '展开'}
+                  </span>
+                </button>
+                {expandedId === d.id && (
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink-700">
+                    {d.status === 'done'
+                      ? d.content || '（空）'
+                      : d.errorMessage || d.status}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
 }
 
 function AppMaintenance() {

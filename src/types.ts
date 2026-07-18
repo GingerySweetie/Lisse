@@ -268,6 +268,22 @@ export interface AppSettings {
   /** Two-layer client daemon: pure-code scheduler decides *whether*
    *  to leave; LLM execution decides where / what / gift. Default off. */
   travelDaemon?: TravelDaemonSettings;
+
+  // ─── Daily Diary ───
+  /** Around writeHour each day, each persona writes a private diary from
+   *  that day's chats (using their usual chat model). Next-day chats
+   *  auto-inject yesterday's diary into volatile context. */
+  diary?: DiarySettings;
+}
+
+/** Settings for the nightly persona diary writer. */
+export interface DiarySettings {
+  /** Master switch. Default on. */
+  enabled: boolean;
+  /** Local hour (0–23) around which diaries are written. Default 23. */
+  writeHour: number;
+  /** Persona ids that write diaries. Empty = all non-default personas. */
+  personaIds: string[];
 }
 
 /** Settings for the Travel Frog–inspired travel daemon. */
@@ -776,4 +792,24 @@ export interface TravelHeldPush {
   createdAt: number;
   /** Cleared when the user opens the balcony and sees it. */
   seen: boolean;
+}
+
+/** One night's private diary written by a persona about that day's chats. */
+export interface DiaryEntry {
+  /** Composite key: `${date}|${personaId}`. */
+  id: string;
+  /** Local calendar date YYYY-MM-DD. */
+  date: string;
+  personaId: string;
+  /** First-person diary body. */
+  content: string;
+  /** Chat model that authored this entry. */
+  model: string;
+  endpointId: string;
+  /** Conversations whose transcripts fed this diary. */
+  conversationIds: string[];
+  status: 'pending' | 'done' | 'error' | 'skipped';
+  errorMessage?: string;
+  createdAt: number;
+  updatedAt: number;
 }
