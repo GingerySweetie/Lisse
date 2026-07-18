@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, Send, Square, X } from 'lucide-react';
+import { Image as ImageIcon, Paperclip, Send, Square, X } from 'lucide-react';
 import type { Attachment } from '../types';
 import {
   attachmentDataUrl,
@@ -7,6 +7,13 @@ import {
   formatBytes,
 } from '../lib/attachments';
 import { recordTyping } from '../lib/behavior';
+
+/** Soft cap for non-image uploads (base64 lives in IndexedDB). */
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
+
+/** Common document / text types for the file picker (images use the other button). */
+const FILE_ACCEPT =
+  '.txt,.md,.markdown,.pdf,.csv,.tsv,.json,.xml,.html,.htm,.css,.js,.ts,.tsx,.jsx,.mjs,.cjs,.py,.rs,.go,.java,.c,.cpp,.h,.hpp,.rb,.php,.swift,.kt,.sql,.yml,.yaml,.toml,.ini,.log,.rtf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,text/*,application/pdf,application/json,application/xml,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 interface Props {
   onSend: (text: string, attachments: Attachment[]) => void;
@@ -51,6 +58,7 @@ export default function ChatInput({
   const [uploading, setUploading] = useState(false);
   const [activeTags, setActiveTags] = useState<MoodTag[]>([]);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const imageRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const typingStartRef = useRef<number | null>(null);
@@ -122,12 +130,22 @@ export default function ChatInput({
     setUploading(true);
     try {
       const out: Attachment[] = [];
+      const rejected: string[] = [];
       for (const f of list) {
+        if (!f.type.startsWith('image/') && f.size > MAX_FILE_BYTES) {
+          rejected.push(f.name || '文件');
+          continue;
+        }
         try {
           out.push(await fileToAttachment(f));
         } catch {
           /* skip */
         }
+      }
+      if (rejected.length > 0) {
+        alert(
+          `这些文件超过 ${formatBytes(MAX_FILE_BYTES)}，先压缩再传喵：\n${rejected.join('\n')}`,
+        );
       }
       setAttachments((prev) => [...prev, ...out]);
     } finally {
@@ -189,7 +207,7 @@ export default function ChatInput({
           {supportsImages && (
             <>
               <input
-                ref={fileRef}
+                ref={imageRef}
                 type="file"
                 accept="image/*"
                 multiple
@@ -199,15 +217,36 @@ export default function ChatInput({
                   e.target.value = '';
                 }}
               />
+              <input
+                ref={fileRef}
+                type="file"
+                accept={FILE_ACCEPT}
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void handleFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
               <button
                 type="button"
-                onClick={() => fileRef.current?.click()}
+                onClick={() => imageRef.current?.click()}
                 disabled={disabled || uploading}
                 className="wis-send-btn"
                 aria-label="附图片"
                 title="附图片"
               >
                 <ImageIcon size={14} strokeWidth={1.6} />
+              </button>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={disabled || uploading}
+                className="wis-send-btn"
+                aria-label="附文件"
+                title="附文件"
+              >
+                <Paperclip size={14} strokeWidth={1.6} />
               </button>
             </>
           )}
@@ -276,7 +315,8 @@ function AttachmentChip({
   }
   return (
     <div className="flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 text-xs font-light text-ink-700 ring-1 ring-lavender-100">
-      <span className="max-w-[12ch] truncate font-mono">
+      <Paperclip size={12} strokeWidth={1.6} className="shrink-0 opacity-60" />
+      <span className="max-w-[16ch] truncate font-mono">
         {attachment.filename ?? '文件'}
       </span>
       <span className="text-ink-500">{formatBytes(attachment.size)}</span>
