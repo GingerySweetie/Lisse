@@ -85,8 +85,9 @@ function buildAnthropicContent(
  *   [2] BP3: pinned long-term memory     (changes only on pin/unpin)
  * Extra stable layers (e.g. group awareness) merge untagged after BP3 and
  * are still covered by the rolling message breakpoint.
- * Volatile content (memory recall, current time, health) + a fixed one-line
- * style nudge live inside the current user message — after every breakpoint.
+ * Volatile content (memory recall, current time, health) + a fixed short
+ * style nudge (pointer only — full style stays in BP2 for cache) live inside
+ * the current user message — after every breakpoint.
  *
  * Each of the first 3 system messages gets its own cache_control.
  * Any extra messages (≥4th) are merged without a tag — same as before.

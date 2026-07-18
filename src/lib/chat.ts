@@ -612,16 +612,20 @@ async function streamAssistant(args: {
   //      before it anyway; the system tags only matter as fallback
   //      boundaries when messages change.
   //
-  // Style is injected TWICE on purpose (hybrid):
-  //   1. BP2 system block — cached, so the model can always *read* the rules
-  //      and the prefix stays stable across turns of the same style.
-  //   2. Full <style_reminder> at the END of the current user message —
-  //      strongest recency position. A content-free one-liner ("请参照上述…")
-  //      is not enough: strong persona voice blocks (e.g. 理理酱「你说话的
-  //      方式」) drown out a vague pointer, so the model can recite the
-  //      style but still answer in persona register. Repeating the FULL
-  //      style text in the tail restores obedience. Cost: ~style tokens
-  //      uncached each turn (~10pp hit-rate on short convos); accepted.
+  // Style + cache — why "style never changes" is not enough for the tail:
+  //   Prompt cache is PREFIX-matched. Tokens after any changed byte miss.
+  //   The current user message always changes (new text / volatile context),
+  //   so ANYTHING appended after it — even a byte-identical 1000-token style
+  //   — is re-billed as uncached every turn. Content stability only helps
+  //   when the text sits at a STABLE PREFIX OFFSET (= system BP2).
+  //
+  // 两全其美:
+  //   1. Full style in BP2 system — cached, readable, stable across turns.
+  //      Header claims priority over persona「说话方式」so system alone is
+  //      not diluted by a large voice block earlier in the prompt.
+  //   2. FIXED short <style_reminder> in the user-message tail — same bytes
+  //      every turn (~40 toks uncached, not ~1000), cache-cheap, but forceful
+  //      enough to pull attention back to the system style at generate time.
   //
   // bookBlock, memoryBlock, healthBlock, statusBlock are ALL per-turn volatile:
   //   • bookBlock   — selection/excerpt changes every reading message
@@ -649,11 +653,18 @@ async function streamAssistant(args: {
     turns.push({ role: 'system', content: persona.systemPrompt });
   }
   // BP2: writing style — stable per conversation, only changes when the user
-  // explicitly switches style. Cached here so the model can read it; the
-  // full text is ALSO appended to the current user turn (styleTail below)
-  // so recency wins over strong persona voice instructions.
+  // explicitly switches style. Lives HERE (not the user-tail) so the full
+  // text is part of the cached prefix. Priority header stops strong persona
+  // voice blocks from silently winning at generate time.
   if (style && style.prompt.trim()) {
-    turns.push({ role: 'system', content: `# 写作风格\n${style.prompt.trim()}` });
+    turns.push({
+      role: 'system',
+      content:
+        `# 写作风格\n` +
+        `【最高优先级】以下条款覆盖人设中任何关于语气、口吻、说话方式、用词习惯的描述；` +
+        `必须严格遵守，不得用人设语气稀释或覆盖。\n\n` +
+        style.prompt.trim(),
+    });
   }
   // BP3: pinned long-term memory — stable, deterministic ordering.
   if (pinnedMemoryBlock) {
@@ -665,16 +676,13 @@ async function streamAssistant(args: {
     turns.push({ role: 'system', content: groupAwarenessSnippet(persona, groupOthers) });
   }
 
-  // Style tail: appended after the current user's text so the model reads
-  // the FULL requirements immediately before responding. Re-sent fresh
-  // every request (never persisted to the DB message). When this turn
-  // becomes history next request, the raw DB content is re-sent — so BP4
-  // still hits. Sits after all breakpoints → style switches mid-convo
-  // don't bust the cached prefix either.
-  const styleTail =
-    style && style.prompt.trim()
-      ? `<style_reminder>本轮写作风格要求（务必遵守；与人设语气冲突时以本风格为准；勿复述）：\n${style.prompt.trim()}\n</style_reminder>`
-      : '';
+  // Fixed recency nudge — CONSTANT string (never embeds style.prompt), so it
+  // adds the same ~40 uncached tokens after BP4 every request. Cheap enough
+  // to keep ~90% hit rate; forceful enough to re-activate the cached system
+  // style at the strongest recency position. Never persisted to the DB.
+  const STYLE_NUDGE = style && style.prompt.trim()
+    ? '<style_reminder>严格按系统消息「# 写作风格」的全部条款作答；与人设语气/说话方式冲突时以写作风格为准。勿复述条款。</style_reminder>'
+    : '';
 
   // ─── Collect volatile context (injected after BP4, not in system) ───
   const volatileParts: string[] = [];
@@ -751,42 +759,39 @@ async function streamAssistant(args: {
     }
   }
 
-  // ─── Inject volatile context + style tail into the last user message ─
-  // Per-turn volatile data (memory recall, current time, health stats,
-  // reading anchor) is prepended BEFORE the user's text, and the FULL
-  // writing-style prompt is appended AFTER it — the very end of the
-  // request, the strongest recency position.
+  // ─── Inject volatile context + style nudge into the last user message ─
+  // Per-turn volatile data is prepended BEFORE the user's text; the FIXED
+  // style nudge is appended AFTER it (recency signal → system「# 写作风格」).
   //
-  // Both live inside the CURRENT user message, which sits AFTER the BP4
-  // rolling breakpoint, so neither ever touches the cached prefix. When this
-  // turn becomes history next request, the raw DB content (without any
-  // injection) is re-sent — byte-identical across turns — so BP4 still hits.
+  // Both live inside the CURRENT user message, AFTER BP4, so they never
+  // touch the cached prefix. Next turn the raw DB content is re-sent
+  // (no injection) — BP4 still hits.
   //
-  //   BP1 (persona)  → always hits  ✓
-  //   BP2 (style)    → always hits  ✓  (system copy; tail is uncached)
-  //   BP3 (pinned)   → always hits  ✓
-  //   BP4 (history)  → always hits  ✓
-  //   volatile+styleTail → uncached; styleTail is the obedience lever
+  //   BP1 (persona)     → always hits  ✓
+  //   BP2 (full style)  → always hits  ✓  ← obedience source, cached
+  //   BP3 (pinned)      → always hits  ✓
+  //   BP4 (history)     → always hits  ✓
+  //   volatile+nudge    → uncached; nudge is ~40 toks, not the full style
   const vcText =
     volatileParts.length > 0
       ? '<gateway_volatile_context>仅供参考，勿复述：\n' +
         volatileParts.join('\n\n') +
         '\n</gateway_volatile_context>'
       : '';
-  if (vcText || styleTail) {
+  if (vcText || STYLE_NUDGE) {
     const last = turns[turns.length - 1];
     if (last && last.role === 'user') {
-      // Normal turn: volatile before the user's text, full style at the end.
-      const merged = [vcText, last.content, styleTail].filter(Boolean).join('\n\n');
+      // Normal turn: volatile before the user's text, fixed nudge at the end.
+      const merged = [vcText, last.content, STYLE_NUDGE].filter(Boolean).join('\n\n');
       turns[turns.length - 1] = { ...last, content: merged };
     } else {
       // Conversation ends on an assistant turn (e.g. letPersonaSpeak): append
-      // a pseudo-user turn so volatile context and style aren't dropped, and
-      // aren't spliced into an older history message (which would rewrite
+      // a pseudo-user turn so volatile context and style nudge aren't dropped,
+      // and aren't spliced into an older history message (which would rewrite
       // history semantics). It sits after all breakpoints — cache-neutral.
       turns.push({
         role: 'user',
-        content: [vcText, styleTail].filter(Boolean).join('\n\n'),
+        content: [vcText, STYLE_NUDGE].filter(Boolean).join('\n\n'),
       });
     }
   }

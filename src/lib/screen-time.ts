@@ -139,7 +139,12 @@ async function llmRoastForPersona(
 
     const systemParts: string[] = [persona.systemPrompt.trim()];
     if (style?.prompt.trim()) {
-      systemParts.push(`# 写作风格\n${style.prompt.trim()}`);
+      systemParts.push(
+        `# 写作风格\n` +
+          `【最高优先级】以下条款覆盖人设中任何关于语气、口吻、说话方式、用词习惯的描述；` +
+          `必须严格遵守，不得用人设语气稀释或覆盖。\n\n` +
+          style.prompt.trim(),
+      );
     }
 
     let userPrompt: string;
