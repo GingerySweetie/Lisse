@@ -294,14 +294,21 @@
 
 .uidemo-wordmark {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: clamp(2.4rem, 9vw, 2.85rem);
-  font-weight: 300;
-  letter-spacing: 0.22em;
+  display: flex;
+  justify-content: center;
   color: rgba(85, 92, 136, 0.78);
   transition:
     opacity 0.45s ease,
     transform 0.45s ease;
+}
+
+.uidemo-moon-wordmark {
+  display: block;
+  color: inherit;
+}
+
+.uidemo-rail-title .uidemo-moon-wordmark {
+  color: var(--rp-600);
 }
 
 .uidemo-tagline {

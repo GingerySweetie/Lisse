@@ -58,6 +58,56 @@ type ClickRipple = { id: number; x: number; y: number };
 /** Front-ish view of water: wide ellipses, not top-down circles. */
 const SQUASH = 0.3;
 
+/**
+ * Moon alphabet (穆恩字母) glyphs for R I P P L E.
+ * Geometry baked from Wikimedia Commons Moon Letter SVGs
+ * (CC BY-SA; simplified to stroke paths in a 32×32 cell).
+ */
+const MOON_GLYPH: Record<string, string> = {
+  R: 'M4,4 L28,28',
+  I: 'M16,4 L16,28',
+  P: 'M5.46,23.07 L28,23.07 M7.37,23.06 C4.2,23 4.18,19.4 5.11,17.6 M4,18.73 L13.79,8.93',
+  L: 'M5.33,28 L5.33,4 M4,26.67 L28,26.67',
+  E: 'M5.33,4 L5.33,28 M4,5.33 L28,5.33',
+};
+
+function MoonWordmark({
+  height = 36,
+  className = '',
+}: {
+  height?: number;
+  className?: string;
+}) {
+  const letters = ['R', 'I', 'P', 'P', 'L', 'E'] as const;
+  const cell = 32;
+  const gap = 6;
+  const width = letters.length * cell + (letters.length - 1) * gap;
+  return (
+    <svg
+      className={`uidemo-moon-wordmark ${className}`.trim()}
+      width={(height / cell) * width}
+      height={height}
+      viewBox={`0 0 ${width} ${cell}`}
+      role="img"
+      aria-label="Ripple"
+    >
+      <title>Ripple</title>
+      {letters.map((ch, i) => (
+        <g key={`${ch}-${i}`} transform={`translate(${i * (cell + gap)}, 0)`}>
+          <path
+            d={MOON_GLYPH[ch]}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 function RippleMark({ size = 48 }: { size?: number }) {
   return (
     <svg
@@ -248,9 +298,11 @@ function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
         >
           <RippleMark size={44} />
         </button>
-        <h1 className={`uidemo-wordmark ${open ? 'is-dim' : ''}`}>Wisteria</h1>
+        <h1 className={`uidemo-wordmark ${open ? 'is-dim' : ''}`}>
+          <MoonWordmark height={42} />
+        </h1>
         <p className={`uidemo-tagline ${open ? 'is-dim' : ''}`}>
-          薄花色 · 涟漪皮肤
+          Ripple · 穆恩字母
         </p>
         {!open && (
           <button
@@ -369,7 +421,7 @@ export default function UiDemoPage() {
   const [panel, setPanel] = useState<Panel>('home');
 
   useEffect(() => {
-    document.title = 'Wisteria · Ripple Demo';
+    document.title = 'Ripple · Demo';
     return () => {
       document.title = 'Wisteria';
     };
@@ -381,8 +433,10 @@ export default function UiDemoPage() {
         <div className="uidemo-rail-brand">
           <RippleMark size={28} />
           <div>
-            <div className="uidemo-rail-title">Ripple</div>
-            <div className="uidemo-rail-sub">涟漪皮肤 Demo</div>
+            <div className="uidemo-rail-title">
+              <MoonWordmark height={22} />
+            </div>
+            <div className="uidemo-rail-sub">Ripple · 穆恩字母</div>
           </div>
         </div>
 
