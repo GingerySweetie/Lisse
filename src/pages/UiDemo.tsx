@@ -59,19 +59,19 @@ type ClickRipple = { id: number; x: number; y: number };
 const SQUASH = 0.3;
 
 /**
- * Custom Ripple wordmark — hand-letter design (穆恩字母气质):
- * R large left-open hook · i/p left-open cups · raindrop dashes
- * under i & 2nd p · tall l · e as a broken incomplete ripple.
+ * Hand-lettered Ripple wordmark (from the user's sketch — NOT Moon type).
+ * R hook · i/p left-open cups · raindrops under i & 2nd p · tall l · broken e.
  */
-function MoonWordmark({
-  height = 48,
+function HandWordmark({
+  height = 52,
   className = '',
 }: {
   height?: number;
   className?: string;
 }) {
-  const vbW = 236;
-  const vbH = 96;
+  // viewBox matches the pixel recreation layout (scaled down)
+  const vbW = 280;
+  const vbH = 120;
   return (
     <svg
       className={`uidemo-moon-wordmark ${className}`.trim()}
@@ -83,24 +83,23 @@ function MoonWordmark({
     >
       <title>Ripple</title>
       <defs>
-        {/* Soft crayon / pencil grain on the strokes */}
         <filter
-          id="uidemo-moon-grain"
-          x="-20%"
-          y="-20%"
-          width="140%"
-          height="140%"
+          id="uidemo-hand-grain"
+          x="-15%"
+          y="-15%"
+          width="130%"
+          height="130%"
         >
           <feTurbulence
             type="fractalNoise"
-            baseFrequency="0.9"
+            baseFrequency="1.1"
             numOctaves="2"
             result="n"
           />
           <feDisplacementMap
             in="SourceGraphic"
             in2="n"
-            scale="0.7"
+            scale="0.55"
             xChannelSelector="R"
             yChannelSelector="G"
           />
@@ -112,43 +111,36 @@ function MoonWordmark({
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
-        filter="url(#uidemo-moon-grain)"
+        filter="url(#uidemo-hand-grain)"
       >
-        {/*
-          R — large hook:
-          left horizontal tail → semicircle opening left → slight down tip
-          (SVG sweep 0 = through the right bulge → opens left)
-        */}
+        {/* R — left horizontal + left-open big hook + top down tip */}
         <path
-          strokeWidth="3.2"
-          d="M 6,58 H 34 A 20,20 0 0 0 34,18 V 27"
+          strokeWidth="3.4"
+          d="M 8,78 H 42 A 26,26 0 0 0 42,26 V 40"
         />
 
-        {/* i — small cup opening left + raindrop dash */}
-        <path strokeWidth="2.8" d="M 78,30 A 11,11 0 0 1 78,52" />
-        <path strokeWidth="2.5" d="M 78,63 V 76" />
+        {/* i — left-open cup + raindrop */}
+        <path strokeWidth="2.9" d="M 88,36 A 14,14 0 0 1 88,64" />
+        <path strokeWidth="2.6" d="M 88,74 V 96" />
 
-        {/* p — small cup opening left */}
-        <path strokeWidth="2.8" d="M 112,30 A 11,11 0 0 1 112,52" />
+        {/* p — left-open cup (no raindrop) */}
+        <path strokeWidth="2.9" d="M 122,36 A 14,14 0 0 1 122,64" />
 
-        {/* p — small cup opening left + raindrop dash */}
-        <path strokeWidth="2.8" d="M 146,30 A 11,11 0 0 1 146,52" />
-        <path strokeWidth="2.5" d="M 146,63 V 76" />
+        {/* p — left-open cup + raindrop */}
+        <path strokeWidth="2.9" d="M 156,36 A 14,14 0 0 1 156,64" />
+        <path strokeWidth="2.6" d="M 156,74 V 96" />
 
         {/* l — tall vertical */}
-        <path strokeWidth="2.9" d="M 178,10 V 58" />
+        <path strokeWidth="2.9" d="M 190,14 V 78" />
 
-        {/*
-          e — one small incomplete ripple:
-          upper arc + lower arc on the same circle, clearly 断连
-        */}
+        {/* e — incomplete ripple: short upper + lower arcs, clear 断连 */}
         <path
-          strokeWidth="2.7"
-          d="M 195.4,38 A 14,14 0 0 1 220.6,38"
+          strokeWidth="2.8"
+          d="M 214,38 A 16,16 0 0 1 242,38"
         />
         <path
-          strokeWidth="2.7"
-          d="M 220.6,50 A 14,14 0 0 1 195.4,50"
+          strokeWidth="2.8"
+          d="M 242,62 A 16,16 0 0 1 214,62"
         />
       </g>
     </svg>
@@ -346,7 +338,7 @@ function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
           <RippleMark size={44} />
         </button>
         <h1 className={`uidemo-wordmark ${open ? 'is-dim' : ''}`}>
-          <MoonWordmark height={56} />
+          <HandWordmark height={58} />
         </h1>
         <p className={`uidemo-tagline ${open ? 'is-dim' : ''}`}>
           Ripple
@@ -481,15 +473,15 @@ export default function UiDemoPage() {
           <RippleMark size={28} />
           <div>
             <div className="uidemo-rail-title">
-              <MoonWordmark height={22} />
+              <HandWordmark height={28} />
             </div>
-            <div className="uidemo-rail-sub">Ripple · 穆恩字母</div>
+            <div className="uidemo-rail-sub">Ripple · 手写字标</div>
           </div>
         </div>
 
         <p className="uidemo-rail-copy">
-          布局沿用现在的庭院首页：中间品牌、四周房间。垂落紫藤换成一圈圈涟漪。
-          色：薄花色 / 群青鼠 / periwinkle gray。
+          布局沿用庭院首页。垂落紫藤换成正视扁涟漪。
+          品牌字按你的手写 Ripple 复刻（不是穆恩字母）。
         </p>
 
         <nav className="uidemo-tabs" aria-label="Demo 面板">
