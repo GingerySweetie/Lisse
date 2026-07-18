@@ -171,16 +171,17 @@
 
 .uidemo-ambient-ring,
 .uidemo-ring {
+  transform-box: fill-box;
   transform-origin: center;
   animation: uidemo-ring-breathe 5.5s ease-in-out infinite alternate;
 }
 
 @keyframes uidemo-ring-breathe {
   from {
-    opacity: 0.35;
+    opacity: 0.4;
   }
   to {
-    opacity: 0.85;
+    opacity: 0.9;
   }
 }
 
@@ -231,6 +232,7 @@
   transform: translate(-50%, -50%);
 }
 
+/* Flat front-view ripple: expand wide, squash vertical */
 .uidemo-click-ripple span {
   position: absolute;
   left: 50%;
@@ -238,8 +240,8 @@
   width: 0;
   height: 0;
   border-radius: 50%;
-  border: 1px solid rgba(107, 114, 160, 0.28);
-  transform: translate(-50%, -50%);
+  border: 1px solid rgba(107, 114, 160, 0.3);
+  transform: translate(-50%, -50%) scaleY(0.38);
   animation: uidemo-ripple-expand 1.8s ease-out forwards;
 }
 
@@ -258,8 +260,8 @@
     opacity: 0.5;
   }
   100% {
-    width: 180px;
-    height: 180px;
+    width: 220px;
+    height: 220px;
     opacity: 0;
   }
 }

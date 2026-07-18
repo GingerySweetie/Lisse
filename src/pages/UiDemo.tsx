@@ -55,82 +55,113 @@ const MOCK_MESSAGES = [
 
 type ClickRipple = { id: number; x: number; y: number };
 
+/** Front-ish view of water: wide ellipses, not top-down circles. */
+const SQUASH = 0.38;
+
 function RippleMark({ size = 48 }: { size?: number }) {
   return (
     <svg
       className="uidemo-mark"
       width={size}
-      height={size}
-      viewBox="0 0 48 48"
+      height={size * 0.55}
+      viewBox="0 0 48 26"
       aria-hidden
     >
-      {[8, 14, 20].map((r, i) => (
-        <circle
-          key={r}
+      {[8, 14, 20].map((rx, i) => (
+        <ellipse
+          key={rx}
           className="uidemo-ring"
           cx="24"
-          cy="24"
-          r={r}
+          cy="13"
+          rx={rx}
+          ry={rx * SQUASH}
           fill="none"
           stroke={RP[300]}
           strokeWidth={i === 0 ? 1.1 : 0.7}
-          opacity={0.45 - i * 0.1}
+          opacity={0.5 - i * 0.1}
           style={{ animationDelay: `${i * 0.35}s` }}
         />
       ))}
-      <circle cx="24" cy="24" r="2.2" fill={RP[400]} opacity={0.55} />
+      <ellipse
+        cx="24"
+        cy="13"
+        rx="2.4"
+        ry={2.4 * SQUASH}
+        fill={RP[400]}
+        opacity={0.55}
+      />
     </svg>
+  );
+}
+
+function FlatRings({
+  cx,
+  cy,
+  radii,
+  color,
+  baseOpacity,
+  delay = 0,
+  stroke = 0.65,
+}: {
+  cx: number;
+  cy: number;
+  radii: number[];
+  color: string;
+  baseOpacity: number;
+  delay?: number;
+  stroke?: number;
+}) {
+  return (
+    <>
+      {radii.map((rx, i) => (
+        <ellipse
+          key={`${cx}-${cy}-${rx}`}
+          className="uidemo-ambient-ring"
+          cx={cx}
+          cy={cy}
+          rx={rx}
+          ry={rx * SQUASH}
+          fill="none"
+          stroke={color}
+          strokeWidth={i === radii.length - 1 ? stroke * 0.7 : stroke}
+          opacity={baseOpacity - i * 0.012}
+          style={{ animationDelay: `${delay + i * 0.45}s` }}
+        />
+      ))}
+    </>
   );
 }
 
 function AmbientRings() {
   return (
     <svg className="uidemo-ambient" viewBox="0 0 390 780" aria-hidden>
-      {/* upper-right cluster — replaces hanging vines */}
-      {[36, 64, 96, 132, 172].map((r, i) => (
-        <circle
-          key={`a-${r}`}
-          className="uidemo-ambient-ring"
-          cx="310"
-          cy="120"
-          r={r}
-          fill="none"
-          stroke={RP[300]}
-          strokeWidth={i === 4 ? 0.45 : 0.7}
-          opacity={0.11 - i * 0.015}
-          style={{ animationDelay: `${i * 0.5}s` }}
-        />
-      ))}
-      {/* lower-left quieter cluster */}
-      {[28, 52, 80].map((r, i) => (
-        <circle
-          key={`b-${r}`}
-          className="uidemo-ambient-ring"
-          cx="48"
-          cy="620"
-          r={r}
-          fill="none"
-          stroke={RP[400]}
-          strokeWidth={0.55}
-          opacity={0.08 - i * 0.015}
-          style={{ animationDelay: `${1.2 + i * 0.6}s` }}
-        />
-      ))}
-      {/* faint center bloom behind brand */}
-      {[40, 70, 105].map((r, i) => (
-        <circle
-          key={`c-${r}`}
-          className="uidemo-ambient-ring"
-          cx="195"
-          cy="320"
-          r={r}
-          fill="none"
-          stroke={RP[300]}
-          strokeWidth={0.5}
-          opacity={0.05 - i * 0.008}
-          style={{ animationDelay: `${0.8 + i * 0.4}s` }}
-        />
-      ))}
+      {/* foreshortened ripples — looking across the water, not down */}
+      <FlatRings
+        cx={280}
+        cy={150}
+        radii={[50, 90, 135, 185, 240]}
+        color={RP[300]}
+        baseOpacity={0.13}
+        stroke={0.7}
+      />
+      <FlatRings
+        cx={70}
+        cy={640}
+        radii={[40, 75, 115]}
+        color={RP[400]}
+        baseOpacity={0.09}
+        delay={1.1}
+        stroke={0.55}
+      />
+      <FlatRings
+        cx={195}
+        cy={330}
+        radii={[55, 100, 150]}
+        color={RP[300]}
+        baseOpacity={0.06}
+        delay={0.7}
+        stroke={0.5}
+      />
     </svg>
   );
 }
@@ -271,20 +302,14 @@ function ChatPanel({ onBack }: { onBack: () => void }) {
   return (
     <div ref={phoneRef} className="uidemo-phone uidemo-chat">
       <svg className="uidemo-ambient" viewBox="0 0 390 780" aria-hidden>
-        {[28, 52, 78].map((r, i) => (
-          <circle
-            key={r}
-            className="uidemo-ambient-ring"
-            cx="340"
-            cy="70"
-            r={r}
-            fill="none"
-            stroke={RP[300]}
-            strokeWidth={0.55}
-            opacity={0.1 - i * 0.02}
-            style={{ animationDelay: `${i * 0.45}s` }}
-          />
-        ))}
+        <FlatRings
+          cx={300}
+          cy={90}
+          radii={[40, 75, 115]}
+          color={RP[300]}
+          baseOpacity={0.11}
+          stroke={0.55}
+        />
       </svg>
       <ShimmerLine top="42%" />
       <div className="uidemo-grain" />
@@ -386,7 +411,7 @@ export default function UiDemoPage() {
         <ul className="uidemo-notes">
           <li>--rp-300 薄花色 · 装饰圈</li>
           <li>--rp-500 群青鼠 · 强调</li>
-          <li>同心圆 / 微光线 / 点击波</li>
+          <li>扁椭圆涟漪（正视，非俯视）</li>
           <li>点手机框任意处起涟漪</li>
         </ul>
 
