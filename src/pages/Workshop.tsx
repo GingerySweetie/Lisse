@@ -18,6 +18,9 @@ import {
   ChevronUp,
   Copy,
   Check,
+  Cloud,
+  ExternalLink,
+  KeyRound,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db, getSettings } from '../db';
@@ -39,6 +42,21 @@ import {
 } from '../lib/workshop/handoff-runner';
 import { requeueJob } from '../lib/workshop/handoff-store';
 import type { HandoffJob } from '../lib/workshop/handoff-protocol';
+import {
+  getStoredCursorApiBase,
+  getStoredCursorApiKey,
+  listCursorModels,
+  resolveCursorApiBase,
+  setStoredCursorApiBase,
+  setStoredCursorApiKey,
+  toGithubRepoUrl,
+  verifyCursorApiKey,
+  type CursorAgent,
+  type CursorGitBranch,
+  type CursorMe,
+  type CursorModel,
+} from '../lib/workshop/cursor-api';
+import { runCursorCloudAgent } from '../lib/workshop/run-cursor-agent';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -57,11 +75,13 @@ interface StagedChange {
 
 type ActiveTab = 'changes' | 'beauty' | 'cost';
 type RunState = 'idle' | 'running' | 'done' | 'error';
+type Engine = 'local' | 'cursor';
 
 // ─── Constants ──────────────────────────────────────────────────────
 
 const GH_TOKEN_KEY = 'workshop_gh_token';
 const GH_REPO_KEY = 'workshop_gh_repo';
+const ENGINE_KEY = 'workshop_engine';
 
 const CHEAP_MODEL_HINTS = [
   'haiku',
@@ -89,6 +109,12 @@ export default function WorkshopPage() {
     getSettings().then(setSettings);
   }, []);
 
+  // 引擎：本地 Agent（自有 endpoint）或 Cursor Cloud（走 Cursor 额度）
+  const [engine, setEngine] = useState<Engine>(() => {
+    const v = localStorage.getItem(ENGINE_KEY);
+    return v === 'cursor' ? 'cursor' : 'local';
+  });
+
   // GitHub 配置
   const [ghToken, setGhToken] = useState(() => localStorage.getItem(GH_TOKEN_KEY) ?? '');
   const [repoInput, setRepoInput] = useState(() => localStorage.getItem(GH_REPO_KEY) ?? '');
@@ -97,6 +123,20 @@ export default function WorkshopPage() {
   const [fileTree, setFileTree] = useState<RepoFile[]>([]);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState('');
+
+  // Cursor Cloud 配置
+  const [cursorKey, setCursorKey] = useState(() => getStoredCursorApiKey());
+  const [cursorBase, setCursorBase] = useState(() => getStoredCursorApiBase());
+  const [cursorMe, setCursorMe] = useState<CursorMe | null>(null);
+  const [cursorModels, setCursorModels] = useState<CursorModel[]>([]);
+  const [cursorModelId, setCursorModelId] = useState('');
+  const [cursorConnecting, setCursorConnecting] = useState(false);
+  const [cursorError, setCursorError] = useState('');
+  const [autoCreatePR, setAutoCreatePR] = useState(true);
+  const [agentMode, setAgentMode] = useState<'agent' | 'plan'>('agent');
+  const [cursorAgent, setCursorAgent] = useState<CursorAgent | null>(null);
+  const [cursorBranches, setCursorBranches] = useState<CursorGitBranch[]>([]);
+  const [followUpText, setFollowUpText] = useState('');
 
   // 任务
   const [taskText, setTaskText] = useState('');
@@ -155,6 +195,47 @@ export default function WorkshopPage() {
     ]);
   }, []);
 
+  const cursorRepoUrl =
+    toGithubRepoUrl(repoInfo?.fullName ?? '') ?? toGithubRepoUrl(repoInput);
+
+  function switchEngine(next: Engine) {
+    setEngine(next);
+    localStorage.setItem(ENGINE_KEY, next);
+  }
+
+  // ── Cursor API 连接 ────────────────────────────────────────────────
+
+  async function handleCursorConnect() {
+    setCursorError('');
+    setCursorConnecting(true);
+    try {
+      setStoredCursorApiKey(cursorKey.trim());
+      setStoredCursorApiBase(cursorBase.trim());
+      const me = await verifyCursorApiKey(cursorKey.trim(), cursorBase.trim() || undefined);
+      setCursorMe(me);
+      const models = await listCursorModels(cursorKey.trim(), cursorBase.trim() || undefined);
+      setCursorModels(models);
+      if (!cursorModelId && models.length > 0) {
+        const def =
+          models.find((m) => m.variants?.some((v) => v.isDefault)) ?? models[0];
+        setCursorModelId(def.id);
+      }
+      localStorage.setItem(GH_REPO_KEY, repoInput);
+    } catch (e) {
+      setCursorMe(null);
+      setCursorError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCursorConnecting(false);
+    }
+  }
+
+  function handleCursorDisconnect() {
+    setCursorMe(null);
+    setCursorModels([]);
+    setCursorAgent(null);
+    setCursorBranches([]);
+  }
+
   // ── GitHub 连接 ────────────────────────────────────────────────────
 
   async function handleConnect() {
@@ -198,7 +279,11 @@ export default function WorkshopPage() {
 
   // ── 运行 Agent ─────────────────────────────────────────────────────
 
-  async function handleRun() {
+  async function handleRun(followUp = false) {
+    if (engine === 'cursor') {
+      await handleRunCursor(followUp);
+      return;
+    }
     if (!ghConfig || !repoInfo || !activeEndpoint || !taskText.trim()) return;
     setRunState('running');
     setLogs([]);
@@ -207,6 +292,8 @@ export default function WorkshopPage() {
     setUsage(null);
     setBeautyReport(null);
     setCommitDone(null);
+    setCursorAgent(null);
+    setCursorBranches([]);
     setActiveTab('changes');
 
     const ctrl = new AbortController();
@@ -251,6 +338,83 @@ export default function WorkshopPage() {
         setRunState('error');
       } else {
         addLog('已停止', 'info');
+        setRunState('idle');
+      }
+    }
+  }
+
+  async function handleRunCursor(followUp: boolean) {
+    const prompt = followUp ? followUpText.trim() : taskText.trim();
+    if (!cursorMe || !cursorKey.trim() || !cursorRepoUrl || !prompt) return;
+    if (followUp && !cursorAgent) return;
+
+    setRunState('running');
+    if (!followUp) {
+      setLogs([]);
+      setStagedChanges([]);
+      setAgentSummary('');
+      setUsage(null);
+      setBeautyReport(null);
+      setCommitDone(null);
+      setCursorBranches([]);
+      setCursorAgent(null);
+    }
+    setActiveTab('changes');
+    localStorage.setItem(GH_REPO_KEY, repoInput);
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    addLog(
+      `${followUp ? '跟进' : 'Cursor Cloud'}炼制: ${prompt.slice(0, 60)}${prompt.length > 60 ? '…' : ''}`,
+      'system',
+    );
+    addLog(`仓库: ${cursorRepoUrl}`, 'info');
+    if (cursorModelId) addLog(`模型: ${cursorModelId}`, 'info');
+    addLog(`额度走 Cursor 账号 · API Base: ${resolveCursorApiBase(cursorBase)}`, 'info');
+
+    try {
+      const result = await runCursorCloudAgent({
+        apiKey: cursorKey.trim(),
+        baseUrl: cursorBase.trim() || undefined,
+        taskText: prompt,
+        repoUrl: cursorRepoUrl,
+        startingRef: repoInfo?.defaultBranch,
+        modelId: cursorModelId || undefined,
+        autoCreatePR,
+        mode: agentMode,
+        agentId: followUp ? cursorAgent?.id : undefined,
+        signal: ctrl.signal,
+        onLog: addLog,
+        onAgent: (agent) => setCursorAgent(agent),
+      });
+
+      setCursorAgent(result.agent);
+      setCursorBranches(result.branches);
+      setAgentSummary(result.summary);
+      setFollowUpText('');
+
+      if (result.usage) {
+        setUsage({
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          cost: 0,
+        });
+      }
+
+      if (result.errored && result.errorMessage === 'cancelled') {
+        setRunState('idle');
+      } else if (result.errored) {
+        setRunState('error');
+      } else {
+        setRunState('done');
+      }
+    } catch (e) {
+      if ((e as { name?: string }).name !== 'AbortError') {
+        addLog(`发生错误: ${e instanceof Error ? e.message : String(e)}`, 'error');
+        setRunState('error');
+      } else {
+        addLog('已停止 / 已请求取消', 'info');
         setRunState('idle');
       }
     }
@@ -335,7 +499,13 @@ export default function WorkshopPage() {
   // ── Render ─────────────────────────────────────────────────────────
 
   const isConnected = !!ghConfig && !!repoInfo;
-  const canRun = isConnected && !!taskText.trim() && !!activeEndpoint && runState !== 'running';
+  const cursorReady = !!cursorMe && !!cursorRepoUrl;
+  const canRun =
+    runState !== 'running' &&
+    !!taskText.trim() &&
+    (engine === 'cursor'
+      ? cursorReady
+      : isConnected && !!activeEndpoint);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
@@ -354,33 +524,52 @@ export default function WorkshopPage() {
           Beta
         </span>
         <div className="flex-1" />
-        {isConnected && (
+        {(isConnected || cursorRepoUrl) && (
           <span className="hidden items-center gap-1.5 text-xs text-ink-500 md:flex">
-            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            {repoInfo?.fullName}
+            <div className={`h-1.5 w-1.5 rounded-full ${engine === 'cursor' ? 'bg-sky-500' : 'bg-emerald-500'}`} />
+            {repoInfo?.fullName ?? cursorRepoUrl?.replace('https://github.com/', '')}
           </span>
         )}
       </header>
 
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-4 px-3 py-4 md:px-6">
-          {/* GitHub 连接卡片 */}
-          <GitHubSetupCard
-            token={ghToken}
-            onTokenChange={setGhToken}
-            repoInput={repoInput}
-            onRepoInputChange={setRepoInput}
-            isConnected={isConnected}
-            connecting={connecting}
-            error={connectError}
-            repoInfo={repoInfo}
-            fileTree={fileTree}
-            onConnect={handleConnect}
-            onDisconnect={handleDisconnect}
-          />
+          <EngineSwitch engine={engine} onChange={switchEngine} />
 
-          {/* CLWD 派发任务队列 */}
-          {(handoffJobs?.length ?? 0) > 0 && (
+          {engine === 'cursor' ? (
+            <CursorSetupCard
+              key={cursorMe ? 'cursor-on' : 'cursor-off'}
+              apiKey={cursorKey}
+              onApiKeyChange={setCursorKey}
+              apiBase={cursorBase}
+              onApiBaseChange={setCursorBase}
+              repoInput={repoInput}
+              onRepoInputChange={setRepoInput}
+              me={cursorMe}
+              connecting={cursorConnecting}
+              error={cursorError}
+              resolvedBase={resolveCursorApiBase(cursorBase)}
+              onConnect={handleCursorConnect}
+              onDisconnect={handleCursorDisconnect}
+            />
+          ) : (
+            <GitHubSetupCard
+              token={ghToken}
+              onTokenChange={setGhToken}
+              repoInput={repoInput}
+              onRepoInputChange={setRepoInput}
+              isConnected={isConnected}
+              connecting={connecting}
+              error={connectError}
+              repoInfo={repoInfo}
+              fileTree={fileTree}
+              onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
+            />
+          )}
+
+          {/* CLWD 派发任务队列（本地 worker） */}
+          {engine === 'local' && (handoffJobs?.length ?? 0) > 0 && (
             <HandoffJobsCard
               jobs={handoffJobs ?? []}
               onLoadStaged={loadHandoffStaged}
@@ -392,10 +581,11 @@ export default function WorkshopPage() {
           )}
 
           {/* 任务输入卡片 */}
-          {isConnected && (
+          {((engine === 'local' && isConnected) || (engine === 'cursor' && cursorReady)) && (
             <TaskCard
               task={taskText}
               onTaskChange={setTaskText}
+              engine={engine}
               endpoints={endpoints ?? []}
               selectedEndpointId={selectedEndpointId}
               onEndpointChange={(id) => {
@@ -408,8 +598,15 @@ export default function WorkshopPage() {
               }}
               selectedModel={selectedModel}
               onModelChange={setSelectedModel}
+              cursorModels={cursorModels}
+              cursorModelId={cursorModelId}
+              onCursorModelChange={setCursorModelId}
+              autoCreatePR={autoCreatePR}
+              onAutoCreatePRChange={setAutoCreatePR}
+              agentMode={agentMode}
+              onAgentModeChange={setAgentMode}
               runState={runState}
-              onRun={handleRun}
+              onRun={() => void handleRun(false)}
               onStop={handleStop}
               canRun={canRun}
             />
@@ -420,8 +617,22 @@ export default function WorkshopPage() {
             <ExecutionLog logs={logs} logEndRef={logEndRef} />
           )}
 
-          {/* 结果面板 */}
-          {runState === 'done' && (
+          {/* Cursor 结果 */}
+          {engine === 'cursor' && (runState === 'done' || runState === 'error') && cursorAgent && (
+            <CursorResultCard
+              agent={cursorAgent}
+              summary={agentSummary}
+              branches={cursorBranches}
+              usage={usage}
+              followUp={followUpText}
+              onFollowUpChange={setFollowUpText}
+              onFollowUp={() => void handleRun(true)}
+              runState={runState}
+            />
+          )}
+
+          {/* 本地结果面板 */}
+          {engine === 'local' && runState === 'done' && (
             <ResultPanel
               stagedChanges={stagedChanges}
               agentSummary={agentSummary}
@@ -664,14 +875,355 @@ function GitHubSetupCard({
   );
 }
 
+function EngineSwitch({
+  engine,
+  onChange,
+}: {
+  engine: Engine;
+  onChange: (e: Engine) => void;
+}) {
+  return (
+    <div className="workshop-card">
+      <div className="flex items-center gap-2 mb-2">
+        <Sparkles size={14} className="text-amber-600" />
+        <span className="text-sm font-medium text-ink-700">炼制引擎</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => onChange('local')}
+          className={`rounded-xl px-3 py-2.5 text-left text-sm transition ring-1 ${
+            engine === 'local'
+              ? 'bg-amber-50 text-amber-900 ring-amber-200'
+              : 'bg-ink-50/50 text-ink-600 ring-lavender-100 hover:bg-lavender-50'
+          }`}
+        >
+          <div className="font-medium">本地 Agent</div>
+          <div className="mt-0.5 text-[11px] opacity-70">用你配置的 endpoint，本地改文件再提交</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange('cursor')}
+          className={`rounded-xl px-3 py-2.5 text-left text-sm transition ring-1 ${
+            engine === 'cursor'
+              ? 'bg-sky-50 text-sky-900 ring-sky-200'
+              : 'bg-ink-50/50 text-ink-600 ring-lavender-100 hover:bg-lavender-50'
+          }`}
+        >
+          <div className="flex items-center gap-1.5 font-medium">
+            <Cloud size={14} />
+            Cursor Cloud
+          </div>
+          <div className="mt-0.5 text-[11px] opacity-70">走 Cursor 额度，云端施工并开 PR</div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CursorSetupCard({
+  apiKey,
+  onApiKeyChange,
+  apiBase,
+  onApiBaseChange,
+  repoInput,
+  onRepoInputChange,
+  me,
+  connecting,
+  error,
+  resolvedBase,
+  onConnect,
+  onDisconnect,
+}: {
+  apiKey: string;
+  onApiKeyChange: (v: string) => void;
+  apiBase: string;
+  onApiBaseChange: (v: string) => void;
+  repoInput: string;
+  onRepoInputChange: (v: string) => void;
+  me: CursorMe | null;
+  connecting: boolean;
+  error: string;
+  resolvedBase: string;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
+  const [showKey, setShowKey] = useState(false);
+  const [collapsed, setCollapsed] = useState(!!me);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  return (
+    <div className="workshop-card">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2.5 text-left"
+        onClick={() => setCollapsed((c) => !c)}
+      >
+        <Cloud size={16} className={me ? 'text-sky-500' : 'text-ink-400'} />
+        <span className="font-medium text-ink-700">Cursor Cloud</span>
+        {me && (
+          <span className="ml-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700 ring-1 ring-sky-200">
+            {me.userEmail || me.apiKeyName}
+          </span>
+        )}
+        <div className="flex-1" />
+        <ChevronDown
+          size={14}
+          className={`text-ink-400 transition-transform ${collapsed ? '' : 'rotate-180'}`}
+        />
+      </button>
+
+      {!collapsed && (
+        <div className="mt-3 space-y-3">
+          {!me ? (
+            <>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-500">
+                  Cursor API Key
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type={showKey ? 'text' : 'password'}
+                    value={apiKey}
+                    onChange={(e) => onApiKeyChange(e.target.value)}
+                    placeholder="从 cursor.com/dashboard/api 创建"
+                    className="workshop-input flex-1"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey((s) => !s)}
+                    className="rounded-lg border border-lavender-100 px-3 py-2 text-xs text-ink-500 hover:bg-lavender-50"
+                  >
+                    {showKey ? '隐藏' : '显示'}
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] text-ink-400">
+                  Key 只存在浏览器本地。用量计入该 Cursor 账号。
+                  <a
+                    href="https://cursor.com/dashboard/api"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-1 text-sky-600 underline"
+                  >
+                    创建 Key →
+                  </a>
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-500">
+                  仓库（Cursor GitHub App 已授权的）
+                </label>
+                <input
+                  type="text"
+                  value={repoInput}
+                  onChange={(e) => onRepoInputChange(e.target.value)}
+                  placeholder="owner/repo 或 https://github.com/owner/repo"
+                  className="workshop-input w-full"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((s) => !s)}
+                className="text-[11px] text-ink-400 hover:text-ink-600"
+              >
+                {showAdvanced ? '收起高级选项' : '高级：API Base / 反代'}
+              </button>
+              {showAdvanced && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-ink-500">
+                    API Base（空 = 自动）
+                  </label>
+                  <input
+                    type="text"
+                    value={apiBase}
+                    onChange={(e) => onApiBaseChange(e.target.value)}
+                    placeholder={resolvedBase}
+                    className="workshop-input w-full font-mono text-xs"
+                  />
+                  <p className="mt-1 text-[11px] text-ink-400">
+                    localhost 直连 api.cursor.com；自定义域名请反代到
+                    <code className="mx-1 rounded bg-ink-50 px-1">/proxy/cursor</code>
+                    （开发服已内置）。当前解析为{' '}
+                    <code className="rounded bg-ink-50 px-1">{resolvedBase}</code>
+                  </p>
+                </div>
+              )}
+
+              {error && (
+                <div className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-red-200">
+                  <XCircle size={14} className="mt-0.5 shrink-0" />
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={onConnect}
+                disabled={connecting || !apiKey.trim() || !repoInput.trim()}
+                className="workshop-btn-primary w-full"
+              >
+                {connecting ? (
+                  <><Loader2 size={14} className="animate-spin" /> 验证中…</>
+                ) : (
+                  <><KeyRound size={14} /> 连接 Cursor</>
+                )}
+              </button>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800 ring-1 ring-sky-200">
+                <CheckCircle2 size={15} />
+                <div>
+                  <div className="font-medium">{me.apiKeyName}</div>
+                  <div className="text-[11px] text-sky-700">
+                    {me.userEmail || 'service account'} · {repoInput}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-ink-500">仓库</label>
+                <input
+                  type="text"
+                  value={repoInput}
+                  onChange={(e) => onRepoInputChange(e.target.value)}
+                  className="workshop-input w-full"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={onDisconnect}
+                className="w-full rounded-lg border border-lavender-100 py-1.5 text-xs text-ink-500 transition hover:bg-lavender-50"
+              >
+                断开 Cursor
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CursorResultCard({
+  agent,
+  summary,
+  branches,
+  usage,
+  followUp,
+  onFollowUpChange,
+  onFollowUp,
+  runState,
+}: {
+  agent: CursorAgent;
+  summary: string;
+  branches: CursorGitBranch[];
+  usage: { inputTokens: number; outputTokens: number; cost: number } | null;
+  followUp: string;
+  onFollowUpChange: (v: string) => void;
+  onFollowUp: () => void;
+  runState: RunState;
+}) {
+  const pr = branches.find((b) => b.prUrl);
+  const branch = branches.find((b) => b.branch);
+
+  return (
+    <div className="workshop-card space-y-3">
+      <div className="flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-2.5 text-sm text-sky-900 ring-1 ring-sky-200">
+        <Cloud size={15} className="mt-0.5 shrink-0 text-sky-600" />
+        <div className="min-w-0 flex-1">
+          <div className="font-medium">{agent.name || agent.id}</div>
+          {summary && <p className="mt-1 text-[12px] text-sky-800/90 whitespace-pre-wrap">{summary}</p>}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <a
+          href={agent.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-700"
+        >
+          <ExternalLink size={12} />
+          在 Cursor 打开
+        </a>
+        {pr?.prUrl && (
+          <a
+            href={pr.prUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+          >
+            <GithubIcon size={12} />
+            查看 PR
+          </a>
+        )}
+        {branch?.branch && (
+          <span className="inline-flex items-center rounded-xl bg-ink-50 px-3 py-2 font-mono text-[11px] text-ink-600 ring-1 ring-lavender-100">
+            {branch.branch}
+          </span>
+        )}
+      </div>
+
+      {usage && (
+        <div className="grid grid-cols-3 gap-2 text-center">
+          {[
+            ['输入', usage.inputTokens],
+            ['输出', usage.outputTokens],
+            ['合计', usage.inputTokens + usage.outputTokens],
+          ].map(([label, val]) => (
+            <div key={String(label)} className="rounded-lg bg-ink-50/60 px-2 py-1.5">
+              <div className="text-[10px] text-ink-400">{label}</div>
+              <div className="font-mono text-xs font-semibold text-ink-700">
+                {Number(val).toLocaleString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-2 border-t border-lavender-100 pt-3">
+        <div className="text-xs font-medium text-ink-500">继续跟进（同一 Agent）</div>
+        <textarea
+          value={followUp}
+          onChange={(e) => onFollowUpChange(e.target.value)}
+          placeholder="例如：再补上单元测试 / 修一下 lint…"
+          rows={2}
+          className="workshop-input w-full resize-none"
+          disabled={runState === 'running'}
+        />
+        <button
+          type="button"
+          onClick={onFollowUp}
+          disabled={runState === 'running' || !followUp.trim()}
+          className="workshop-btn-primary w-full"
+        >
+          <Play size={14} />
+          发送跟进
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TaskCard({
   task,
   onTaskChange,
+  engine,
   endpoints,
   selectedEndpointId,
   onEndpointChange,
   selectedModel,
   onModelChange,
+  cursorModels,
+  cursorModelId,
+  onCursorModelChange,
+  autoCreatePR,
+  onAutoCreatePRChange,
+  agentMode,
+  onAgentModeChange,
   runState,
   onRun,
   onStop,
@@ -679,11 +1231,19 @@ function TaskCard({
 }: {
   task: string;
   onTaskChange: (v: string) => void;
+  engine: Engine;
   endpoints: Endpoint[];
   selectedEndpointId: string;
   onEndpointChange: (id: string) => void;
   selectedModel: string;
   onModelChange: (m: string) => void;
+  cursorModels: CursorModel[];
+  cursorModelId: string;
+  onCursorModelChange: (id: string) => void;
+  autoCreatePR: boolean;
+  onAutoCreatePRChange: (v: boolean) => void;
+  agentMode: 'agent' | 'plan';
+  onAgentModeChange: (m: 'agent' | 'plan') => void;
   runState: RunState;
   onRun: () => void;
   onStop: () => void;
@@ -691,18 +1251,22 @@ function TaskCard({
 }) {
   const activeEndpoint = endpoints.find((e) => e.id === selectedEndpointId);
   const models = activeEndpoint?.chatModels ?? [];
-  const cheap = isCheapModel(selectedModel);
+  const cheap = engine === 'local' && isCheapModel(selectedModel);
 
   return (
     <div className="workshop-card space-y-3">
       <div className="flex items-center gap-2">
         <FlaskConical size={15} className="text-amber-600" />
         <span className="font-medium text-ink-700">炼制任务</span>
-        {cheap && (
+        {engine === 'cursor' ? (
+          <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700 ring-1 ring-sky-200">
+            Cursor 额度
+          </span>
+        ) : cheap ? (
           <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700 ring-1 ring-green-200">
             💰 省钱模式
           </span>
-        )}
+        ) : null}
       </div>
 
       <textarea
@@ -714,33 +1278,69 @@ function TaskCard({
         disabled={runState === 'running'}
       />
 
-      <div className="flex flex-wrap gap-2">
-        {endpoints.length > 1 && (
+      {engine === 'local' ? (
+        <div className="flex flex-wrap gap-2">
+          {endpoints.length > 1 && (
+            <select
+              value={selectedEndpointId}
+              onChange={(e) => onEndpointChange(e.target.value)}
+              className="workshop-select"
+            >
+              {endpoints.map((ep) => (
+                <option key={ep.id} value={ep.id}>
+                  {ep.name}
+                </option>
+              ))}
+            </select>
+          )}
+
           <select
-            value={selectedEndpointId}
-            onChange={(e) => onEndpointChange(e.target.value)}
-            className="workshop-select"
+            value={selectedModel}
+            onChange={(e) => onModelChange(e.target.value)}
+            className="workshop-select flex-1"
           >
-            {endpoints.map((ep) => (
-              <option key={ep.id} value={ep.id}>
-                {ep.name}
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m} {isCheapModel(m) ? '💰' : ''}
               </option>
             ))}
           </select>
-        )}
-
-        <select
-          value={selectedModel}
-          onChange={(e) => onModelChange(e.target.value)}
-          className="workshop-select flex-1"
-        >
-          {models.map((m) => (
-            <option key={m} value={m}>
-              {m} {isCheapModel(m) ? '💰' : ''}
-            </option>
-          ))}
-        </select>
-      </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={cursorModelId}
+              onChange={(e) => onCursorModelChange(e.target.value)}
+              className="workshop-select flex-1"
+            >
+              <option value="">默认模型</option>
+              {cursorModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.displayName || m.id}
+                </option>
+              ))}
+            </select>
+            <select
+              value={agentMode}
+              onChange={(e) => onAgentModeChange(e.target.value as 'agent' | 'plan')}
+              className="workshop-select"
+            >
+              <option value="agent">Agent（直接改）</option>
+              <option value="plan">Plan（先规划）</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-ink-600">
+            <input
+              type="checkbox"
+              checked={autoCreatePR}
+              onChange={(e) => onAutoCreatePRChange(e.target.checked)}
+              className="rounded border-lavender-200"
+            />
+            完成后自动开 PR
+          </label>
+        </div>
+      )}
 
       {runState !== 'running' ? (
         <button
@@ -750,7 +1350,7 @@ function TaskCard({
           className="workshop-btn-primary w-full"
         >
           <Play size={14} />
-          开始炼制
+          {engine === 'cursor' ? '派给 Cursor' : '开始炼制'}
         </button>
       ) : (
         <button
