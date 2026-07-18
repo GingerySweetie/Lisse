@@ -603,60 +603,30 @@ async function streamAssistant(args: {
   //       which is injected AFTER BP4 (the rolling messages breakpoint) so it
   //       never touches the cached prefix.
   //
-  // BP1: persona system prompt — almost never changes
-  // BP2: writing style — changes only when the user switches style, stays
-  //      byte-identical across every turn of the same conversation.
-  // BP3: pinned long-term memory — changes only on pin/unpin, deterministic
-  //      ordering keeps it byte-stable (tutorial: 长期记忆 lives in BP1).
-  // 4th+ system layers (group awareness) are merged untagged — still cached,
-  //      because the rolling message breakpoint (BP4) covers everything
-  //      before it anyway; the system tags only matter as fallback
-  //      boundaries when messages change.
+  // Tagged system order (must match anthropic.ts buildSystemBlocks):
+  //   BP1: persona
+  //   BP2: writing style
+  //   BP3: pinned long-term memory
+  // Untagged rest (still covered by BP4 when stable): yesterday's diary
+  //   (date-stable all day), artifacts/handoff capability, group awareness.
+  //   Capabilities come AFTER the three tagged BPs so they don't steal slots.
   //
-  // Style + cache — why "style never changes" is not enough for the tail:
-  //   Prompt cache is PREFIX-matched. Tokens after any changed byte miss.
-  //   The current user message always changes (new text / volatile context),
-  //   so ANYTHING appended after it — even a byte-identical 1000-token style
-  //   — is re-billed as uncached every turn. Content stability only helps
-  //   when the text sits at a STABLE PREFIX OFFSET (= system BP2).
+  // Cost target: long chats ≥97% hit. Diary used to live in volatile and
+  // could dump 300–1500+ uncached toks every turn — moved to system.
   //
-  // 两全其美:
-  //   1. Full style in BP2 system — cached, readable, stable across turns.
-  //      Header claims priority over persona「说话方式」so system alone is
-  //      not diluted by a large voice block earlier in the prompt.
-  //   2. FIXED short <style_reminder> in the user-message tail — same bytes
-  //      every turn (~40 toks uncached, not ~1000), cache-cheap, but forceful
-  //      enough to pull attention back to the system style at generate time.
-  //
-  // bookBlock, memoryBlock, healthBlock, statusBlock are ALL per-turn volatile:
+  // bookBlock / memoryBlock / healthBlock / statusBlock stay volatile:
   //   • bookBlock   — selection/excerpt changes every reading message
-  //   • memoryBlock — retrieved via semantic search on the current user query
-  //   • healthBlock — step count / heart rate / sync timestamp change throughout the day
-  //   • statusBlock — includes current clock time (changes every minute!)
-  // These are collected into gateway_volatile_context below and prepended to the
-  // last user message (after BP4), so they never bust any cached prefix.
+  //   • memoryBlock — semantic recall on the current user query
+  //   • healthBlock — steps/HR change through the day (no minute clock)
+  //   • statusBlock — gap/typing/quick-state only (no always-on HH:MM)
 
   const settings = await getSettings();
-
-  // Artifact / choices capability description — byte-stable constant, so it
-  // costs nothing extra in prompt caching. Placed BEFORE persona so it sets
-  // the baseline capability context the persona can then override / extend.
-  turns.push({ role: 'system', content: ARTIFACTS_CAPABILITY });
-
-  // CLWD handoff capability — only when enabled. Constant text so it stays
-  // cache-friendly while the feature is on for a session.
-  if (settings.workshopHandoffEnabled) {
-    turns.push({ role: 'system', content: HANDOFF_CAPABILITY });
-  }
 
   // BP1: persona (stable — almost never changes)
   if (persona && persona.systemPrompt.trim()) {
     turns.push({ role: 'system', content: persona.systemPrompt });
   }
-  // BP2: writing style — stable per conversation, only changes when the user
-  // explicitly switches style. Lives HERE (not the user-tail) so the full
-  // text is part of the cached prefix. Priority header stops strong persona
-  // voice blocks from silently winning at generate time.
+  // BP2: writing style — stable per conversation; full text cached here.
   if (style && style.prompt.trim()) {
     turns.push({
       role: 'system',
@@ -671,31 +641,35 @@ async function streamAssistant(args: {
   if (pinnedMemoryBlock) {
     turns.push({ role: 'system', content: pinnedMemoryBlock });
   }
-  // Group-awareness — stable per group session. May land beyond the 3rd
-  // system slot; then it's merged untagged, which is fine (see note above).
+
+  // Untagged stable layers (after BP3) — still in the cached prefix via BP4.
+  // Yesterday's diary is byte-stable for the whole local day; only rewrites
+  // once at midnight. Keeping it HERE (not volatile) is the main 97%+ lever.
+  if (persona) {
+    try {
+      const diaryBlock = await formatYesterdayDiaryBlock(persona.id);
+      if (diaryBlock) turns.push({ role: 'system', content: diaryBlock });
+    } catch { /* diary missing — skip silently */ }
+  }
+  // Capability blurbs are constants; merged after BP3 so they don't steal
+  // the three tagged breakpoints from persona/style/pinned.
+  turns.push({ role: 'system', content: ARTIFACTS_CAPABILITY });
+  if (settings.workshopHandoffEnabled) {
+    turns.push({ role: 'system', content: HANDOFF_CAPABILITY });
+  }
   if (persona && groupOthers && groupOthers.length > 0) {
     turns.push({ role: 'system', content: groupAwarenessSnippet(persona, groupOthers) });
   }
 
-  // Fixed recency nudge — CONSTANT string (never embeds style.prompt), so it
-  // adds the same ~40 uncached tokens after BP4 every request. Cheap enough
-  // to keep ~90% hit rate; forceful enough to re-activate the cached system
-  // style at the strongest recency position. Never persisted to the DB.
+  // Fixed short recency nudge — CONSTANT (~25 toks), never embeds style.prompt.
   const STYLE_NUDGE = style && style.prompt.trim()
-    ? '<style_reminder>严格按系统消息「# 写作风格」的全部条款作答；与人设语气/说话方式冲突时以写作风格为准。勿复述条款。</style_reminder>'
+    ? '<style_reminder>按系统「# 写作风格」作答。</style_reminder>'
     : '';
 
   // ─── Collect volatile context (injected after BP4, not in system) ───
   const volatileParts: string[] = [];
   if (bookBlock) volatileParts.push(bookBlock);
   if (memoryBlock) volatileParts.push(memoryBlock);
-  // Yesterday's self-written diary — date-keyed, so it belongs in volatile.
-  if (persona) {
-    try {
-      const diaryBlock = await formatYesterdayDiaryBlock(persona.id);
-      if (diaryBlock) volatileParts.push(diaryBlock);
-    } catch { /* diary missing — skip silently */ }
-  }
   try {
     const healthBlock = await formatHealthContextBlock();
     if (healthBlock) volatileParts.push(healthBlock);
@@ -704,6 +678,7 @@ async function streamAssistant(args: {
   if (statusBlock) volatileParts.push(statusBlock);
 
   // CLWD selected results — ride the current user turn (not a system message).
+  // Hard-cap size: full 40k×12 dumps nuke hit rate on that turn.
   let handoffInjectJobs: HandoffJob[] = [];
   const earlyConvId = branch[0]?.conversationId ?? '';
   if (handoffIds && handoffIds.length > 0 && earlyConvId) {
@@ -712,6 +687,7 @@ async function streamAssistant(args: {
       sourceConversationId: earlyConvId,
       requestedIds: handoffIds,
       jobs: jobs.filter((j): j is HandoffJob => !!j),
+      limits: { maxResultCount: 3, maxResultLength: 3000 },
     });
     if (bundle.context) {
       volatileParts.unshift(bundle.context);
@@ -769,10 +745,11 @@ async function streamAssistant(args: {
   // (no injection) — BP4 still hits.
   //
   //   BP1 (persona)     → always hits  ✓
-  //   BP2 (full style)  → always hits  ✓  ← obedience source, cached
+  //   BP2 (full style)  → always hits  ✓
   //   BP3 (pinned)      → always hits  ✓
+  //   diary/capabilities→ covered by BP4 when stable  ✓
   //   BP4 (history)     → always hits  ✓
-  //   volatile+nudge    → uncached; nudge is ~40 toks, not the full style
+  //   volatile+nudge    → uncached; keep this zone tiny for ≥97% hits
   const vcText =
     volatileParts.length > 0
       ? '<gateway_volatile_context>仅供参考，勿复述：\n' +

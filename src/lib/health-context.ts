@@ -44,7 +44,8 @@ export async function formatHealthContextBlock(): Promise<string> {
     }
     lines.push(sleepLine);
   }
-  lines.push(`- 同步时间: ${fmtClock(latest.updatedAt)}`);
+  // No sync HH:MM — minute clocks make this block unique every refresh and
+  // burn uncached tokens for zero conversational value.
   lines.push('');
   lines.push('不要主动提起这些数字. 只在用户问起或对话直接相关时引用.');
   return lines.join('\n');
@@ -53,9 +54,4 @@ export async function formatHealthContextBlock(): Promise<string> {
 function todayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function fmtClock(ts: number): string {
-  const d = new Date(ts);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }

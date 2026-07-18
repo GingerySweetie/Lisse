@@ -113,8 +113,8 @@ export default function StylesPage() {
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           <p className="text-sm text-ink-500">
-            Style 完整进系统提示（稳定前缀，可缓存）；每轮只在最新消息末尾加一句固定提醒拉回注意力。
-            与人设语气冲突时以 Style 为准。
+            Style 完整进系统提示（稳定前缀，走 prompt cache）；尾部只留极短固定提醒。
+            与人设语气冲突时以 Style 为准。为保 ≥97% 命中率，不会把全文塞进每轮用户消息。
             <br />
             前端改完保存即生效，下一条消息就会带上新内容。
           </p>
