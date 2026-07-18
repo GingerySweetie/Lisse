@@ -951,6 +951,7 @@ function BedroomToolChip({ call, t }: { call: ToolCallRecord; t: BedroomTheme })
   const isRecall = call.name === 'recall';
   const isUpdate = call.name === 'update_memory';
   const isForget = call.name === 'forget_memory';
+  const isParseDoc = call.name === 'parse_document';
   const icon = isRemember
     ? '记'
     : isRecall
@@ -959,7 +960,9 @@ function BedroomToolChip({ call, t }: { call: ToolCallRecord; t: BedroomTheme })
         ? '改'
         : isForget
           ? '忘'
-          : '·';
+          : isParseDoc
+            ? '档'
+            : '·';
   const label = (() => {
     if (call.error) return `${call.name} 出错`;
     if (isRemember) {
@@ -983,6 +986,14 @@ function BedroomToolChip({ call, t }: { call: ToolCallRecord; t: BedroomTheme })
       return resultText.length > 24
         ? `${resultText.slice(0, 24)}…`
         : resultText || '遗忘';
+    }
+    if (isParseDoc) {
+      const name =
+        (call.result as { filename?: string | null } | undefined)?.filename ||
+        (call.input as { filename?: string })?.filename ||
+        '文档';
+      const short = name.length > 18 ? `${name.slice(0, 18)}…` : name;
+      return `解析 · ${short}`;
     }
     return call.name;
   })();
