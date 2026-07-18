@@ -13,7 +13,14 @@ export const DEFAULT_HANDOFF_LIMITS = Object.freeze({
   maxResultLength: 40_000,
 });
 
-export type HandoffLimits = typeof DEFAULT_HANDOFF_LIMITS;
+/** Widen frozen literals so callers can pass tighter chat-inject caps. */
+export type HandoffLimits = {
+  maxTasks: number;
+  maxTitleLength: number;
+  maxRequestLength: number;
+  maxResultCount: number;
+  maxResultLength: number;
+};
 
 export type HandoffJobStatus = 'queued' | 'running' | 'completed' | 'failed';
 

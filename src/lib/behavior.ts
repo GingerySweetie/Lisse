@@ -162,12 +162,13 @@ export function inferStatus(): InferredStatus {
     }
   }
 
-  // Time-of-day labeling — bias toward her schedule (shift 14:00-22:45).
+  // Time-of-day — coarse label ONLY when another signal already fired.
+  // A minute-precision clock was always-on (~40 uncached toks every turn)
+  // and busted any hope of reusing the volatile string within the hour.
   const hour = new Date().getHours();
   const tod = labelTimeOfDay(hour);
-  if (tod) {
-    lines.push(`当前时间 ${pad(hour)}:${pad(new Date().getMinutes())}，${tod}。`);
-    hasSignal = true;
+  if (tod && hasSignal) {
+    lines.push(`现在是${tod}。`);
   }
 
   // Typing cadence
@@ -220,10 +221,6 @@ function safeRead(k: string): string | null {
 
 function minutesAgo(ts: number): number {
   return Math.max(0, Math.round((Date.now() - ts) / 60000));
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, '0');
 }
 
 function labelTimeOfDay(hour: number): string | null {
