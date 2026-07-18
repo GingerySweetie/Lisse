@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, Paperclip, Send, Square, X } from 'lucide-react';
+import { FileText, Image as ImageIcon, Paperclip, Send, Square, X } from 'lucide-react';
 import type { Attachment } from '../types';
 import {
   attachmentDataUrl,
@@ -11,7 +11,7 @@ import { recordTyping } from '../lib/behavior';
 /** Soft cap for non-image uploads (base64 lives in IndexedDB). */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 
-/** Common document / text types for the file picker (images use the other button). */
+/** Common document / text types for the file picker (images use the other path). */
 const FILE_ACCEPT =
   '.txt,.md,.markdown,.pdf,.csv,.tsv,.json,.xml,.html,.htm,.css,.js,.ts,.tsx,.jsx,.mjs,.cjs,.py,.rs,.go,.java,.c,.cpp,.h,.hpp,.rb,.php,.swift,.kt,.sql,.yml,.yaml,.toml,.ini,.log,.rtf,.docx,.doc,.xlsx,.xls,.pptx,.ppt,text/*,application/pdf,application/json,application/xml,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -60,12 +60,14 @@ export default function ChatInput({
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [activeTags, setActiveTags] = useState<MoodTag[]>([]);
   /** Sticky deep-think — stays on across turns until tapped off (ADHD-friendly). */
   const [deepThink, setDeepThink] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const imageRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
 
   const typingStartRef = useRef<number | null>(null);
   const typedCharsRef = useRef<number>(0);
@@ -76,6 +78,24 @@ export default function ChatInput({
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    function onDoc(e: MouseEvent) {
+      if (!attachMenuRef.current?.contains(e.target as Node)) {
+        setAttachMenuOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setAttachMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [attachMenuOpen]);
 
   function toggleTag(t: MoodTag) {
     setActiveTags((prev) => {
@@ -247,26 +267,51 @@ export default function ChatInput({
                   e.target.value = '';
                 }}
               />
-              <button
-                type="button"
-                onClick={() => imageRef.current?.click()}
-                disabled={disabled || uploading}
-                className="wis-send-btn"
-                aria-label="附图片"
-                title="附图片"
-              >
-                <ImageIcon size={14} strokeWidth={1.6} />
-              </button>
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={disabled || uploading}
-                className="wis-send-btn"
-                aria-label="附文件"
-                title="附文件"
-              >
-                <Paperclip size={14} strokeWidth={1.6} />
-              </button>
+              <div ref={attachMenuRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setAttachMenuOpen((v) => !v)}
+                  disabled={disabled || uploading}
+                  className="wis-send-btn"
+                  aria-label="添加附件"
+                  title="添加附件"
+                  aria-expanded={attachMenuOpen}
+                  aria-haspopup="menu"
+                >
+                  <Paperclip size={14} strokeWidth={1.6} />
+                </button>
+                {attachMenuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute bottom-[calc(100%+8px)] left-0 z-30 min-w-[132px] overflow-hidden rounded-xl border border-lavender-100 bg-white/95 py-1 shadow-lg backdrop-blur-md"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-light text-ink-700 transition hover:bg-lavender-50"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        imageRef.current?.click();
+                      }}
+                    >
+                      <ImageIcon size={14} strokeWidth={1.6} className="opacity-70" />
+                      图片
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] font-light text-ink-700 transition hover:bg-lavender-50"
+                      onClick={() => {
+                        setAttachMenuOpen(false);
+                        fileRef.current?.click();
+                      }}
+                    >
+                      <FileText size={14} strokeWidth={1.6} className="opacity-70" />
+                      文件
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           )}
           <textarea
