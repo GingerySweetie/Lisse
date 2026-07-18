@@ -218,9 +218,17 @@ export async function sendMessage(opts: SendOptions): Promise<SendResult> {
   };
 }
 
+/** Tool names that mean the model already managed memory this turn —
+ *  skip the auto-extractor so we don't double-write. */
+const MEMORY_WRITE_TOOLS = new Set([
+  'remember',
+  'update_memory',
+  'forget_memory',
+]);
+
 /** Fire-and-forget extraction; never throws into the chat path. Skipped
- *  when the model used the remember tool this turn — it already decided
- *  what to keep, so the auto-extractor would double up. */
+ *  when the model used a memory write/edit tool this turn — it already
+ *  decided what to keep, so the auto-extractor would double up. */
 function scheduleFactExtraction(args: {
   persona?: Persona;
   conversationId: string;
@@ -230,10 +238,10 @@ function scheduleFactExtraction(args: {
   if (!args.persona) return;
   if (args.assistantMessage.status !== 'done') return;
   if (!args.assistantMessage.content.trim()) return;
-  const usedRemember = (args.assistantMessage.toolCalls ?? []).some(
-    (c) => c.name === 'remember',
+  const usedMemoryWrite = (args.assistantMessage.toolCalls ?? []).some((c) =>
+    MEMORY_WRITE_TOOLS.has(c.name),
   );
-  if (usedRemember) return;
+  if (usedMemoryWrite) return;
   void extractAndStoreFacts({
     persona: args.persona,
     conversationId: args.conversationId,

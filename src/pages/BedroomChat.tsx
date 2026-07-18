@@ -932,18 +932,40 @@ function BedroomColorPicker({
 function BedroomToolChip({ call, t }: { call: ToolCallRecord; t: BedroomTheme }) {
   const isRemember = call.name === 'remember';
   const isRecall = call.name === 'recall';
-  const icon = isRemember ? '记' : isRecall ? '查' : '·';
+  const isUpdate = call.name === 'update_memory';
+  const isForget = call.name === 'forget_memory';
+  const icon = isRemember
+    ? '记'
+    : isRecall
+      ? '查'
+      : isUpdate
+        ? '改'
+        : isForget
+          ? '忘'
+          : '·';
   const label = (() => {
     if (call.error) return `${call.name} 出错`;
     if (isRemember) {
       const text = (call.input as { text?: string })?.text ?? '';
-      return text.length > 24 ? `${text.slice(0, 24)}…` : text;
+      const updated = !!(call.result as { updated?: boolean } | undefined)?.updated;
+      const body = text.length > 24 ? `${text.slice(0, 24)}…` : text;
+      return updated ? `更新 · ${body}` : body;
     }
     if (isRecall) {
       const q = (call.input as { query?: string })?.query ?? '';
       const facts = (call.result as { facts?: unknown[] })?.facts;
       const n = Array.isArray(facts) ? facts.length : 0;
       return `${q.length > 18 ? `${q.slice(0, 18)}…` : q} · ${n}`;
+    }
+    if (isUpdate) {
+      const text = (call.input as { text?: string })?.text ?? '';
+      return text.length > 24 ? `${text.slice(0, 24)}…` : text || '改写';
+    }
+    if (isForget) {
+      const resultText = (call.result as { text?: string } | undefined)?.text ?? '';
+      return resultText.length > 24
+        ? `${resultText.slice(0, 24)}…`
+        : resultText || '遗忘';
     }
     return call.name;
   })();

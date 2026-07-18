@@ -10,7 +10,8 @@ import { mcpTools } from '../mcp/tools';
  * the model emits a tool_use). Adapters in src/api/{openai,anthropic}
  * translate the ToolDef shape to each provider's format.
  *
- * Built-ins: memory (remember / recall), music (play / search / history).
+ * Built-ins: memory (remember / recall / update_memory / forget_memory),
+ *            music (play / search / history).
  * External:  MCP servers registered on /mcp page (streamable HTTP).
  */
 

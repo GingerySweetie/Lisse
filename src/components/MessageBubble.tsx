@@ -608,11 +608,23 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
   const [open, setOpen] = useState(false);
   const isRemember = call.name === 'remember';
   const isRecall = call.name === 'recall';
-  const icon = isRemember ? '📝' : isRecall ? '🔍' : '🛠';
+  const isUpdate = call.name === 'update_memory';
+  const isForget = call.name === 'forget_memory';
+  const icon = isRemember
+    ? '📝'
+    : isRecall
+      ? '🔍'
+      : isUpdate
+        ? '✏️'
+        : isForget
+          ? '🗑'
+          : '🛠';
   const label = (() => {
     if (call.error) return `${call.name} 出错`;
     if (isRemember) {
       const text = (call.input as { text?: string })?.text;
+      const updated = !!(call.result as { updated?: boolean } | undefined)?.updated;
+      if (updated) return text ? `更新记忆：${text}` : '更新记忆';
       return text ? `记住：${text}` : '记住';
     }
     if (isRecall) {
@@ -622,6 +634,17 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
       return query
         ? `查"${truncate(query, 24)}"→ ${count} 条`
         : `查 → ${count} 条`;
+    }
+    if (isUpdate) {
+      const text = (call.input as { text?: string })?.text;
+      return text ? `改写：${text}` : '改写记忆';
+    }
+    if (isForget) {
+      const resultText = (call.result as { text?: string } | undefined)?.text;
+      const reason = (call.input as { reason?: string })?.reason;
+      if (resultText) return `遗忘：${truncate(resultText, 28)}`;
+      if (reason) return `遗忘：${truncate(reason, 28)}`;
+      return '遗忘记忆';
     }
     return call.name;
   })();
