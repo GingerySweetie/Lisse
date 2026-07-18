@@ -37,6 +37,12 @@ import type {
   WritingStyle,
 } from '../types';
 import type { HandoffJob } from './workshop/handoff-protocol';
+import {
+  makeProgress,
+  throwIfAborted,
+  yieldToUi,
+  type ExportProgressCallback,
+} from './export-progress';
 
 const LAST_BACKUP_AT_KEY = 'last_backup_at';
 
@@ -44,6 +50,11 @@ const LAST_BACKUP_AT_KEY = 'last_backup_at';
 const STREAM_CHUNK_BYTES = 192 * 1024;
 /** Rows per Dexie page when streaming large tables. */
 const TABLE_PAGE = 80;
+
+export interface BackupExportOptions {
+  signal?: AbortSignal;
+  onProgress?: ExportProgressCallback;
+}
 
 export interface BackupBundle {
   /** Format identifier for sanity-checking. */
@@ -282,6 +293,7 @@ export async function importBackup(
   } catch (err) {
     throw new Error(
       `不是合法 JSON：${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
   }
   if (
@@ -534,13 +546,17 @@ async function upsertAll<T>(
  * native writer in small chunks (no giant base64 bridge payload). Elsewhere
  * it builds a compact Blob and uses the normal saveFile fallbacks.
  */
-export async function downloadBackup(filename: string): Promise<void> {
+export async function downloadBackup(
+  filename: string,
+  opts?: BackupExportOptions,
+): Promise<void> {
   if (isBackupFolderPickerAvailable()) {
     const folder = await getValidBackupFolder();
     try {
-      await streamBackupToNative(filename, folder?.uri);
+      await streamBackupToNative(filename, folder?.uri, opts);
       return;
     } catch (err) {
+      throwIfAborted(opts?.signal);
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('PERMISSION_LOST')) {
         await clearBackupFolder();
@@ -548,9 +564,10 @@ export async function downloadBackup(filename: string): Promise<void> {
       if (folder && !msg.includes('UNSUPPORTED_API_LEVEL')) {
         // Retry to Downloads without the SAF folder.
         try {
-          await streamBackupToNative(filename);
+          await streamBackupToNative(filename, undefined, opts);
           return;
         } catch (retryErr) {
+          throwIfAborted(opts?.signal);
           console.warn('[backup] native stream failed:', retryErr);
         }
       } else if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
@@ -559,7 +576,9 @@ export async function downloadBackup(filename: string): Promise<void> {
     }
   }
 
-  const blob = await buildBackupBlob();
+  const blob = await buildBackupBlob(opts);
+  throwIfAborted(opts?.signal);
+  opts?.onProgress?.(makeProgress(1, 1, '写入文件…', 'save'));
   await saveFile(blob, filename, 'JSON 备份文件');
 }
 
@@ -609,10 +628,23 @@ export function suggestedBackupFilename(): string {
 
 // ── Streaming / blob builders ─────────────────────────────────────────────
 
+async function countBackupRows(): Promise<number> {
+  const counts = await Promise.all(
+    BACKUP_TABLES.map((name) => tableRef(name).count()),
+  );
+  return counts.reduce((a, b) => a + b, 0);
+}
+
 async function streamBackupToNative(
   filename: string,
   folderUri?: string,
+  opts?: BackupExportOptions,
 ): Promise<void> {
+  opts?.onProgress?.(makeProgress(0, 1, '准备备份…', 'prepare'));
+  const totalRows = await countBackupRows();
+  // +1 for settings / header work so the bar isn't stuck at 0.
+  const total = Math.max(totalRows + 1, 1);
+
   const { handle } = await FileSaver.beginSave({
     mimeType: 'application/json',
     suggestedName: filename,
@@ -622,17 +654,24 @@ async function streamBackupToNative(
   const out = createChunkedWriter(handle);
 
   try {
+    throwIfAborted(opts?.signal);
     const now = Date.now();
     await out.write(`{"__lisse":"backup","version":5,"exportedAt":${now}`);
 
     const settings = await getSettings();
     await out.write(`,"settings":${JSON.stringify(settings)}`);
+    let done = 1;
+    opts?.onProgress?.(
+      makeProgress(done, total, '写入设置…', 'settings'),
+    );
 
     for (const name of BACKUP_TABLES) {
+      throwIfAborted(opts?.signal);
       await out.write(`,"${name}":[`);
       let first = true;
       let offset = 0;
       for (;;) {
+        throwIfAborted(opts?.signal);
         const batch = await tableRef(name).offset(offset).limit(TABLE_PAGE).toArray();
         if (batch.length === 0) break;
         for (const row of batch) {
@@ -640,13 +679,19 @@ async function streamBackupToNative(
           first = false;
         }
         offset += batch.length;
+        done += batch.length;
+        opts?.onProgress?.(
+          makeProgress(done, total, `导出 ${name}…`, name),
+        );
         await yieldToUi();
       }
       await out.write(']');
     }
 
+    throwIfAborted(opts?.signal);
     await out.write('}');
     await out.flush();
+    opts?.onProgress?.(makeProgress(total, total, '完成写入…', 'save'));
     await FileSaver.endSave({ handle });
     await db.kv.put({ key: LAST_BACKUP_AT_KEY, value: now });
   } catch (err) {
@@ -660,19 +705,29 @@ async function streamBackupToNative(
 }
 
 /** Build a compact backup Blob without pretty-printing (browser / fallback). */
-async function buildBackupBlob(): Promise<Blob> {
+async function buildBackupBlob(opts?: BackupExportOptions): Promise<Blob> {
+  opts?.onProgress?.(makeProgress(0, 1, '准备备份…', 'prepare'));
+  const totalRows = await countBackupRows();
+  const total = Math.max(totalRows + 1, 1);
+
   const parts: BlobPart[] = [];
   const now = Date.now();
   parts.push(`{"__lisse":"backup","version":5,"exportedAt":${now}`);
 
   const settings = await getSettings();
   parts.push(`,"settings":${JSON.stringify(settings)}`);
+  let done = 1;
+  opts?.onProgress?.(
+    makeProgress(done, total, '写入设置…', 'settings'),
+  );
 
   for (const name of BACKUP_TABLES) {
+    throwIfAborted(opts?.signal);
     parts.push(`,"${name}":[`);
     let first = true;
     let offset = 0;
     for (;;) {
+      throwIfAborted(opts?.signal);
       const batch = await tableRef(name).offset(offset).limit(TABLE_PAGE).toArray();
       if (batch.length === 0) break;
       for (const row of batch) {
@@ -680,6 +735,10 @@ async function buildBackupBlob(): Promise<Blob> {
         first = false;
       }
       offset += batch.length;
+      done += batch.length;
+      opts?.onProgress?.(
+        makeProgress(done, total, `导出 ${name}…`, name),
+      );
       await yieldToUi();
     }
     parts.push(']');
@@ -734,8 +793,4 @@ function uint8ToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + step));
   }
   return btoa(binary);
-}
-
-function yieldToUi(): Promise<void> {
-  return new Promise((r) => setTimeout(r, 0));
 }

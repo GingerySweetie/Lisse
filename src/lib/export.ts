@@ -2,6 +2,12 @@ import JSZip from 'jszip';
 import { db } from '../db';
 import type { Conversation, MemoryFact, Message, Persona } from '../types';
 import { getActiveBranch } from './branch';
+import {
+  makeProgress,
+  throwIfAborted,
+  yieldToUi,
+  type ExportProgressCallback,
+} from './export-progress';
 import { saveFile } from './save-file';
 
 const CATEGORY_LABEL: Record<MemoryFact['category'], string> = {
@@ -152,6 +158,122 @@ function renderText(
   return lines.join('\n');
 }
 
+/** One month in milliseconds — used by "recent month" presets. */
+export const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+export interface ConversationsJsonBundle {
+  __lisse: 'conversations';
+  version: 1;
+  exportedAt: number;
+  scope: 'branch' | 'tree';
+  items: Array<{ conversation: Conversation; messages: Message[] }>;
+}
+
+/**
+ * Resolve conversations for selective export.
+ * - `conversationIds` wins when provided (explicit checklist).
+ * - else `sinceMs` filters by `updatedAt` (indexed).
+ * - else all conversations, newest first.
+ */
+export async function resolveConversationsForExport(opts?: {
+  conversationIds?: string[];
+  sinceMs?: number;
+}): Promise<Conversation[]> {
+  if (opts?.conversationIds?.length) {
+    const idSet = new Set(opts.conversationIds);
+    const rows = await db.conversations.bulkGet([...idSet]);
+    return rows
+      .filter((c): c is Conversation => !!c)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+  if (opts?.sinceMs != null) {
+    const rows = await db.conversations
+      .where('updatedAt')
+      .aboveOrEqual(opts.sinceMs)
+      .toArray();
+    return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+  return db.conversations.orderBy('updatedAt').reverse().toArray();
+}
+
+/**
+ * Export selected / recent conversations as one re-importable JSON bundle.
+ * Format marker: `__lisse: "conversations"`.
+ */
+export async function exportConversationsJson(opts?: {
+  conversationIds?: string[];
+  sinceMs?: number;
+  scope?: 'branch' | 'tree';
+  signal?: AbortSignal;
+  onProgress?: ExportProgressCallback;
+}): Promise<ExportedConversation & { count: number }> {
+  const scope = opts?.scope ?? 'branch';
+  const conversations = await resolveConversationsForExport(opts);
+  if (conversations.length === 0) {
+    throw new Error('没有可导出的对话');
+  }
+
+  const total = conversations.length;
+  opts?.onProgress?.(
+    makeProgress(0, total, `准备导出 ${total} 条对话…`, 'prepare'),
+  );
+
+  const items: ConversationsJsonBundle['items'] = [];
+  for (let i = 0; i < conversations.length; i++) {
+    throwIfAborted(opts?.signal);
+    const conversation = conversations[i]!;
+    const messages =
+      scope === 'tree'
+        ? await db.messages
+            .where({ conversationId: conversation.id })
+            .sortBy('createdAt')
+        : await getActiveBranch(conversation);
+    items.push({ conversation, messages });
+    opts?.onProgress?.(
+      makeProgress(
+        i + 1,
+        total,
+        `打包对话 ${i + 1}/${total}`,
+        'pack',
+      ),
+    );
+    if (i % 4 === 3) await yieldToUi();
+  }
+
+  throwIfAborted(opts?.signal);
+  opts?.onProgress?.(
+    makeProgress(total, total, '生成 JSON…', 'serialize'),
+  );
+
+  const exportedAt = Date.now();
+  const bundle: ConversationsJsonBundle = {
+    __lisse: 'conversations',
+    version: 1,
+    exportedAt,
+    scope,
+    items,
+  };
+
+  const tag =
+    opts?.conversationIds?.length
+      ? `selected-${conversations.length}`
+      : opts?.sinceMs != null
+        ? 'recent-1m'
+        : 'all';
+
+  const content = JSON.stringify(bundle, null, 2);
+  opts?.onProgress?.(
+    makeProgress(total, total, '写入文件…', 'save'),
+  );
+
+  return {
+    filename: `lisse-conversations-${tag}-${formatDateTag(exportedAt)}.json`,
+    mime: 'application/json;charset=utf-8',
+    content,
+    count: conversations.length,
+  };
+}
+
 /**
  * Bulk export: every conversation as a Markdown file zipped together.
  */
@@ -159,15 +281,29 @@ export async function exportAllConversationsZip(opts?: {
   scope?: 'branch' | 'tree';
   format?: ConversationFormat;
   includeUsage?: boolean;
+  /** When set, only these conversation ids are exported. */
+  conversationIds?: string[];
+  /** When set (and no conversationIds), only conversations updated since this ms. */
+  sinceMs?: number;
+  signal?: AbortSignal;
+  onProgress?: ExportProgressCallback;
 }): Promise<{ blob: Blob; filename: string; count: number }> {
   const format = opts?.format ?? 'markdown';
   const scope = opts?.scope ?? 'branch';
 
   const [conversations, personas] = await Promise.all([
-    db.conversations.orderBy('updatedAt').reverse().toArray(),
+    resolveConversationsForExport({
+      conversationIds: opts?.conversationIds,
+      sinceMs: opts?.sinceMs,
+    }),
     db.personas.toArray(),
   ]);
   const personaMap = new Map(personas.map((p) => [p.id, p]));
+  const total = conversations.length;
+
+  opts?.onProgress?.(
+    makeProgress(0, Math.max(total, 1), `准备打包 ${total} 条对话…`, 'prepare'),
+  );
 
   const zip = new JSZip();
   // Use a folder so unzipping doesn't litter the user's downloads dir.
@@ -178,6 +314,7 @@ export async function exportAllConversationsZip(opts?: {
 
   let count = 0;
   for (const conv of conversations) {
+    throwIfAborted(opts?.signal);
     const persona = conv.personaId ? personaMap.get(conv.personaId) : undefined;
     const exported = await exportConversation(conv, {
       scope,
@@ -188,6 +325,16 @@ export async function exportAllConversationsZip(opts?: {
     const filename = uniqueName(usedNames, exported.filename);
     root.file(filename, exported.content);
     count++;
+    // Packing occupies 0–85%; compression takes the rest.
+    const packPct = total === 0 ? 85 : Math.round((count / total) * 85);
+    opts?.onProgress?.({
+      done: count,
+      total: Math.max(total, 1),
+      percent: packPct,
+      label: `打包对话 ${count}/${total}`,
+      phase: 'pack',
+    });
+    if (count % 4 === 0) await yieldToUi();
   }
 
   // Manifest
@@ -201,7 +348,34 @@ scope: ${scope}
 `,
   );
 
-  const blob = await zip.generateAsync({ type: 'blob' });
+  throwIfAborted(opts?.signal);
+  opts?.onProgress?.({
+    done: count,
+    total: Math.max(total, 1),
+    percent: 85,
+    label: '压缩 ZIP…',
+    phase: 'compress',
+  });
+
+  const blob = await zip.generateAsync(
+    { type: 'blob' },
+    (meta) => {
+      if (opts?.signal?.aborted) return;
+      const compressPct = 85 + Math.round((meta.percent / 100) * 15);
+      opts?.onProgress?.({
+        done: count,
+        total: Math.max(total, 1),
+        percent: Math.min(99, compressPct),
+        label: `压缩 ZIP ${Math.round(meta.percent)}%`,
+        phase: 'compress',
+      });
+    },
+  );
+  throwIfAborted(opts?.signal);
+
+  opts?.onProgress?.(
+    makeProgress(count, Math.max(total, 1), '写入文件…', 'save'),
+  );
   const filename = `lisse-conversations-${formatDateTag(Date.now())}.zip`;
   return { blob, filename, count };
 }
