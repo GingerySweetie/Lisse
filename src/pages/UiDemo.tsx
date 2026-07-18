@@ -59,51 +59,97 @@ type ClickRipple = { id: number; x: number; y: number };
 const SQUASH = 0.3;
 
 /**
- * Moon alphabet (穆恩字母) glyphs for R I P P L E.
- * Geometry baked from Wikimedia Commons Moon Letter SVGs
- * (CC BY-SA; simplified to stroke paths in a 32×32 cell).
+ * Custom Ripple wordmark — hand-letter design (穆恩字母气质):
+ * R large left-open hook · i/p left-open cups · raindrop dashes
+ * under i & 2nd p · tall l · e as a broken incomplete ripple.
  */
-const MOON_GLYPH: Record<string, string> = {
-  R: 'M4,4 L28,28',
-  I: 'M16,4 L16,28',
-  P: 'M5.46,23.07 L28,23.07 M7.37,23.06 C4.2,23 4.18,19.4 5.11,17.6 M4,18.73 L13.79,8.93',
-  L: 'M5.33,28 L5.33,4 M4,26.67 L28,26.67',
-  E: 'M5.33,4 L5.33,28 M4,5.33 L28,5.33',
-};
-
 function MoonWordmark({
-  height = 36,
+  height = 48,
   className = '',
 }: {
   height?: number;
   className?: string;
 }) {
-  const letters = ['R', 'I', 'P', 'P', 'L', 'E'] as const;
-  const cell = 32;
-  const gap = 6;
-  const width = letters.length * cell + (letters.length - 1) * gap;
+  const vbW = 236;
+  const vbH = 96;
   return (
     <svg
       className={`uidemo-moon-wordmark ${className}`.trim()}
-      width={(height / cell) * width}
+      width={(height / vbH) * vbW}
       height={height}
-      viewBox={`0 0 ${width} ${cell}`}
+      viewBox={`0 0 ${vbW} ${vbH}`}
       role="img"
       aria-label="Ripple"
     >
       <title>Ripple</title>
-      {letters.map((ch, i) => (
-        <g key={`${ch}-${i}`} transform={`translate(${i * (cell + gap)}, 0)`}>
-          <path
-            d={MOON_GLYPH[ch]}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+      <defs>
+        {/* Soft crayon / pencil grain on the strokes */}
+        <filter
+          id="uidemo-moon-grain"
+          x="-20%"
+          y="-20%"
+          width="140%"
+          height="140%"
+        >
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.9"
+            numOctaves="2"
+            result="n"
           />
-        </g>
-      ))}
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="n"
+            scale="0.7"
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+      </defs>
+
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        filter="url(#uidemo-moon-grain)"
+      >
+        {/*
+          R — large hook:
+          left horizontal tail → semicircle opening left → slight down tip
+        */}
+        <path
+          strokeWidth="3.2"
+          d="M 6,58 H 34 A 20,20 0 0 1 34,18 V 27"
+        />
+
+        {/* i — small cup opening left + raindrop dash */}
+        <path strokeWidth="2.8" d="M 78,30 A 11,11 0 0 0 78,52" />
+        <path strokeWidth="2.5" d="M 78,63 V 76" />
+
+        {/* p — small cup opening left */}
+        <path strokeWidth="2.8" d="M 112,30 A 11,11 0 0 0 112,52" />
+
+        {/* p — small cup opening left + raindrop dash */}
+        <path strokeWidth="2.8" d="M 146,30 A 11,11 0 0 0 146,52" />
+        <path strokeWidth="2.5" d="M 146,63 V 76" />
+
+        {/* l — tall vertical */}
+        <path strokeWidth="2.9" d="M 178,10 V 58" />
+
+        {/*
+          e — one small incomplete ripple on the same circle:
+          upper arc + lower arc, left/right clearly 断连
+        */}
+        <path
+          strokeWidth="2.7"
+          d="M 195.4,38 A 14,14 0 0 1 220.6,38"
+        />
+        <path
+          strokeWidth="2.7"
+          d="M 220.6,50 A 14,14 0 0 1 195.4,50"
+        />
+      </g>
     </svg>
   );
 }
@@ -299,10 +345,10 @@ function HomePanel({ onEnterChat }: { onEnterChat: () => void }) {
           <RippleMark size={44} />
         </button>
         <h1 className={`uidemo-wordmark ${open ? 'is-dim' : ''}`}>
-          <MoonWordmark height={42} />
+          <MoonWordmark height={56} />
         </h1>
         <p className={`uidemo-tagline ${open ? 'is-dim' : ''}`}>
-          Ripple · 穆恩字母
+          Ripple
         </p>
         {!open && (
           <button

@@ -296,7 +296,8 @@
   margin: 0;
   display: flex;
   justify-content: center;
-  color: rgba(85, 92, 136, 0.78);
+  /* Soft sky-blue of the hand lettering */
+  color: #8aa7c4;
   transition:
     opacity 0.45s ease,
     transform 0.45s ease;
@@ -305,10 +306,11 @@
 .uidemo-moon-wordmark {
   display: block;
   color: inherit;
+  overflow: visible;
 }
 
 .uidemo-rail-title .uidemo-moon-wordmark {
-  color: var(--rp-600);
+  color: #8aa7c4;
 }
 
 .uidemo-tagline {
