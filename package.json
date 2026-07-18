@@ -12,7 +12,8 @@
     "test:travel": "node --experimental-strip-types --test scripts/test-travel-daemon.mjs",
     "test:diary": "node --experimental-strip-types --test scripts/test-diary.mjs",
     "test:thinking-policy": "node --experimental-strip-types --test scripts/test-thinking-policy.mjs",
-    "test:cursor-api": "node --experimental-strip-types --test scripts/test-cursor-api.mjs"
+    "test:cursor-api": "node --experimental-strip-types --test scripts/test-cursor-api.mjs",
+    "test:recover": "node --experimental-strip-types --test scripts/test-recover.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",
