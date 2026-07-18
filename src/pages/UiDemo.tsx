@@ -117,29 +117,30 @@ function MoonWordmark({
         {/*
           R — large hook:
           left horizontal tail → semicircle opening left → slight down tip
+          (SVG sweep 0 = through the right bulge → opens left)
         */}
         <path
           strokeWidth="3.2"
-          d="M 6,58 H 34 A 20,20 0 0 1 34,18 V 27"
+          d="M 6,58 H 34 A 20,20 0 0 0 34,18 V 27"
         />
 
         {/* i — small cup opening left + raindrop dash */}
-        <path strokeWidth="2.8" d="M 78,30 A 11,11 0 0 0 78,52" />
+        <path strokeWidth="2.8" d="M 78,30 A 11,11 0 0 1 78,52" />
         <path strokeWidth="2.5" d="M 78,63 V 76" />
 
         {/* p — small cup opening left */}
-        <path strokeWidth="2.8" d="M 112,30 A 11,11 0 0 0 112,52" />
+        <path strokeWidth="2.8" d="M 112,30 A 11,11 0 0 1 112,52" />
 
         {/* p — small cup opening left + raindrop dash */}
-        <path strokeWidth="2.8" d="M 146,30 A 11,11 0 0 0 146,52" />
+        <path strokeWidth="2.8" d="M 146,30 A 11,11 0 0 1 146,52" />
         <path strokeWidth="2.5" d="M 146,63 V 76" />
 
         {/* l — tall vertical */}
         <path strokeWidth="2.9" d="M 178,10 V 58" />
 
         {/*
-          e — one small incomplete ripple on the same circle:
-          upper arc + lower arc, left/right clearly 断连
+          e — one small incomplete ripple:
+          upper arc + lower arc on the same circle, clearly 断连
         */}
         <path
           strokeWidth="2.7"
