@@ -13,6 +13,7 @@ import {
 } from '../lib/bedroom-themes';
 import { availableTools } from '../lib/tools';
 import { runToolLoop } from '../lib/tools/loop';
+import { formatYesterdayDiaryBlock } from '../lib/diary';
 import TentaclePanel from '../components/TentaclePanel';
 import BedroomDecor, { decorVariantForTheme } from '../components/BedroomDecor';
 import { emitClawd } from '../lib/clawd/bus';
@@ -220,6 +221,22 @@ export default function BedroomChatPage() {
       { role: 'system', content: sys },
       ...history.map((m) => ({ role: m.role, content: m.content })),
     ];
+    // Yesterday's self-written diary — inject into the current user turn only
+    // (not persisted), same idea as gateway_volatile_context in main chat.
+    try {
+      const diaryBlock = await formatYesterdayDiaryBlock(pid);
+      if (diaryBlock) {
+        const last = turns[turns.length - 1];
+        if (last && last.role === 'user') {
+          turns[turns.length - 1] = {
+            ...last,
+            content:
+              `<gateway_volatile_context>仅供参考，勿复述：\n${diaryBlock}\n</gateway_volatile_context>\n\n` +
+              last.content,
+          };
+        }
+      }
+    } catch { /* diary missing — skip */ }
 
     const assistantId = newId();
     const streamingMsg: LocalMsg = {

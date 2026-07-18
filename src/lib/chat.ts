@@ -35,6 +35,7 @@ import {
   stripClwdTaskTags,
   type HandoffJob,
 } from './workshop/handoff-protocol';
+import { formatYesterdayDiaryBlock } from './diary';
 
 /**
  * Capability description injected as a stable system turn so the model
@@ -673,6 +674,13 @@ async function streamAssistant(args: {
   const volatileParts: string[] = [];
   if (bookBlock) volatileParts.push(bookBlock);
   if (memoryBlock) volatileParts.push(memoryBlock);
+  // Yesterday's self-written diary — date-keyed, so it belongs in volatile.
+  if (persona) {
+    try {
+      const diaryBlock = await formatYesterdayDiaryBlock(persona.id);
+      if (diaryBlock) volatileParts.push(diaryBlock);
+    } catch { /* diary missing — skip silently */ }
+  }
   try {
     const healthBlock = await formatHealthContextBlock();
     if (healthBlock) volatileParts.push(healthBlock);

@@ -19,6 +19,7 @@ import type {
   CirclePost,
   CircleReaction,
   Conversation,
+  DiaryEntry,
   Endpoint,
   HealthComment,
   HealthDailySnapshot,
@@ -76,6 +77,7 @@ export interface BackupBundle {
   travelTrips?: TravelTrip[];
   travelEvents?: TravelEvent[];
   travelHeldPushes?: TravelHeldPush[];
+  diaryEntries?: DiaryEntry[];
 }
 
 type BackupTableName =
@@ -102,7 +104,8 @@ type BackupTableName =
   | 'handoffJobs'
   | 'travelTrips'
   | 'travelEvents'
-  | 'travelHeldPushes';
+  | 'travelHeldPushes'
+  | 'diaryEntries';
 
 const BACKUP_TABLES: BackupTableName[] = [
   'endpoints',
@@ -129,6 +132,7 @@ const BACKUP_TABLES: BackupTableName[] = [
   'travelTrips',
   'travelEvents',
   'travelHeldPushes',
+  'diaryEntries',
 ];
 
 function tableRef(name: BackupTableName) {
@@ -162,6 +166,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     travelTrips,
     travelEvents,
     travelHeldPushes,
+    diaryEntries,
   ] = await Promise.all([
     getSettings(),
     db.endpoints.toArray(),
@@ -188,6 +193,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     db.travelTrips.toArray(),
     db.travelEvents.toArray(),
     db.travelHeldPushes.toArray(),
+    db.diaryEntries.toArray(),
   ]);
 
   const now = Date.now();
@@ -222,6 +228,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     travelTrips,
     travelEvents,
     travelHeldPushes,
+    diaryEntries,
   };
 }
 
@@ -261,6 +268,7 @@ export interface ImportBackupResult {
   travelTripsAdded: number;
   travelEventsAdded: number;
   travelHeldPushesAdded: number;
+  diaryEntriesAdded: number;
   settingsApplied: boolean;
 }
 
@@ -318,6 +326,7 @@ export async function importBackup(
         db.travelTrips,
         db.travelEvents,
         db.travelHeldPushes,
+        db.diaryEntries,
         db.kv,
       ],
       async () => {
@@ -345,6 +354,7 @@ export async function importBackup(
         await db.travelTrips.clear();
         await db.travelEvents.clear();
         await db.travelHeldPushes.clear();
+        await db.diaryEntries.clear();
         await db.kv.clear();
       },
     );
@@ -378,6 +388,7 @@ export async function importBackup(
     travelTripsAdded: 0,
     travelEventsAdded: 0,
     travelHeldPushesAdded: 0,
+    diaryEntriesAdded: 0,
     settingsApplied: false,
   };
 
@@ -410,6 +421,7 @@ export async function importBackup(
       db.travelTrips,
       db.travelEvents,
       db.travelHeldPushes,
+      db.diaryEntries,
     ],
     async () => {
       result.endpointsAdded = await upsertAll(db.endpoints, bundle.endpoints);
@@ -486,6 +498,10 @@ export async function importBackup(
       result.travelHeldPushesAdded = await upsertAll(
         db.travelHeldPushes,
         bundle.travelHeldPushes,
+      );
+      result.diaryEntriesAdded = await upsertAll(
+        db.diaryEntries,
+        bundle.diaryEntries,
       );
     },
   );
