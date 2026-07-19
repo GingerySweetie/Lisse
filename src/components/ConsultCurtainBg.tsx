@@ -4,25 +4,26 @@
  * "透光窗帘" reference: high-key white, faint lilac in the folds.
  */
 
-/** Soft vertical pleats for the side drapes (dusty mauve). */
+/** Soft vertical pleats for the side drapes (dusty mauve) — wide stops so
+ *  blur melts them into fabric, not candy bars. */
 const DRAPE_PLEATS = `repeating-linear-gradient(
   90deg,
-  #c9b8d4 0px,
-  #ddd0e6 14px,
-  #ebe0f2 28px,
-  #d4c4df 42px,
-  #c9b8d4 56px
+  #d8c8e2 0px,
+  #e8dcf0 22px,
+  #f2ebf7 40px,
+  #e0d2ea 58px,
+  #d8c8e2 80px
 )`;
 
 /** Sheer center folds — mostly white, lilac only in the troughs. */
 const SHEER_FOLDS = `repeating-linear-gradient(
   90deg,
   #ffffff 0px,
-  #ffffff 22px,
-  #f6f0fa 40px,
-  #ebe3f3 52px,
-  #faf7fc 70px,
-  #ffffff 88px
+  #ffffff 36px,
+  #f8f4fb 58px,
+  #f0eaf6 72px,
+  #fbf9fd 96px,
+  #ffffff 120px
 )`;
 
 /** Tiny lace motif as a data-URI SVG — watermark-soft on the sheer. */
@@ -67,23 +68,26 @@ export default function ConsultCurtainBg() {
         }}
       />
 
-      {/* Left drape — dusty lavender pleats */}
+      {/* Left drape — dusty lavender, heavily blurred into fabric mass */}
       <div
         className="consult-drape consult-drape-l"
         style={{
           position: 'absolute',
-          top: '-8%',
-          bottom: '-8%',
-          left: '-6%',
-          width: '38%',
-          backgroundImage: DRAPE_PLEATS,
-          backgroundSize: '56px 100%',
-          filter: 'blur(10px)',
-          opacity: 0.72,
+          top: '-10%',
+          bottom: '-10%',
+          left: '-10%',
+          width: '46%',
+          backgroundImage: `
+            linear-gradient(90deg, #cbb9d8 0%, #e4d6ec 40%, #f3ecf8 78%, transparent 100%),
+            ${DRAPE_PLEATS}
+          `,
+          backgroundSize: '100% 100%, 80px 100%',
+          filter: 'blur(28px)',
+          opacity: 0.78,
           maskImage:
-            'linear-gradient(90deg, #000 0%, #000 45%, transparent 92%)',
+            'linear-gradient(90deg, #000 0%, #000 35%, rgba(0,0,0,0.45) 62%, transparent 100%)',
           WebkitMaskImage:
-            'linear-gradient(90deg, #000 0%, #000 45%, transparent 92%)',
+            'linear-gradient(90deg, #000 0%, #000 35%, rgba(0,0,0,0.45) 62%, transparent 100%)',
           animation: 'consultDrapeL 18s ease-in-out infinite alternate',
           willChange: 'transform',
         }}
@@ -94,18 +98,21 @@ export default function ConsultCurtainBg() {
         className="consult-drape consult-drape-r"
         style={{
           position: 'absolute',
-          top: '-8%',
-          bottom: '-8%',
-          right: '-6%',
-          width: '38%',
-          backgroundImage: DRAPE_PLEATS,
-          backgroundSize: '56px 100%',
-          filter: 'blur(10px)',
-          opacity: 0.68,
+          top: '-10%',
+          bottom: '-10%',
+          right: '-10%',
+          width: '46%',
+          backgroundImage: `
+            linear-gradient(270deg, #cbb9d8 0%, #e4d6ec 40%, #f3ecf8 78%, transparent 100%),
+            ${DRAPE_PLEATS}
+          `,
+          backgroundSize: '100% 100%, 80px 100%',
+          filter: 'blur(28px)',
+          opacity: 0.74,
           maskImage:
-            'linear-gradient(270deg, #000 0%, #000 45%, transparent 92%)',
+            'linear-gradient(270deg, #000 0%, #000 35%, rgba(0,0,0,0.45) 62%, transparent 100%)',
           WebkitMaskImage:
-            'linear-gradient(270deg, #000 0%, #000 45%, transparent 92%)',
+            'linear-gradient(270deg, #000 0%, #000 35%, rgba(0,0,0,0.45) 62%, transparent 100%)',
           animation: 'consultDrapeR 20s ease-in-out infinite alternate',
           willChange: 'transform',
         }}
@@ -115,14 +122,14 @@ export default function ConsultCurtainBg() {
       <div
         style={{
           position: 'absolute',
-          top: '-5%',
-          bottom: '-5%',
-          left: '18%',
-          right: '18%',
+          top: '-8%',
+          bottom: '-8%',
+          left: '12%',
+          right: '12%',
           backgroundImage: SHEER_FOLDS,
-          backgroundSize: '88px 100%',
-          filter: 'blur(14px)',
-          opacity: 0.85,
+          backgroundSize: '120px 100%',
+          filter: 'blur(22px)',
+          opacity: 0.7,
           animation: 'consultSheerSway 15s ease-in-out infinite alternate',
           willChange: 'transform',
         }}
