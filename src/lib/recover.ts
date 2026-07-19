@@ -9,13 +9,15 @@
  */
 
 import { Capacitor } from '@capacitor/core';
-import { importBackup, type ImportBackupResult } from './backup';
+import type { ImportBackupResult } from './backup';
+import { importBackupStream } from './backup-stream-import';
 import { getBackupFolder, getValidBackupFolder } from './backup-location';
 import { importConfigBundle, type ImportConfigResult } from './config-export';
 import { importChatGPT, importClaude, importLisseConversation } from './import';
 import type { ImportResult } from './import';
 import FileSaver, { type RecoverableFileMeta } from './native/file-saver';
 import {
+  assertBackupImportFileSize,
   assertImportFileSize,
   MAX_IMPORT_FILE_BYTES,
   StorageLimitError,
@@ -205,8 +207,28 @@ export async function importRecoverableItem(
     personaId?: string;
     defaultEndpointId?: string;
     defaultModel?: string;
+    onProgress?: (label: string) => void;
   } = {},
 ): Promise<{ detected: RecoverKind; outcome: RecoverImportOutcome }> {
+  const mode = opts.mode ?? 'merge';
+
+  // Full backups use the streaming path — peek kind, then never load the
+  // whole JSON string into JS heap.
+  const peeked = await peekRecoverKind(item);
+  if (peeked === 'backup') {
+    assertBackupImportFileSize(item.size || item.file?.size || 0, item.name);
+    if (!item.file && !item.uri) {
+      throw new Error('没有可读取的文件内容');
+    }
+    const result = await importBackupStream(
+      item.file
+        ? { kind: 'file', file: item.file }
+        : { kind: 'uri', uri: item.uri! },
+      { mode, onProgress: opts.onProgress },
+    );
+    return { detected: 'backup', outcome: { kind: 'backup', result } };
+  }
+
   if (item.file) {
     assertImportFileSize(item.file, item.name);
   } else if (item.size > MAX_IMPORT_FILE_BYTES) {
@@ -225,11 +247,15 @@ export async function importRecoverableItem(
         })();
 
   const detected = detectRecoverKind(text);
-  const mode = opts.mode ?? 'merge';
 
   switch (detected) {
     case 'backup': {
-      const result = await importBackup(text, { mode });
+      // Peek missed the marker (odd encoding); still stream from source.
+      assertBackupImportFileSize(item.size || item.file?.size || 0, item.name);
+      const result = await importBackupStream(
+        { kind: 'text', text },
+        { mode, onProgress: opts.onProgress },
+      );
       return { detected, outcome: { kind: 'backup', result } };
     }
     case 'conversation':

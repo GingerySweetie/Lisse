@@ -20,12 +20,10 @@ import {
   FileJson,
 } from 'lucide-react';
 import { db } from '../db';
+import { getLastBackupAt, type ImportBackupResult } from '../lib/backup';
+import { importBackupStream } from '../lib/backup-stream-import';
 import {
-  getLastBackupAt,
-  importBackup,
-  type ImportBackupResult,
-} from '../lib/backup';
-import {
+  assertBackupImportFileSize,
   assertImportFileSize,
   formatStorageError,
 } from '../lib/storage-guards';
@@ -601,17 +599,23 @@ export default function ImportExportPage() {
     if (
       mode === 'replace' &&
       !confirm(
-        '确定要替换全部数据吗？现有的 endpoints / 对话 / 人格都会被清空。\n\n' +
-          '写入会在同一事务里完成：如果导入失败，旧数据会回滚保留，不会先清空再留下空库。' +
-          '但仍建议先导出一份备份。',
+        '确定要替换全部数据吗？现有的 endpoints / 对话 / 人格都会按备份内容对齐。\n\n' +
+          '大备份会边读边写入（不整文件塞进内存）。中途失败不会先清空再留下空库，' +
+          '但仍建议先导出一份当前备份。',
       )
     ) {
       return;
     }
     setBackupStatus({ kind: 'busy', label: '导入中…' });
     try {
-      const text = await readFile(file, '备份文件');
-      const r = await importBackup(text, { mode });
+      assertBackupImportFileSize(file.size, '备份文件');
+      const r = await importBackupStream(
+        { kind: 'file', file },
+        {
+          mode,
+          onProgress: (label) => setIfMounted(setBackupStatus, { kind: 'busy', label }),
+        },
+      );
       await refreshCounts();
       setBackupStatus({ kind: 'ok', label: summarizeBackup(r) });
     } catch (err) {
@@ -735,8 +739,8 @@ export default function ImportExportPage() {
     if (
       mode === 'replace' &&
       !confirm(
-        `确定要用「${item.name}」替换导入吗？现有同类别数据可能被清空。\n\n` +
-          '写入会在同一事务里完成：如果导入失败，旧数据会回滚保留。仍建议先导出一份备份。',
+        `确定要用「${item.name}」替换导入吗？现有同类别数据会按文件内容对齐。\n\n` +
+          '全量备份会边读边写入；中途失败不会先清空再留下空库。仍建议先导出一份当前备份。',
       )
     ) {
       return;
@@ -749,6 +753,8 @@ export default function ImportExportPage() {
         personaId: importPersonaId || undefined,
         defaultEndpointId: importEndpointId || undefined,
         defaultModel: importModel || undefined,
+        onProgress: (label) =>
+          setIfMounted(setRecoverStatus, { kind: 'busy', label }),
       });
       setRecoverItems((prev) =>
         prev.map((p) =>
@@ -1513,6 +1519,7 @@ export default function ImportExportPage() {
             <p className="mt-2 text-sm text-ink-500">
               把所有对话、人格、写作风格、记忆、账单、健康、朋友圈、endpoints（含 API key）和设置
               打包成一个 JSON；导入后会自动写回对应位置。
+              大备份（超过原先 80MB 内存上限的也可以）会边读边写入，避免整文件把页面打死。
               <strong>API key 也会在文件里</strong>，请妥善保管喵。
             </p>
 

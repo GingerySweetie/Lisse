@@ -4,9 +4,11 @@ import {
   MAX_CHAT_MESSAGE_CHARS,
   MAX_BOOK_CONTENT_CHARS,
   MAX_IMPORT_FILE_BYTES,
+  MAX_BACKUP_STREAM_IMPORT_BYTES,
   assertChatMessageSize,
   assertBookContentSize,
   assertImportFileSize,
+  assertBackupImportFileSize,
   formatStorageError,
   StorageLimitError,
   formatChars,
@@ -35,7 +37,21 @@ describe('storage-guards', () => {
   it('rejects oversized import files', () => {
     const file = { size: MAX_IMPORT_FILE_BYTES + 1, name: 'huge.json' };
     assert.throws(
-      () => assertImportFileSize(/** @type {File} */ (file), '备份'),
+      () => assertImportFileSize(/** @type {File} */ (file), 'ChatGPT 导出'),
+      StorageLimitError,
+    );
+  });
+
+  it('allows large backups under the streaming cap', () => {
+    assert.doesNotThrow(() =>
+      assertBackupImportFileSize(90 * 1024 * 1024, '备份文件'),
+    );
+  });
+
+  it('rejects backups above the streaming cap', () => {
+    assert.throws(
+      () =>
+        assertBackupImportFileSize(MAX_BACKUP_STREAM_IMPORT_BYTES + 1, '备份'),
       StorageLimitError,
     );
   });
