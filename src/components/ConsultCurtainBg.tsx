@@ -80,8 +80,9 @@ export default function ConsultCurtainBg({
         }}
       />
 
-      {/* Left drape */}
+      {/* Left drape — desktop only; mobile keeps just the right curtain */}
       <div
+        className="consult-drape-left"
         style={{
           position: 'absolute',
           top: '-10%',
@@ -106,6 +107,7 @@ export default function ConsultCurtainBg({
 
       {/* Right drape */}
       <div
+        className="consult-drape-right"
         style={{
           position: 'absolute',
           top: '-10%',
@@ -128,8 +130,9 @@ export default function ConsultCurtainBg({
         }}
       />
 
-      {/* Sheer center */}
+      {/* Sheer center — on mobile stretches left into the open light */}
       <div
+        className="consult-sheer-panel"
         style={{
           position: 'absolute',
           top: '-8%',
@@ -194,8 +197,9 @@ export default function ConsultCurtainBg({
         }}
       />
 
-      {/* Edge vignette into soft lilac */}
+      {/* Edge vignette into soft lilac — left band dropped on mobile */}
       <div
+        className="consult-edge-vignette"
         style={{
           position: 'absolute',
           inset: 0,
@@ -239,6 +243,19 @@ export default function ConsultCurtainBg({
         @keyframes consultHaze {
           0%   { transform: scale(1); opacity: 0.8; }
           100% { transform: scale(1.04); opacity: 1; }
+        }
+        /* Phone: drop left drape, open the light to the left; keep right curtain. */
+        @media (max-width: 767px) {
+          .consult-drape-left { display: none !important; }
+          .consult-sheer-panel { left: -4% !important; right: 18% !important; }
+          .consult-edge-vignette {
+            background: linear-gradient(
+              90deg,
+              transparent 0%,
+              transparent 55%,
+              rgba(196,178,210,0.28) 100%
+            ) !important;
+          }
         }
       `}</style>
     </div>
