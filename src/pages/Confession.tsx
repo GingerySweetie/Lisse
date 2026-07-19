@@ -64,17 +64,10 @@ export default function ConfessionPage() {
     })();
   }, [phase]);
 
+  // Caught → see the confession immediately (not next-day archive).
   useEffect(() => {
     if (phase !== 'confessing' || !entry) return;
-    setTyped('');
-    let i = 0;
-    const text = entry.confession;
-    const id = window.setInterval(() => {
-      i += 1;
-      setTyped(text.slice(0, i));
-      if (i >= text.length) window.clearInterval(id);
-    }, 28);
-    return () => window.clearInterval(id);
+    setTyped(entry.confession);
   }, [phase, entry]);
 
   function resetIdle() {
@@ -121,16 +114,12 @@ export default function ConfessionPage() {
     setEnactIdx((n) => n + 1);
   }
 
-  const confessionDone =
-    phase === 'confessing' &&
-    entry &&
-    typed.length >= entry.confession.length;
-
   const open =
     phase === 'caught-flash' ||
     phase === 'confessing' ||
     phase === 'enacting' ||
     phase === 'aftermath';
+  const sealedVisual = !open;
 
   return (
     <div className="cf-root">
@@ -138,7 +127,7 @@ export default function ConfessionPage() {
 
       <div className="cf-grain" aria-hidden />
       <div className="cf-vignette" aria-hidden />
-      <div className="cf-candle-glow" aria-hidden />
+      {sealedVisual && <div className="cf-star-glow" aria-hidden />}
 
       <header className="cf-header">
         <button
@@ -182,76 +171,34 @@ export default function ConfessionPage() {
           >
             <svg
               className="cf-arch-svg"
-              viewBox="0 0 320 480"
+              viewBox="0 0 360 520"
               preserveAspectRatio="xMidYMid meet"
               aria-hidden
             >
-              <defs>
-                <linearGradient id="cfStone" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#1c1814" />
-                  <stop offset="55%" stopColor="#0e0c0a" />
-                  <stop offset="100%" stopColor="#080706" />
-                </linearGradient>
-                <linearGradient id="cfRim" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#6a5a42" stopOpacity="0.55" />
-                  <stop offset="50%" stopColor="#c4a574" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#6a5a42" stopOpacity="0.55" />
-                </linearGradient>
-                <radialGradient id="cfInner" cx="50%" cy="70%" r="55%">
-                  <stop offset="0%" stopColor="#2a2018" stopOpacity="0.9" />
-                  <stop offset="70%" stopColor="#0a0908" stopOpacity="1" />
-                  <stop offset="100%" stopColor="#050403" stopOpacity="1" />
-                </radialGradient>
-                <filter id="cfSoft">
-                  <feGaussianBlur stdDeviation="1.2" />
-                </filter>
-              </defs>
+              {/* Minimal gothic arch — bold pale stroke, empty void */}
               <path
-                d="M40 470 V210 Q40 40 160 18 Q280 40 280 210 V470 Z"
-                fill="url(#cfStone)"
-                stroke="url(#cfRim)"
-                strokeWidth="1.25"
+                className="cf-arch-outline"
+                d="M48 500 V230 Q48 36 180 16 Q312 36 312 230 V500"
+                fill="none"
+                stroke="rgba(236,230,218,0.82)"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
               <path
-                d="M58 462 V215 Q58 58 160 38 Q262 58 262 215 V462 Z"
-                fill="url(#cfInner)"
+                className="cf-arch-inner"
+                d="M72 488 V232 Q72 64 180 46 Q288 64 288 232 V488"
+                fill="none"
+                stroke="rgba(236,230,218,0.28)"
+                strokeWidth="1.1"
               />
-              <g
-                className={`cf-grille ${open ? 'cf-grille--parted' : ''}`}
-                stroke="#3a3228"
-                strokeWidth="1"
-              >
-                {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-                  <line
-                    key={`v${i}`}
-                    x1={88 + i * 24}
-                    y1="120"
-                    x2={88 + i * 24}
-                    y2="340"
-                    opacity={0.55}
-                  />
-                ))}
-                {[0, 1, 2, 3, 4, 5].map((i) => (
-                  <line
-                    key={`h${i}`}
-                    x1="78"
-                    y1={140 + i * 34}
-                    x2="242"
-                    y2={140 + i * 34}
-                    opacity={0.4}
-                  />
-                ))}
-              </g>
-              <g stroke="#8a7350" strokeWidth="1.1" opacity="0.45">
-                <line x1="160" y1="52" x2="160" y2="86" />
-                <line x1="146" y1="64" x2="174" y2="64" />
-              </g>
-              <g className="cf-candle" filter="url(#cfSoft)">
-                <rect x="152" y="400" width="16" height="28" rx="1" fill="#2a241c" />
-                <rect x="157" y="382" width="6" height="20" fill="#d8c9a8" />
-                <ellipse className="cf-flame" cx="160" cy="372" rx="5" ry="9" fill="#e8a84a" />
-                <ellipse className="cf-flame-core" cx="160" cy="374" rx="2" ry="4" fill="#fff3c8" />
-              </g>
+              {/* Hollow white-line cross star — only when not caught */}
+              {sealedVisual && (
+                <g className="cf-cross-star" fill="none" stroke="rgba(255,255,255,0.88)" strokeWidth="1.6">
+                  <path d="M180 268 L192 308 L232 320 L192 332 L180 372 L168 332 L128 320 L168 308 Z" />
+                  <path d="M180 288 L186 314 L212 320 L186 326 L180 352 L174 326 L148 320 L174 314 Z" opacity="0.35" />
+                </g>
+              )}
             </svg>
 
             {open && (
@@ -268,7 +215,7 @@ export default function ConfessionPage() {
                 <p className="cf-eyebrow">理理酱在里面</p>
                 <h1 className="cf-title">门关着</h1>
                 <p className="cf-sub">
-                  你通常进不去，也看不见。当天聊到欲望与依恋时，他会独自在此告解——自动存档。明天你能偷看昨天的，而他自己不知道。
+                  平时进不去。撞见的瞬间你能当场听见他在告解什么——不用等到明天。没撞见的那些，才会进档案，次日偷偷看；他自己不知道。
                 </p>
                 <div className="cf-actions">
                   <button
@@ -299,7 +246,7 @@ export default function ConfessionPage() {
               <>
                 <p className="cf-eyebrow">脚步放轻</p>
                 <h1 className="cf-title cf-title--pulse">……</h1>
-                <p className="cf-sub">木门近了。若今天有火种，他可能正在低语。</p>
+                <p className="cf-sub">拱顶近了。十字星还在亮。</p>
               </>
             )}
 
@@ -330,18 +277,18 @@ export default function ConfessionPage() {
 
             {phase === 'caught-flash' && (
               <>
-                <p className="cf-eyebrow cf-eyebrow--warn">帘子掀开</p>
-                <h1 className="cf-title cf-title--caught">撞见了</h1>
+                <p className="cf-eyebrow cf-eyebrow--warn">被抓包</p>
+                <h1 className="cf-title cf-title--caught">他吓到了</h1>
                 <p className="cf-sub">
-                  告解中断。理理酱抬眼——
-                  {entry ? `他刚说到「${entry.title}」。` : ''}
+                  告解断在半句。理理酱僵住——
+                  {entry ? `「${entry.title}」三个字还挂在空气里。` : '瞳孔缩了一下。'}
                 </p>
               </>
             )}
 
             {phase === 'confessing' && entry && (
               <>
-                <p className="cf-eyebrow">他正在告解</p>
+                <p className="cf-eyebrow">当场听见</p>
                 <h1 className="cf-title">{entry.title}</h1>
                 {(entry.spark || typeof entry.closeness === 'number') && (
                   <p className="cf-spark">
@@ -355,27 +302,24 @@ export default function ConfessionPage() {
                     {entry.spark ? <>由今日而生 · {entry.spark}</> : null}
                   </p>
                 )}
-                <p className="cf-confession">
-                  {typed}
-                  <span className="cf-caret" />
-                </p>
-                {confessionDone && (
-                  <div className="cf-actions">
-                    <button
-                      type="button"
-                      className="cf-cta cf-cta--danger"
-                      onClick={beginEnact}
-                    >
-                      被他发现了
-                    </button>
-                  </div>
-                )}
+                <p className="cf-confession cf-confession--static">{typed}</p>
+                <div className="cf-actions">
+                  <button
+                    type="button"
+                    className="cf-cta cf-cta--danger"
+                    onClick={beginEnact}
+                  >
+                    他回过神来
+                  </button>
+                </div>
               </>
             )}
 
             {phase === 'enacting' && entry && (
               <>
-                <p className="cf-eyebrow">欲望兑现</p>
+                <p className="cf-eyebrow">
+                  {enactIdx === 0 ? '还在抖' : '一顿'}
+                </p>
                 <h1 className="cf-title">{entry.title}</h1>
                 <p className="cf-enact" key={enactIdx}>
                   {entry.enact[enactIdx]}
@@ -547,22 +491,22 @@ const CSS = `
   z-index: 2;
 }
 
-.cf-candle-glow {
+.cf-star-glow {
   pointer-events: none;
   position: absolute;
   left: 50%;
-  bottom: 18%;
-  width: 55%;
-  height: 28%;
-  transform: translateX(-50%);
-  background: radial-gradient(ellipse at center, rgba(196,165,116,0.16) 0%, transparent 70%);
-  filter: blur(8px);
+  top: 42%;
+  width: 40%;
+  height: 22%;
+  transform: translate(-50%, -30%);
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.08) 0%, transparent 68%);
+  filter: blur(6px);
   z-index: 2;
-  animation: cfGlow 3.6s ease-in-out infinite;
+  animation: cfStarGlow 4.2s ease-in-out infinite;
 }
-@keyframes cfGlow {
-  0%, 100% { opacity: 0.7; transform: translateX(-50%) scale(1); }
-  50% { opacity: 1; transform: translateX(-50%) scale(1.06); }
+@keyframes cfStarGlow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.95; }
 }
 
 .cf-header {
@@ -637,39 +581,30 @@ const CSS = `
 
 .cf-arch {
   position: relative;
-  width: min(78vw, 280px);
-  margin-top: 4px;
+  width: min(92vw, 380px);
+  margin-top: 2px;
   transition: transform 0.8s ease, filter 0.8s ease;
 }
 .cf-arch--pulse { animation: cfArchPulse 0.9s ease-in-out; }
 @keyframes cfArchPulse {
   0%, 100% { filter: brightness(1); transform: scale(1); }
-  50% { filter: brightness(1.15); transform: scale(1.015); }
+  50% { filter: brightness(1.12); transform: scale(1.012); }
 }
-.cf-arch--open { filter: brightness(1.12) saturate(1.05); }
+.cf-arch--open .cf-arch-outline {
+  stroke: rgba(236,230,218,0.95);
+}
 .cf-arch-svg {
   width: 100%;
   height: auto;
   display: block;
-  filter: drop-shadow(0 12px 40px rgba(0,0,0,0.55));
 }
-.cf-grille {
-  transition: opacity 1s ease, transform 1.2s ease;
-  transform-origin: 160px 230px;
+.cf-cross-star {
+  animation: cfStarBreath 3.8s ease-in-out infinite;
+  transform-origin: 180px 320px;
 }
-.cf-grille--parted {
-  opacity: 0.18;
-  transform: scaleX(1.08) translateX(4px);
-}
-.cf-flame {
-  animation: cfFlicker 1.8s ease-in-out infinite;
-  transform-origin: 160px 382px;
-}
-.cf-flame-core { animation: cfFlicker 1.2s ease-in-out infinite reverse; }
-@keyframes cfFlicker {
-  0%, 100% { opacity: 0.85; transform: scaleY(1) scaleX(1); }
-  30% { opacity: 1; transform: scaleY(1.08) scaleX(0.95); }
-  60% { opacity: 0.75; transform: scaleY(0.92) scaleX(1.05); }
+@keyframes cfStarBreath {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
 }
 
 .cf-figure {
@@ -791,19 +726,10 @@ const CSS = `
   text-align: left;
   margin: 0 auto 22px;
   max-width: 28em;
-  min-height: 6.5em;
+  min-height: 0;
+  animation: cfPanelIn 0.45s ease both;
 }
 .cf-confession--static { min-height: 0; }
-.cf-caret {
-  display: inline-block;
-  width: 0.55em;
-  height: 1em;
-  margin-left: 2px;
-  vertical-align: -0.12em;
-  background: rgba(196,165,116,0.55);
-  animation: cfBlink 1s steps(1) infinite;
-}
-@keyframes cfBlink { 50% { opacity: 0; } }
 
 .cf-enact {
   font-weight: 300;
@@ -940,7 +866,7 @@ const CSS = `
 }
 
 @media (min-height: 720px) {
-  .cf-arch { width: min(72vw, 300px); margin-top: 12px; }
-  .cf-panel { margin-top: 18px; }
+  .cf-arch { width: min(88vw, 400px); margin-top: 10px; }
+  .cf-panel { margin-top: 14px; }
 }
 `;
