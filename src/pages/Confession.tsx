@@ -196,7 +196,6 @@ export default function ConfessionPage() {
   const [view, setView] = useState<View>('booth');
   const [phase, setPhase] = useState<Phase>('idle');
   const [entry, setEntry] = useState<ConfessionEntry | null>(null);
-  const [archivedCatch, setArchivedCatch] = useState(true);
   const [enactIdx, setEnactIdx] = useState(0);
   const [yesterday, setYesterday] = useState<ConfessionEntry | null>(null);
   const [archives, setArchives] = useState<ConfessionEntry[]>([]);
@@ -234,7 +233,6 @@ export default function ConfessionPage() {
         return;
       }
       setEntry(result.entry);
-      setArchivedCatch(result.archived);
       setPhase('caught-flash');
       window.setTimeout(() => setPhase('confessing'), 1200);
     } catch {
