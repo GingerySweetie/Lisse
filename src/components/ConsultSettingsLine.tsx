@@ -48,17 +48,25 @@ export default function ConsultSettingsLine() {
         pointerEvents: 'none',
       }}
     >
-      {/* Hairline: solid at right, fades out toward center */}
-      <button
-        type="button"
+      {/* Hairline: solid at right, fades out toward center.
+          Use a div (not <button>) so browsers never paint a focus ring / black frame. */}
+      <div
+        role="button"
+        tabIndex={0}
         className="consult-hairline-btn"
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
         aria-label="咨询室设置"
         aria-expanded={open}
         title="设置"
         style={{
           pointerEvents: 'auto',
-          border: 'none',
+          border: 0,
           outline: 'none',
           boxShadow: 'none',
           background: 'transparent',
@@ -69,16 +77,16 @@ export default function ConsultSettingsLine() {
           alignItems: 'center',
           justifyContent: 'flex-end',
           WebkitTapHighlightColor: 'transparent',
-          appearance: 'none',
-          WebkitAppearance: 'none',
+          userSelect: 'none',
         }}
       >
         <span
+          aria-hidden
           style={{
             display: 'block',
             width: '100%',
             height: open ? 2 : 1.25,
-            border: 'none',
+            border: 0,
             outline: 'none',
             borderRadius: 0,
             background: `linear-gradient(270deg,
@@ -88,9 +96,10 @@ export default function ConsultSettingsLine() {
               rgba(92, 61, 122, 0.06) 78%,
               transparent 100%)`,
             transition: 'height 0.2s ease',
+            pointerEvents: 'none',
           }}
         />
-      </button>
+      </div>
 
       {open && (
         <div
