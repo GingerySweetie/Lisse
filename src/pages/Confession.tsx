@@ -20,7 +20,7 @@ type Phase =
 
 type View = 'booth' | 'archive';
 
-/** Split prose into natural article paragraphs (not poetry lines). */
+/** Natural article paragraphs — not poetry line breaks. */
 function toParagraphs(text: string): string[] {
   const raw = text.replace(/\r/g, '').trim();
   if (!raw) return [];
@@ -41,7 +41,7 @@ function toParagraphs(text: string): string[] {
   let buf = '';
   for (const s of sentences) {
     buf += s;
-    if (buf.length >= 70) {
+    if (buf.length >= 72) {
       paras.push(buf);
       buf = '';
     }
@@ -53,64 +53,52 @@ function toParagraphs(text: string): string[] {
 function StarDivider() {
   return (
     <div className="cf-divider" aria-hidden>
-      <span className="cf-divider-line" />
-      <svg className="cf-divider-star" viewBox="0 0 20 20" width="11" height="11">
+      <i className="cf-divider-line" />
+      <svg viewBox="0 0 20 20" width="10" height="10">
         <path
-          d="M10 1 L12 8 L19 10 L12 12 L10 19 L8 12 L1 10 L8 8 Z"
+          d="M10 1.2 L11.8 8.2 L18.8 10 L11.8 11.8 L10 18.8 L8.2 11.8 L1.2 10 L8.2 8.2 Z"
           fill="none"
-          stroke="rgba(255,255,255,0.75)"
-          strokeWidth="1.2"
+          stroke="rgba(255,255,255,0.78)"
+          strokeWidth="1.15"
         />
       </svg>
-      <span className="cf-divider-line" />
+      <i className="cf-divider-line" />
     </div>
   );
 }
 
-function ApexStar({ lit }: { lit: boolean }) {
-  return (
-    <div className={`cf-apex ${lit ? 'cf-apex--lit' : ''}`} aria-hidden>
-      <svg viewBox="0 0 40 40" width="20" height="20">
-        <path
-          d="M20 2 L24 16 L38 20 L24 24 L20 38 L16 24 L2 20 L16 16 Z"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.35"
-        />
-      </svg>
-    </div>
-  );
-}
-
-/** Twinkling vertical star-curtain — idle / untriggered only. */
 function StarCurtain() {
   const lines = useMemo(() => {
-    const out: { x: number; delay: number; dur: number; op: number }[] = [];
-    for (let i = 0; i < 40; i++) {
+    const out: { x: number; delay: number; dur: number }[] = [];
+    for (let i = 0; i < 42; i++) {
       out.push({
-        x: 3 + (i / 39) * 94,
-        delay: (i * 0.15) % 3.4,
-        dur: 2.2 + (i % 6) * 0.32,
-        op: 0.16 + (i % 5) * 0.06,
+        x: 2.5 + (i / 41) * 95,
+        delay: (i * 0.14) % 3.5,
+        dur: 2.1 + (i % 7) * 0.28,
       });
     }
     return out;
   }, []);
 
   const sparks = useMemo(() => {
-    const seed = [
-      [14, 16], [26, 30], [38, 12], [50, 38], [62, 20], [74, 44], [86, 14],
-      [20, 52], [34, 60], [46, 26], [58, 56], [70, 34], [82, 62], [10, 40],
-      [16, 70], [30, 78], [44, 68], [56, 76], [72, 72], [40, 46], [52, 10],
-      [24, 42], [66, 18], [78, 52], [36, 34], [48, 64], [64, 48], [88, 28],
-      [12, 58], [28, 22], [54, 42], [80, 36],
+    const seed: Array<[number, number, number, 'dot' | 'cross']> = [
+      [12, 14, 2.5, 'dot'], [28, 22, 6, 'cross'], [44, 11, 2, 'dot'],
+      [58, 30, 5, 'cross'], [72, 16, 2.5, 'dot'], [86, 26, 3, 'dot'],
+      [18, 40, 5, 'cross'], [36, 48, 2, 'dot'], [52, 36, 2.5, 'dot'],
+      [66, 52, 6, 'cross'], [80, 42, 2, 'dot'], [10, 58, 3, 'dot'],
+      [24, 66, 5, 'cross'], [40, 60, 2, 'dot'], [56, 70, 2.5, 'dot'],
+      [70, 64, 5, 'cross'], [84, 74, 2, 'dot'], [14, 78, 2.5, 'dot'],
+      [32, 82, 3, 'dot'], [48, 20, 5, 'cross'], [62, 78, 2, 'dot'],
+      [76, 56, 2.5, 'dot'], [90, 48, 5, 'cross'], [22, 32, 2, 'dot'],
+      [46, 54, 3, 'dot'], [68, 24, 2.5, 'dot'], [38, 74, 5, 'cross'],
+      [54, 44, 2, 'dot'], [78, 18, 3, 'dot'], [30, 56, 2.5, 'dot'],
     ];
-    return seed.map(([x, y], i) => ({
+    return seed.map(([x, y, size, kind], i) => ({
       x,
       y,
-      delay: (i * 0.21) % 4.2,
-      size: i % 5 === 0 ? 7 : i % 3 === 0 ? 5 : 2.5,
-      kind: (i % 5 === 0 ? 'cross' : 'dot') as 'cross' | 'dot',
+      size,
+      kind,
+      delay: (i * 0.19) % 4,
     }));
   }, []);
 
@@ -119,14 +107,13 @@ function StarCurtain() {
       <svg className="cf-curtain-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
         {lines.map((l, i) => (
           <line
-            key={`l${i}`}
+            key={i}
             className="cf-curtain-line"
             x1={l.x}
-            y1="1"
+            y1="0"
             x2={l.x}
-            y2="99"
+            y2="100"
             style={{
-              opacity: l.op,
               animationDelay: `${l.delay}s`,
               animationDuration: `${l.dur}s`,
             }}
@@ -135,7 +122,7 @@ function StarCurtain() {
       </svg>
       {sparks.map((s, i) => (
         <span
-          key={`s${i}`}
+          key={i}
           className={s.kind === 'cross' ? 'cf-spark cf-spark--cross' : 'cf-spark cf-spark--dot'}
           style={{
             left: `${s.x}%`,
@@ -150,46 +137,10 @@ function StarCurtain() {
   );
 }
 
-function ArchFrame({
-  lit,
-  pulse,
-  children,
-}: {
-  lit: boolean;
-  pulse?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`cf-frame ${lit ? 'cf-frame--open' : ''} ${pulse ? 'cf-frame--pulse' : ''}`}>
-      <svg
-        className="cf-frame-svg"
-        viewBox="0 0 300 560"
-        preserveAspectRatio="none"
-        aria-hidden
-      >
-        <path
-          d="M28 552 V208 Q28 26 150 10 Q272 26 272 208 V552"
-          fill="none"
-          stroke="rgba(255,255,255,0.9)"
-          strokeWidth="1.55"
-        />
-        <path
-          d="M40 544 V210 Q40 46 150 30 Q260 46 260 210 V544"
-          fill="none"
-          stroke="rgba(255,255,255,0.4)"
-          strokeWidth="1"
-        />
-      </svg>
-      <ApexStar lit={lit || !!pulse} />
-      <div className="cf-inner">{children}</div>
-    </div>
-  );
-}
-
 /**
- * 告解室 — visual clone of the reference:
- * untriggered = arch + flashing star curtain only;
- * triggered = in-arch prose + star dividers (no invented chrome copy).
+ * 1:1 reference booth:
+ * - enter: grounded arch + flashing star curtain only (no input bar, no copy)
+ * - triggered: natural paragraphs inside the arch with star dividers
  */
 export default function ConfessionPage() {
   const navigate = useNavigate();
@@ -228,16 +179,34 @@ export default function ConfessionPage() {
     try {
       const result = await approachConfession({ force: forced });
       if (result.kind === 'sealed') {
-        // Stay visual-silent: curtain keeps flashing, no invented copy.
         setPhase('sealed');
         return;
       }
       setEntry(result.entry);
       setPhase('caught-flash');
-      window.setTimeout(() => setPhase('confessing'), 1200);
+      window.setTimeout(() => setPhase('confessing'), 900);
     } catch {
       setPhase('sealed');
     }
+  }
+
+  function onBoothActivate() {
+    if (phase === 'idle' || phase === 'sealed') {
+      void handleApproach(false);
+      return;
+    }
+    if (phase === 'approaching' || phase === 'caught-flash') return;
+    if (phase === 'confessing') {
+      setEnactIdx(0);
+      setPhase('enacting');
+      return;
+    }
+    if (phase === 'enacting' && entry) {
+      if (enactIdx + 1 >= entry.enact.length) setPhase('aftermath');
+      else setEnactIdx((n) => n + 1);
+      return;
+    }
+    if (phase === 'aftermath') resetIdle();
   }
 
   const triggered =
@@ -245,66 +214,59 @@ export default function ConfessionPage() {
     phase === 'confessing' ||
     phase === 'enacting' ||
     phase === 'aftermath';
-  const showCurtain = !triggered;
 
-  const confessionParas = useMemo(
-    () => (entry ? toParagraphs(entry.confession) : []),
-    [entry],
-  );
+  const prose = useMemo(() => {
+    if (phase === 'confessing' && entry) return toParagraphs(entry.confession);
+    if (phase === 'enacting' && entry) {
+      return toParagraphs(entry.enact[enactIdx] ?? '');
+    }
+    if (phase === 'aftermath' && entry) return toParagraphs(entry.after);
+    return [] as string[];
+  }, [phase, entry, enactIdx]);
+
+  // Long-press / triple-tap corner opens archive without chrome.
+  function onCornerArchive() {
+    setView('archive');
+    setArchiveFocus(yesterday);
+  }
 
   if (view === 'archive') {
     const shown = archiveFocus ?? yesterday ?? archives[0] ?? null;
     return (
       <div className="cf-root">
         <style>{CSS}</style>
-        <div className="cf-top">
-          <button type="button" className="cf-nav" onClick={() => setView('booth')}>
-            ←
-          </button>
-          <button type="button" className="cf-nav" onClick={() => setView('booth')}>
-            ×
-          </button>
-        </div>
-        <main className="cf-stage">
-          <ArchFrame lit>
+        <button type="button" className="cf-hit-back" onClick={() => setView('booth')} />
+        <button
+          type="button"
+          className="cf-booth"
+          onClick={() => setView('booth')}
+        >
+          <ArchSvg lit />
+          <div className="cf-well">
             <div className="cf-prose">
-              {archives.length === 0 ? null : (
-                <>
-                  <div className="cf-archive-list">
-                    {archives.map((a) => (
-                      <button
-                        key={a.id}
-                        type="button"
-                        className={`cf-chip ${shown?.id === a.id ? 'cf-chip--on' : ''}`}
-                        onClick={() => setArchiveFocus(a)}
-                      >
-                        {a.date.slice(5)} {a.title}
-                      </button>
-                    ))}
+              {archives.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={`cf-chip ${shown?.id === a.id ? 'cf-chip--on' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setArchiveFocus(a);
+                  }}
+                >
+                  {a.date.slice(5)}
+                </button>
+              ))}
+              {shown &&
+                toParagraphs(shown.confession).map((p, i) => (
+                  <div key={i}>
+                    {i > 0 && <StarDivider />}
+                    <p className="cf-para">{p}</p>
                   </div>
-                  {shown && (
-                    <>
-                      {toParagraphs(shown.confession).map((p, i) => (
-                        <div key={i}>
-                          {i > 0 && <StarDivider />}
-                          <p className="cf-para">{p}</p>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </>
-              )}
+                ))}
             </div>
-          </ArchFrame>
-          <div className="cf-bar">
-            <button type="button" className="cf-input" onClick={() => setView('booth')}>
-              <span className="cf-input-ph" />
-              <span className="cf-input-send" aria-hidden>
-                ↑
-              </span>
-            </button>
           </div>
-        </main>
+        </button>
       </div>
     );
   }
@@ -313,161 +275,82 @@ export default function ConfessionPage() {
     <div className="cf-root">
       <style>{CSS}</style>
 
-      <div className="cf-top">
-        <button
-          type="button"
-          className="cf-nav"
-          onClick={() => navigate('/home')}
-          aria-label="返回"
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          className={`cf-nav ${yesterday ? 'cf-nav--dot' : ''}`}
-          onClick={() => {
-            setView('archive');
-            setArchiveFocus(yesterday);
-          }}
-          aria-label="档案"
-        >
-          ·
-        </button>
-      </div>
+      {/* invisible app exits — not part of the visual design */}
+      <button
+        type="button"
+        className="cf-hit-back"
+        aria-label="返回"
+        onClick={() => navigate('/home')}
+      />
+      <button
+        type="button"
+        className="cf-hit-archive"
+        aria-label="档案"
+        onClick={onCornerArchive}
+      />
 
-      <main className="cf-stage">
-        <ArchFrame
-          lit={triggered}
-          pulse={phase === 'approaching'}
-        >
-          {showCurtain && <StarCurtain />}
+      <button
+        type="button"
+        className={`cf-booth ${phase === 'approaching' ? 'cf-booth--pulse' : ''}`}
+        onClick={onBoothActivate}
+        aria-label="告解室"
+      >
+        <ArchSvg lit={triggered || phase === 'approaching'} />
 
-          {/* caught-flash: curtain off, apex lit — no invented chrome copy */}
+        <div className="cf-well">
+          {!triggered && <StarCurtain />}
 
-          {phase === 'confessing' && entry && (
+          {triggered && prose.length > 0 && (
             <div className="cf-prose">
-              {confessionParas.map((p, i) => (
-                <div key={i}>
+              {prose.map((p, i) => (
+                <div key={`${phase}-${enactIdx}-${i}`}>
                   {i > 0 && <StarDivider />}
                   <p className="cf-para">{p}</p>
                 </div>
               ))}
             </div>
-          )}
-
-          {phase === 'enacting' && entry && (
-            <div className="cf-prose">
-              {toParagraphs(entry.enact[enactIdx] ?? '').map((p, i) => (
-                <div key={`${enactIdx}-${i}`}>
-                  {i > 0 && <StarDivider />}
-                  <p className="cf-para">{p}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {phase === 'aftermath' && entry && (
-            <div className="cf-prose">
-              {toParagraphs(entry.after).map((p, i) => (
-                <div key={i}>
-                  {i > 0 && <StarDivider />}
-                  <p className="cf-para">{p}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </ArchFrame>
-
-        <div className="cf-bar">
-          {(phase === 'idle' || phase === 'approaching' || phase === 'sealed') && (
-            <button
-              type="button"
-              className="cf-input"
-              disabled={phase === 'approaching'}
-              onClick={() => void handleApproach(false)}
-              aria-label="靠近"
-            >
-              <span className="cf-input-plus" aria-hidden>
-                +
-              </span>
-              <span className="cf-input-ph" />
-              <span className="cf-input-send" aria-hidden>
-                {phase === 'approaching' ? '…' : '↑'}
-              </span>
-            </button>
-          )}
-
-          {phase === 'caught-flash' && (
-            <div className="cf-input cf-input--idle">
-              <span className="cf-input-plus" aria-hidden>
-                +
-              </span>
-              <span className="cf-input-ph" />
-              <span className="cf-input-send" aria-hidden>
-                ↑
-              </span>
-            </div>
-          )}
-
-          {phase === 'confessing' && (
-            <button
-              type="button"
-              className="cf-input"
-              onClick={() => {
-                setEnactIdx(0);
-                setPhase('enacting');
-              }}
-              aria-label="继续"
-            >
-              <span className="cf-input-plus" aria-hidden>
-                +
-              </span>
-              <span className="cf-input-ph" />
-              <span className="cf-input-send" aria-hidden>
-                ↑
-              </span>
-            </button>
-          )}
-
-          {phase === 'enacting' && entry && (
-            <button
-              type="button"
-              className="cf-input"
-              onClick={() => {
-                if (enactIdx + 1 >= entry.enact.length) setPhase('aftermath');
-                else setEnactIdx((n) => n + 1);
-              }}
-              aria-label="继续"
-            >
-              <span className="cf-input-plus" aria-hidden>
-                +
-              </span>
-              <span className="cf-input-ph" />
-              <span className="cf-input-send" aria-hidden>
-                ↑
-              </span>
-            </button>
-          )}
-
-          {phase === 'aftermath' && (
-            <button
-              type="button"
-              className="cf-input"
-              onClick={resetIdle}
-              aria-label="离开"
-            >
-              <span className="cf-input-plus" aria-hidden>
-                +
-              </span>
-              <span className="cf-input-ph" />
-              <span className="cf-input-send" aria-hidden>
-                ↑
-              </span>
-            </button>
           )}
         </div>
-      </main>
+      </button>
     </div>
+  );
+}
+
+function ArchSvg({ lit }: { lit: boolean }) {
+  return (
+    <>
+      <svg
+        className="cf-arch"
+        viewBox="0 0 300 640"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        {/* outer — legs run to the ground (y=640) */}
+        <path
+          d="M26 640 V220 Q26 22 150 8 Q274 22 274 220 V640"
+          fill="none"
+          stroke="rgba(255,255,255,0.92)"
+          strokeWidth="1.5"
+        />
+        {/* inner */}
+        <path
+          d="M40 640 V222 Q40 44 150 28 Q260 44 260 222 V640"
+          fill="none"
+          stroke="rgba(255,255,255,0.42)"
+          strokeWidth="1"
+        />
+      </svg>
+      <div className={`cf-apex ${lit ? 'cf-apex--lit' : ''}`} aria-hidden>
+        <svg viewBox="0 0 40 40" width="18" height="18">
+          <path
+            d="M20 2 L23.8 16.2 L38 20 L23.8 23.8 L20 38 L16.2 23.8 L2 20 L16.2 16.2 Z"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.35"
+          />
+        </svg>
+      </div>
+    </>
   );
 }
 
@@ -477,83 +360,90 @@ const CSS = `
   width: 100%;
   height: 100%;
   background: #000;
-  color: rgba(245,242,235,0.92);
+  color: rgba(245,242,235,0.9);
   font-family: 'Noto Serif SC', 'Songti SC', 'Source Han Serif SC', serif;
-  display: flex;
-  flex-direction: column;
   max-width: 430px;
   margin: 0 auto;
   overflow: hidden;
 }
 
-.cf-top {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 14px 0;
-  padding-top: calc(8px + env(safe-area-inset-top, 0px));
-  z-index: 5;
-}
-.cf-nav {
-  width: 36px;
-  height: 32px;
+/* invisible hit targets — zero visual chrome */
+.cf-hit-back,
+.cf-hit-archive {
+  position: absolute;
+  top: 0;
+  width: 48px;
+  height: 48px;
+  z-index: 10;
   border: none;
-  background: none;
-  color: rgba(255,255,255,0.35);
-  font-size: 18px;
+  background: transparent;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
-  line-height: 1;
 }
-.cf-nav--dot { color: rgba(232,160,120,0.7); }
+.cf-hit-back { left: 0; padding-top: env(safe-area-inset-top, 0px); }
+.cf-hit-archive { right: 0; padding-top: env(safe-area-inset-top, 0px); }
 
-.cf-stage {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 0 16px;
-  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-}
-
-.cf-frame {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  max-width: 360px;
-  margin: 0 auto;
-}
-.cf-frame-svg {
+.cf-booth {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none;
-  z-index: 3;
+  border: none;
+  background: #000;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: block;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
+.cf-booth--pulse .cf-curtain-line {
+  animation-duration: 0.9s !important;
+}
+
+.cf-arch {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 0;
+  bottom: 0;
+  width: 80%;
+  height: 100%;
+  z-index: 3;
+  pointer-events: none;
+}
+
 .cf-apex {
   position: absolute;
-  top: 2.2%;
+  top: 1.6%;
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
-  color: rgba(255,255,255,0.9);
+  color: rgba(255,255,255,0.92);
+  pointer-events: none;
 }
 .cf-apex--lit {
-  color: #f0c8a8;
-  filter: drop-shadow(0 0 10px rgba(220,120,70,0.7));
+  color: #efc4a4;
+  filter: drop-shadow(0 0 9px rgba(220,120,70,0.72));
 }
 
-.cf-inner {
+/* content well sits inside the arch legs, grounded with the arch */
+.cf-well {
   position: absolute;
-  left: 15%;
-  right: 15%;
-  top: 8.5%;
-  bottom: 3.5%;
+  left: 18%;
+  right: 18%;
+  top: 7.5%;
+  bottom: 0;
   z-index: 2;
   overflow: hidden;
 }
 
-.cf-curtain { position: absolute; inset: 0; }
+.cf-curtain {
+  position: absolute;
+  inset: 0;
+}
 .cf-curtain-svg {
   position: absolute;
   inset: 0;
@@ -562,28 +452,28 @@ const CSS = `
 }
 .cf-curtain-line {
   stroke: rgba(255,255,255,0.55);
-  stroke-width: 0.14;
-  animation-name: cfLineFlicker;
+  stroke-width: 0.13;
+  opacity: 0.22;
+  animation-name: cfFlicker;
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
 }
-@keyframes cfLineFlicker {
-  0%, 100% { opacity: 0.1; }
-  35% { opacity: 0.48; }
-  65% { opacity: 0.18; }
+@keyframes cfFlicker {
+  0%, 100% { opacity: 0.08; }
+  40% { opacity: 0.5; }
+  70% { opacity: 0.16; }
 }
-.cf-frame--pulse .cf-curtain-line { animation-duration: 1s !important; }
 
 .cf-spark {
   position: absolute;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  animation: cfSparkle 2.6s ease-in-out infinite;
+  animation: cfSpark 2.7s ease-in-out infinite;
 }
 .cf-spark--dot {
   border-radius: 50%;
-  background: rgba(255,255,255,0.9);
-  box-shadow: 0 0 3px rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 0 3px rgba(255,255,255,0.35);
 }
 .cf-spark--cross { background: transparent; }
 .cf-spark--cross::before,
@@ -597,18 +487,20 @@ const CSS = `
 }
 .cf-spark--cross::before { width: 100%; height: 1px; }
 .cf-spark--cross::after { width: 1px; height: 100%; }
-@keyframes cfSparkle {
-  0%, 100% { opacity: 0.12; transform: translate(-50%, -50%) scale(0.8); }
-  45% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
-  75% { opacity: 0.3; }
+@keyframes cfSpark {
+  0%, 100% { opacity: 0.1; transform: translate(-50%, -50%) scale(0.82); }
+  45% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+  75% { opacity: 0.28; }
 }
 
 .cf-prose {
-  height: 100%;
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
-  padding: 10px 2px 18px;
-  animation: cfIn 0.4s ease both;
+  padding: 8% 2% 18%;
   scrollbar-width: none;
+  animation: cfIn 0.45s ease both;
+  box-sizing: border-box;
 }
 .cf-prose::-webkit-scrollbar { display: none; }
 @keyframes cfIn {
@@ -617,49 +509,38 @@ const CSS = `
 }
 
 .cf-para {
+  margin: 0;
   font-weight: 300;
   font-size: 14px;
-  line-height: 1.95;
-  color: rgba(240,236,228,0.88);
-  margin: 0;
+  line-height: 2;
+  letter-spacing: 0.02em;
+  color: rgba(242,238,230,0.9);
   text-align: justify;
   text-justify: inter-ideograph;
-}
-.cf-meta {
-  margin: 14px 0 0;
-  font-size: 11px;
-  color: rgba(255,255,255,0.3);
-  text-align: center;
 }
 
 .cf-divider {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 16px 0;
+  margin: 18px 0;
 }
 .cf-divider-line {
   flex: 1;
   height: 1px;
   background: rgba(255,255,255,0.22);
+  display: block;
 }
-.cf-divider-star { flex-shrink: 0; display: block; }
 
-.cf-archive-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: center;
-  margin-bottom: 4px;
-}
 .cf-chip {
   appearance: none;
   border: 1px solid rgba(255,255,255,0.2);
   background: transparent;
-  color: rgba(255,255,255,0.55);
+  color: rgba(255,255,255,0.5);
   font-family: inherit;
   font-size: 11px;
-  padding: 3px 8px;
+  padding: 2px 8px;
+  margin: 0 4px 10px 0;
   cursor: pointer;
 }
 .cf-chip--on {
@@ -667,49 +548,8 @@ const CSS = `
   color: #f0d0bc;
 }
 
-.cf-bar {
-  width: 100%;
-  max-width: 360px;
-  margin: 12px auto 0;
-  padding: 0 4px;
-}
-.cf-input {
-  appearance: none;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(255,255,255,0.22);
-  background: rgba(10,10,10,0.95);
-  border-radius: 999px;
-  padding: 11px 12px 11px 18px;
-  cursor: pointer;
-  color: rgba(255,255,255,0.7);
-}
-.cf-input:disabled { opacity: 0.5; cursor: default; }
-.cf-input--idle { cursor: default; opacity: 0.55; }
-.cf-input-plus {
-  color: rgba(255,255,255,0.45);
-  font-size: 18px;
-  line-height: 1;
-  width: 18px;
-  text-align: center;
-}
-.cf-input-ph { flex: 1; height: 1px; }
-.cf-input-send {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,0.35);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  color: rgba(255,255,255,0.7);
-  flex-shrink: 0;
-}
-
-@media (min-height: 740px) {
-  .cf-frame { max-width: 380px; }
+@media (min-width: 400px) {
+  .cf-arch { left: 12%; width: 76%; }
+  .cf-well { left: 20%; right: 20%; }
 }
 `;
