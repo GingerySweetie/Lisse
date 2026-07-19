@@ -24,19 +24,14 @@ export const MAX_BOOK_CONTENT_CHARS = 2_000_000;
 /** Warn / refuse reading a chat-export / config file entirely into memory. */
 export const MAX_IMPORT_FILE_BYTES = 80 * 1024 * 1024;
 
-<<<<<<< HEAD
 /**
  * Soft cap for full-backup import via the streaming path (chunked read +
  * batched IndexedDB writes). Far above the old in-memory 80MB guard.
  */
 export const MAX_BACKUP_STREAM_IMPORT_BYTES = 1024 * 1024 * 1024;
 
-/** Above this, chat bubbles render a truncated preview instead of full Markdown. */
-export const MAX_BUBBLE_RENDER_CHARS = 40_000;
-=======
 /** Above this, chat bubbles render a plain truncated preview (no Markdown). */
 export const MAX_BUBBLE_RENDER_CHARS = 12_000;
->>>>>>> 7d12427 (fix(chat): fold at 2k chars; stop long-chat switch crashes)
 
 export class StorageLimitError extends Error {
   constructor(message: string) {
