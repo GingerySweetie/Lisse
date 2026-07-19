@@ -166,16 +166,7 @@ export default function MessageBubble({
             )}
             <div className="wis-ai-body prose-msg">
               {text ? (
-                <>
-                  <ChatMarkdown text={text} />
-                  {truncated && (
-                    <p className="mt-2 text-xs text-ink-500">
-                      内容过长（{formatChars(rawText.length)}），这里只预览前{' '}
-                      {formatChars(MAX_BUBBLE_RENDER_CHARS)}
-                      ，完整正文仍保存在本地。
-                    </p>
-                  )}
-                </>
+                <BubbleBody text={text} truncated={truncated} rawLen={rawText.length} />
               ) : isStreaming ? (
                 <span className="stream-cursor" />
               ) : null}
@@ -321,16 +312,12 @@ export default function MessageBubble({
                 </div>
               </div>
             ) : (
-              <>
-                <ChatMarkdown text={text} preserveSoftBreaks />
-                {truncated && (
-                  <p className="mt-2 text-xs text-ink-500">
-                    内容过长（{formatChars(rawText.length)}），这里只预览前{' '}
-                    {formatChars(MAX_BUBBLE_RENDER_CHARS)}
-                    ，完整正文仍保存在本地。
-                  </p>
-                )}
-              </>
+              <BubbleBody
+                text={text}
+                truncated={truncated}
+                rawLen={rawText.length}
+                preserveSoftBreaks
+              />
             )}
           </div>
         )}
@@ -740,6 +727,38 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+
+/** Long bodies skip Markdown (parse/highlight OOMs the tab on switch). */
+function BubbleBody({
+  text,
+  truncated,
+  rawLen,
+  preserveSoftBreaks = false,
+}: {
+  text: string;
+  truncated: boolean;
+  rawLen: number;
+  preserveSoftBreaks?: boolean;
+}) {
+  return (
+    <>
+      {truncated ? (
+        <pre className="m-0 whitespace-pre-wrap break-words font-sans text-[15px] leading-relaxed">
+          {text}
+        </pre>
+      ) : (
+        <ChatMarkdown text={text} preserveSoftBreaks={preserveSoftBreaks} />
+      )}
+      {truncated && (
+        <p className="mt-2 text-xs text-ink-500">
+          内容过长（{formatChars(rawLen)}），这里只预览前{' '}
+          {formatChars(MAX_BUBBLE_RENDER_CHARS)}
+          ，完整正文仍保存在本地。
+        </p>
+      )}
+    </>
+  );
 }
 
 /** Avoid dumping 40k-char parse_document bodies into the chip expand view. */

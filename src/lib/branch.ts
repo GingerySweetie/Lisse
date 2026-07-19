@@ -2,6 +2,27 @@ import { db } from '../db';
 import type { Conversation, Message } from '../types';
 
 /**
+ * Walk from root to the conversation's currentLeaf using an already-loaded
+ * message list (avoids a second IndexedDB full-table read on every live
+ * query tick — critical when messages carry huge pasted bodies).
+ */
+export function getActiveBranchFromMessages(
+  conversation: Conversation,
+  messages: Message[],
+): Message[] {
+  if (!conversation.currentLeafId) return [];
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const path: Message[] = [];
+  let cursor = byId.get(conversation.currentLeafId);
+  while (cursor) {
+    path.unshift(cursor);
+    if (!cursor.parentId) break;
+    cursor = byId.get(cursor.parentId);
+  }
+  return path;
+}
+
+/**
  * Walk from root to the conversation's currentLeaf, returning ordered messages.
  * Uses parentId to chain. If currentLeafId is null, returns []. */
 export async function getActiveBranch(
@@ -11,15 +32,7 @@ export async function getActiveBranch(
   const all = await db.messages
     .where({ conversationId: conversation.id })
     .toArray();
-  const byId = new Map(all.map((m) => [m.id, m]));
-  const path: Message[] = [];
-  let cursor = byId.get(conversation.currentLeafId);
-  while (cursor) {
-    path.unshift(cursor);
-    if (!cursor.parentId) break;
-    cursor = byId.get(cursor.parentId);
-  }
-  return path;
+  return getActiveBranchFromMessages(conversation, all);
 }
 
 /**
