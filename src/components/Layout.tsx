@@ -12,6 +12,8 @@ import { resetStatusBar } from '../lib/status-bar';
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  /** Consult room is fully immersive — no sidebar / clawd chrome. */
+  const isConsult = location.pathname.startsWith('/consult');
 
   // Restore default lavender status bar whenever we land on any non-themed
   // room route. Bedroom / consult manage their own colour and reset on unmount.
@@ -23,6 +25,11 @@ export default function Layout() {
       void resetStatusBar();
     }
   }, [location.pathname]);
+
+  // Close sidebar if we navigate into consult.
+  useEffect(() => {
+    if (isConsult) setSidebarOpen(false);
+  }, [isConsult]);
 
   useEffect(() => {
     bootstrapBehavior();
@@ -46,8 +53,10 @@ export default function Layout() {
   // Touch must start within EDGE_PX of the left screen edge and travel
   // right by SWIPE_PX. Vertical drift must stay smaller than the horizontal
   // distance so vertical scroll gestures don't trip the sidebar.
+  // Disabled inside consult (immersive room).
   const swipeRef = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
+    if (isConsult) return;
     const EDGE_PX = 24;
     const SWIPE_PX = 60;
     function onStart(e: TouchEvent) {
@@ -77,48 +86,49 @@ export default function Layout() {
       window.removeEventListener('touchstart', onStart);
       window.removeEventListener('touchend', onEnd);
     };
-  }, []);
+  }, [isConsult]);
 
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Mobile overlay */}
-      {sidebarOpen && (
+      {!isConsult && sidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-ink-900/30 backdrop-blur-sm md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[82%] max-w-[340px] transform shadow-[4px_0_24px_rgba(90,50,100,0.1)] transition-transform duration-300 md:relative md:w-72 md:max-w-none md:translate-x-0 md:shadow-none ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-        style={{
-          background:
-            'linear-gradient(180deg, #f8f2fb 0%, #f3ecf6 40%, #f0e8f3 100%)',
-        }}
-      >
-        <Sidebar onNavigate={() => setSidebarOpen(false)} />
-      </aside>
+      {/* Sidebar — hidden entirely on consult routes */}
+      {!isConsult && (
+        <aside
+          className={`fixed inset-y-0 left-0 z-40 w-[82%] max-w-[340px] transform shadow-[4px_0_24px_rgba(90,50,100,0.1)] transition-transform duration-300 md:relative md:w-72 md:max-w-none md:translate-x-0 md:shadow-none ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+          style={{
+            background:
+              'linear-gradient(180deg, #f8f2fb 0%, #f3ecf6 40%, #f0e8f3 100%)',
+          }}
+        >
+          <Sidebar onNavigate={() => setSidebarOpen(false)} />
+        </aside>
+      )}
 
       {/* Main */}
       <main className="relative flex h-full w-full flex-1 flex-col">
-        {/* Invisible left-edge tap zone — keyboard / mouse users get a
-            way to open the sidebar even though the hamburger button is
-            gone. Hidden on md+ where the sidebar is permanent. */}
-        <button
-          type="button"
-          onClick={() => setSidebarOpen(true)}
-          aria-label="打开侧边栏"
-          className="absolute left-0 top-0 z-20 h-14 w-7 cursor-default opacity-0 md:hidden"
-        />
+        {!isConsult && (
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="打开侧边栏"
+            className="absolute left-0 top-0 z-20 h-14 w-7 cursor-default opacity-0 md:hidden"
+          />
+        )}
         <ErrorBoundary key={location.pathname} label={location.pathname}>
           <Outlet />
         </ErrorBoundary>
       </main>
 
-      <ClawdPet />
+      {!isConsult && <ClawdPet />}
     </div>
   );
 }

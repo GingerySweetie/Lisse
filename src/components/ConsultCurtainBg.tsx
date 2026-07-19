@@ -1,11 +1,8 @@
 /**
- * Backlit sheer-curtain wash — bright sun through white lace in the center,
- * dusty-lavender drapes at the sides, soft bloom / fog. Matches the
- * "透光窗帘" reference: high-key white, faint lilac in the folds.
+ * Backlit sheer curtains — sunny white + a whisper of sky blue through the
+ * lace, dusty-lavender drapes at the sides, soft bloom, wind-sway.
  */
 
-/** Soft vertical pleats for the side drapes (dusty mauve) — wide stops so
- *  blur melts them into fabric, not candy bars. */
 const DRAPE_PLEATS = `repeating-linear-gradient(
   90deg,
   #d8c8e2 0px,
@@ -15,21 +12,19 @@ const DRAPE_PLEATS = `repeating-linear-gradient(
   #d8c8e2 80px
 )`;
 
-/** Sheer center folds — mostly white, lilac only in the troughs. */
 const SHEER_FOLDS = `repeating-linear-gradient(
   90deg,
   #ffffff 0px,
   #ffffff 36px,
-  #f8f4fb 58px,
-  #f0eaf6 72px,
+  #f5f8fc 58px,
+  #eef3f9 72px,
   #fbf9fd 96px,
   #ffffff 120px
 )`;
 
-/** Tiny lace motif as a data-URI SVG — watermark-soft on the sheer. */
 const LACE_SVG = encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="160" viewBox="0 0 120 160">
-  <g fill="none" stroke="#d8cce6" stroke-width="0.7" opacity="0.55">
+  <g fill="none" stroke="#c8d4e6" stroke-width="0.7" opacity="0.5">
     <path d="M60 18c8 10 18 18 18 32 0 14-8 22-18 30-10-8-18-16-18-30 0-14 10-22 18-32z"/>
     <circle cx="60" cy="52" r="3.5"/>
     <path d="M38 88c6 4 12 4 18 0 6 8 6 18 0 28-6-4-12-4-18 0-6-10-6-20 0-28z"/>
@@ -37,17 +32,22 @@ const LACE_SVG = encodeURIComponent(`
     <path d="M60 118c-4 10-4 22 0 32 4-10 4-22 0-32z"/>
     <circle cx="28" cy="36" r="1.2"/>
     <circle cx="92" cy="40" r="1.2"/>
-    <circle cx="44" cy="140" r="1"/>
-    <circle cx="78" cy="136" r="1"/>
   </g>
 </svg>
 `);
 
-export default function ConsultCurtainBg() {
+export default function ConsultCurtainBg({
+  windy = false,
+}: {
+  /** Stronger sway on the immersive entry page. */
+  windy?: boolean;
+}) {
+  const swayDur = windy ? '9s' : '15s';
+  const drapeDur = windy ? '11s' : '18s';
+
   return (
     <div
       aria-hidden
-      className="consult-sheer"
       style={{
         position: 'absolute',
         inset: 0,
@@ -55,22 +55,33 @@ export default function ConsultCurtainBg() {
         overflow: 'hidden',
         pointerEvents: 'none',
         background:
-          'linear-gradient(180deg, #f4eef8 0%, #faf7fc 35%, #ffffff 70%, #fbf9fd 100%)',
+          'linear-gradient(180deg, #eef4fa 0%, #f7f9fc 30%, #ffffff 65%, #fbf9fd 100%)',
       }}
     >
+      {/* Sky blue seep — sunny day behind the sheer */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: `
+            radial-gradient(ellipse 42% 55% at 48% 40%, rgba(186, 214, 240, 0.42) 0%, rgba(210, 228, 245, 0.18) 45%, transparent 72%),
+            linear-gradient(180deg, rgba(176, 208, 236, 0.22) 0%, transparent 38%)
+          `,
+        }}
+      />
+
       {/* Window light well — blown-out center */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           background:
-            'radial-gradient(ellipse 48% 70% at 50% 42%, #ffffff 0%, #ffffff 28%, rgba(255,252,255,0.85) 48%, rgba(244,236,250,0.35) 68%, transparent 82%)',
+            'radial-gradient(ellipse 48% 70% at 50% 42%, #ffffff 0%, #ffffff 22%, rgba(255,252,255,0.8) 45%, rgba(236,244,252,0.3) 65%, transparent 82%)',
         }}
       />
 
-      {/* Left drape — dusty lavender, heavily blurred into fabric mass */}
+      {/* Left drape */}
       <div
-        className="consult-drape consult-drape-l"
         style={{
           position: 'absolute',
           top: '-10%',
@@ -88,14 +99,13 @@ export default function ConsultCurtainBg() {
             'linear-gradient(90deg, #000 0%, #000 35%, rgba(0,0,0,0.45) 62%, transparent 100%)',
           WebkitMaskImage:
             'linear-gradient(90deg, #000 0%, #000 35%, rgba(0,0,0,0.45) 62%, transparent 100%)',
-          animation: 'consultDrapeL 18s ease-in-out infinite alternate',
+          animation: `consultDrapeL ${drapeDur} ease-in-out infinite alternate`,
           willChange: 'transform',
         }}
       />
 
       {/* Right drape */}
       <div
-        className="consult-drape consult-drape-r"
         style={{
           position: 'absolute',
           top: '-10%',
@@ -113,12 +123,12 @@ export default function ConsultCurtainBg() {
             'linear-gradient(270deg, #000 0%, #000 35%, rgba(0,0,0,0.45) 62%, transparent 100%)',
           WebkitMaskImage:
             'linear-gradient(270deg, #000 0%, #000 35%, rgba(0,0,0,0.45) 62%, transparent 100%)',
-          animation: 'consultDrapeR 20s ease-in-out infinite alternate',
+          animation: `consultDrapeR ${windy ? '12s' : '20s'} ease-in-out infinite alternate`,
           willChange: 'transform',
         }}
       />
 
-      {/* Sheer lace panel in the center — translucent white */}
+      {/* Sheer center */}
       <div
         style={{
           position: 'absolute',
@@ -130,12 +140,12 @@ export default function ConsultCurtainBg() {
           backgroundSize: '120px 100%',
           filter: 'blur(22px)',
           opacity: 0.7,
-          animation: 'consultSheerSway 15s ease-in-out infinite alternate',
+          animation: `consultSheerSway ${swayDur} ease-in-out infinite alternate`,
           willChange: 'transform',
         }}
       />
 
-      {/* Lace watermark — very faint floral on the sheer */}
+      {/* Lace watermark */}
       <div
         style={{
           position: 'absolute',
@@ -146,80 +156,81 @@ export default function ConsultCurtainBg() {
           backgroundImage: `url("data:image/svg+xml,${LACE_SVG}")`,
           backgroundRepeat: 'repeat',
           backgroundSize: '110px 148px',
-          opacity: 0.22,
+          opacity: 0.2,
           filter: 'blur(0.6px)',
           mixBlendMode: 'multiply',
           maskImage:
             'radial-gradient(ellipse 70% 75% at 50% 45%, #000 20%, transparent 75%)',
           WebkitMaskImage:
             'radial-gradient(ellipse 70% 75% at 50% 45%, #000 20%, transparent 75%)',
-          animation: 'consultLaceDrift 24s ease-in-out infinite alternate',
+          animation: `consultLaceDrift ${windy ? '14s' : '24s'} ease-in-out infinite alternate`,
         }}
       />
 
-      {/* Sun bloom — overexposed hotspot through the fabric */}
+      {/* Sun bloom + cool sky rim */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           background: `
-            radial-gradient(ellipse 36% 48% at 50% 38%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.55) 40%, transparent 70%),
-            radial-gradient(ellipse 55% 40% at 50% -5%, rgba(255, 246, 230, 0.55) 0%, rgba(255,255,255,0.15) 45%, transparent 70%)
+            radial-gradient(ellipse 36% 48% at 50% 38%, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.5) 40%, transparent 70%),
+            radial-gradient(ellipse 50% 35% at 50% -4%, rgba(255, 248, 232, 0.4) 0%, rgba(200, 224, 245, 0.18) 40%, transparent 68%)
           `,
           animation: 'consultBloom 10s ease-in-out infinite alternate',
         }}
       />
 
-      {/* Soft haze — fog the whole room into high-key mist */}
+      {/* Soft haze */}
       <div
         style={{
           position: 'absolute',
           inset: '-12%',
           background: `
             radial-gradient(ellipse 50% 40% at 35% 55%, rgba(255,255,255,0.45) 0%, transparent 65%),
-            radial-gradient(ellipse 45% 38% at 68% 48%, rgba(236, 226, 245, 0.28) 0%, transparent 65%)
+            radial-gradient(ellipse 45% 38% at 68% 48%, rgba(210, 228, 245, 0.22) 0%, transparent 65%)
           `,
           filter: 'blur(28px)',
           animation: 'consultHaze 13s ease-in-out infinite alternate',
         }}
       />
 
-      {/* Edge vignette into soft lilac shadow (like heavier drapes) */}
+      {/* Edge vignette into soft lilac */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           background:
-            'linear-gradient(90deg, rgba(196,178,210,0.28) 0%, transparent 22%, transparent 78%, rgba(196,178,210,0.26) 100%)',
+            'linear-gradient(90deg, rgba(196,178,210,0.26) 0%, transparent 22%, transparent 78%, rgba(196,178,210,0.24) 100%)',
         }}
       />
 
-      {/* Final white lift so text stays readable */}
+      {/* White lift for readability on session; lighter on entry */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          background:
-            'radial-gradient(ellipse 65% 55% at 50% 48%, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.08) 55%, rgba(252,248,255,0.18) 100%)',
+          background: windy
+            ? 'radial-gradient(ellipse 70% 60% at 50% 48%, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)'
+            : 'radial-gradient(ellipse 65% 55% at 50% 48%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 55%, rgba(252,248,255,0.14) 100%)',
         }}
       />
 
       <style>{`
         @keyframes consultDrapeL {
-          0%   { transform: translate3d(0, 0, 0) skewX(-0.6deg); }
-          100% { transform: translate3d(1.8%, 0, 0) skewX(0.8deg); }
+          0%   { transform: translate3d(0, 0, 0) skewX(-0.8deg); }
+          100% { transform: translate3d(${windy ? '2.8%' : '1.8%'}, 0, 0) skewX(${windy ? '1.4deg' : '0.8deg'}); }
         }
         @keyframes consultDrapeR {
-          0%   { transform: translate3d(0, 0, 0) skewX(0.6deg); }
-          100% { transform: translate3d(-1.8%, 0, 0) skewX(-0.8deg); }
+          0%   { transform: translate3d(0, 0, 0) skewX(0.8deg); }
+          100% { transform: translate3d(${windy ? '-2.8%' : '-1.8%'}, 0, 0) skewX(${windy ? '-1.4deg' : '-0.8deg'}); }
         }
         @keyframes consultSheerSway {
-          0%   { transform: translate3d(-1%, 0, 0) skewX(-0.5deg) scale(1.02); }
-          100% { transform: translate3d(1.4%, 0, 0) skewX(0.7deg) scale(1.04); }
+          0%   { transform: translate3d(-1.2%, 0, 0) skewX(-0.7deg) scale(1.02); }
+          100% { transform: translate3d(${windy ? '2.2%' : '1.4%'}, 0, 0) skewX(${windy ? '1.1deg' : '0.7deg'}) scale(${windy ? '1.06' : '1.04'}); }
         }
         @keyframes consultLaceDrift {
-          0%   { transform: translate3d(0, 0, 0); opacity: 0.18; }
-          100% { transform: translate3d(1.5%, 0.8%, 0); opacity: 0.28; }
+          0%   { transform: translate3d(0, 0, 0); opacity: 0.16; }
+          100% { transform: translate3d(${windy ? '2.5%' : '1.5%'}, ${windy ? '1.2%' : '0.8%'}, 0); opacity: 0.26; }
         }
         @keyframes consultBloom {
           0%   { opacity: 0.85; }

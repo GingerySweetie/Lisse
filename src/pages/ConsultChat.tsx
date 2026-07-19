@@ -1,24 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { FolderOpen, ImageIcon } from 'lucide-react';
 import { type ChatTurn } from '../api';
 import ArtifactCard from '../components/ArtifactCard';
+import ChatInput from '../components/ChatInput';
 import ConsultBackdrop from '../components/ConsultBackdrop';
-import WallpaperPicker from '../components/WallpaperPicker';
-import { db, getSettings, saveSettings } from '../db';
+import ConsultSettingsLine from '../components/ConsultSettingsLine';
+import { db, getSettings } from '../db';
 import { parseArtifacts } from '../lib/artifacts';
 import { CONSULT, CONSULT_SYS } from '../lib/consult-theme';
 import { newId } from '../lib/id';
 import { setStatusBarColor, resetStatusBar } from '../lib/status-bar';
 import { availableTools } from '../lib/tools';
 import { runToolLoop } from '../lib/tools/loop';
-import type { Artifact, Conversation, Message, ToolCallRecord } from '../types';
+import type {
+  Artifact,
+  Attachment,
+  Conversation,
+  Message,
+  ToolCallRecord,
+} from '../types';
 
 /**
- * Psychoanalysis consultation session — singleton conversation (room='consult').
- * Light purple/white "curtains closed" atmosphere; artifacts can be saved
- * into custom collections from each ArtifactCard.
+ * Consult session — immersive curtains, ChatInput at the bottom,
+ * hidden settings behind the top-right purple hairline.
  */
 
 async function loadOrCreateConsultConv(): Promise<Conversation> {
@@ -43,25 +47,26 @@ interface LocalMsg {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  thinking?: string;
   artifacts?: Artifact[];
+  attachments?: Attachment[];
   toolCalls?: ToolCallRecord[];
   parentId: string | null;
   createdAt: number;
 }
 
 export default function ConsultChatPage() {
-  const navigate = useNavigate();
   const [conv, setConv] = useState<Conversation | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     loadOrCreateConsultConv().then(setConv);
   }, []);
 
   useEffect(() => {
-    void setStatusBarColor('#faf8fc', true);
+    void setStatusBarColor('#ffffff', true);
     return () => {
       void resetStatusBar();
+      abortRef.current?.abort();
     };
   }, []);
 
@@ -75,12 +80,8 @@ export default function ConsultChatPage() {
   );
 
   const [streaming, setStreaming] = useState<LocalMsg | null>(null);
-  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [wallpaperOpen, setWallpaperOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const settings = useLiveQuery(() => getSettings(), [], null);
-  const wallpaper = settings?.consultWallpaper ?? null;
 
   const view: LocalMsg[] = [
     ...(storedMessages ?? []).map(
@@ -88,8 +89,8 @@ export default function ConsultChatPage() {
         id: m.id,
         role: m.role === 'user' ? 'user' : 'assistant',
         content: m.content,
-        thinking: m.thinking,
         artifacts: m.artifacts,
+        attachments: m.attachments,
         toolCalls: m.toolCalls,
         parentId: m.parentId,
         createdAt: m.createdAt,
@@ -104,10 +105,10 @@ export default function ConsultChatPage() {
     el.scrollTop = el.scrollHeight;
   }, [view.length, streaming?.content]);
 
-  async function handleSend() {
-    if (!conv) return;
-    const text = input.trim();
-    if (!text || loading) return;
+  async function handleSend(text: string, attachments: Attachment[]) {
+    if (!conv || loading) return;
+    const trimmed = text.trim();
+    if (!trimmed && attachments.length === 0) return;
 
     const settings = await getSettings();
     const ep = settings.defaultEndpointId
@@ -134,7 +135,8 @@ export default function ConsultChatPage() {
       conversationId: conv.id,
       parentId,
       role: 'user',
-      content: text,
+      content: trimmed,
+      attachments: attachments.length > 0 ? attachments : undefined,
       status: 'done',
       endpointId: ep.id,
       model,
@@ -146,13 +148,19 @@ export default function ConsultChatPage() {
       updatedAt: now,
     });
 
-    setInput('');
     setLoading(true);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     const history = [...(storedMessages ?? []), userMessage];
     const turns: ChatTurn[] = [
       { role: 'system', content: CONSULT_SYS },
-      ...history.map((m) => ({ role: m.role, content: m.content })),
+      ...history.map((m) => ({
+        role: m.role,
+        content: m.content,
+        attachments: m.attachments,
+      })),
     ];
 
     const assistantId = newId();
@@ -173,72 +181,92 @@ export default function ConsultChatPage() {
     let lastVisible = '';
     const liveToolCalls: ToolCallRecord[] = [];
 
-    const result = await runToolLoop({
-      endpoint: ep,
-      model,
-      initialTurns: turns,
-      tools,
-      ctx: { conversationId: conv.id },
-      maxTokens: 4096,
-      callbacks: {
-        onTextDelta: (d) => {
-          acc += d;
-          // Strip file/choice tags while streaming so raw markup doesn't flash.
-          lastVisible = acc
-            .replace(/\[file\s+name=[^\]]+\][\s\S]*?\[\/file\]/g, '')
-            .replace(/\[file\s+name=[^\]]+\][\s\S]*$/g, '')
-            .replace(/\[choices\][\s\S]*?\[\/choices\]/g, '')
-            .replace(/\[choices\][\s\S]*$/g, '')
-            .trim();
-          setStreaming({
-            ...streamingMsg,
-            content: lastVisible,
-            toolCalls: [...liveToolCalls],
-          });
+    try {
+      const result = await runToolLoop({
+        endpoint: ep,
+        model,
+        initialTurns: turns,
+        tools,
+        ctx: { conversationId: conv.id },
+        maxTokens: 4096,
+        signal: controller.signal,
+        callbacks: {
+          onTextDelta: (d) => {
+            acc += d;
+            lastVisible = acc
+              .replace(/\[file\s+name=[^\]]+\][\s\S]*?\[\/file\]/g, '')
+              .replace(/\[file\s+name=[^\]]+\][\s\S]*$/g, '')
+              .replace(/\[choices\][\s\S]*?\[\/choices\]/g, '')
+              .replace(/\[choices\][\s\S]*$/g, '')
+              .trim();
+            setStreaming({
+              ...streamingMsg,
+              content: lastVisible,
+              toolCalls: [...liveToolCalls],
+            });
+          },
+          onToolCallResolved: (c) => {
+            liveToolCalls.push(c);
+            setStreaming({
+              ...streamingMsg,
+              content: lastVisible,
+              toolCalls: [...liveToolCalls],
+            });
+          },
         },
-        onToolCallResolved: (c) => {
-          liveToolCalls.push(c);
-          setStreaming({
-            ...streamingMsg,
-            content: lastVisible,
-            toolCalls: [...liveToolCalls],
-          });
-        },
-      },
-    });
+      });
 
-    const { cleanText, artifacts, choices } = parseArtifacts(acc || lastVisible);
-    const errored = result.errored;
-    const errorMessage = result.errorMessage;
+      if (controller.signal.aborted) {
+        setStreaming(null);
+        setLoading(false);
+        return;
+      }
 
-    const finalAssistant: Message = {
-      id: assistantId,
-      conversationId: conv.id,
-      parentId: userMessage.id,
-      role: 'assistant',
-      content:
-        cleanText ||
-        (errored ? '……（' + (errorMessage ?? '出错了') + '）' : '……'),
-      artifacts: artifacts.length > 0 ? artifacts : undefined,
-      choices: choices.length > 0 ? choices : undefined,
-      status: errored ? 'error' : 'done',
-      errorMessage,
-      endpointId: ep.id,
-      model,
-      toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
-      createdAt: Date.now(),
-    };
-    await db.messages.add(finalAssistant);
-    await db.conversations.update(conv.id, {
-      currentLeafId: assistantId,
-      updatedAt: Date.now(),
-    });
+      const { cleanText, artifacts, choices } = parseArtifacts(acc || lastVisible);
+      const errored = result.errored;
+      const errorMessage = result.errorMessage;
+
+      const finalAssistant: Message = {
+        id: assistantId,
+        conversationId: conv.id,
+        parentId: userMessage.id,
+        role: 'assistant',
+        content:
+          cleanText ||
+          (errored ? '……（' + (errorMessage ?? '出错了') + '）' : '……'),
+        artifacts: artifacts.length > 0 ? artifacts : undefined,
+        choices: choices.length > 0 ? choices : undefined,
+        status: errored ? 'error' : 'done',
+        errorMessage,
+        endpointId: ep.id,
+        model,
+        toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
+        createdAt: Date.now(),
+      };
+      await db.messages.add(finalAssistant);
+      await db.conversations.update(conv.id, {
+        currentLeafId: assistantId,
+        updatedAt: Date.now(),
+      });
+    } catch (e) {
+      if (!controller.signal.aborted) {
+        console.error('[consult] send failed', e);
+      }
+    } finally {
+      setStreaming(null);
+      setLoading(false);
+    }
+  }
+
+  function handleAbort() {
+    abortRef.current?.abort();
     setStreaming(null);
     setLoading(false);
   }
 
   return (
     <div
+      className="consult-session"
       style={{
         width: '100%',
         height: '100%',
@@ -252,145 +280,16 @@ export default function ConsultChatPage() {
       }}
     >
       <ConsultBackdrop />
+      <ConsultSettingsLine />
 
-      {/* Header */}
-      <header
-        style={{
-          position: 'relative',
-          zIndex: 10,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '12px 14px 10px',
-          paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
-          borderBottom: `1px solid ${CONSULT.border}`,
-          background: 'rgba(250, 248, 252, 0.78)',
-          backdropFilter: 'blur(14px)',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => navigate('/consult')}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: CONSULT.muted,
-              padding: 4,
-              display: 'flex',
-            }}
-            aria-label="返回咨询室"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M10 3L5 8L10 13"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-          <div style={{ lineHeight: 1.15 }}>
-            <div
-              style={{
-                fontFamily: CONSULT.fontDisplay,
-                fontSize: 17,
-                letterSpacing: '0.18em',
-                color: CONSULT.accent,
-              }}
-            >
-              咨询室
-            </div>
-            <div
-              style={{
-                fontSize: 10.5,
-                color: CONSULT.faint,
-                marginTop: 2,
-                letterSpacing: '0.04em',
-              }}
-            >
-              {wallpaper ? '自定义壁纸 · 会谈中' : '透光纱帘 · 会谈中'}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
-          <button
-            type="button"
-            onClick={() => setWallpaperOpen((v) => !v)}
-            style={{
-              background: wallpaperOpen || wallpaper ? CONSULT.accentSoft : 'transparent',
-              border: `1px solid ${CONSULT.border}`,
-              cursor: 'pointer',
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              color: CONSULT.accent,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            aria-label="更换壁纸"
-            title="更换壁纸"
-          >
-            <ImageIcon size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/consult/collections')}
-            style={{
-              background: CONSULT.accentSoft,
-              border: `1px solid ${CONSULT.border}`,
-              cursor: 'pointer',
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              color: CONSULT.accent,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            aria-label="产物合集"
-            title="产物合集"
-          >
-            <FolderOpen size={15} />
-          </button>
-          {wallpaperOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 38,
-                right: 0,
-                zIndex: 40,
-                background: 'rgba(255,255,255,0.96)',
-                border: `1px solid ${CONSULT.border}`,
-                borderRadius: 12,
-                padding: 10,
-                boxShadow: CONSULT.shadow,
-                backdropFilter: 'blur(12px)',
-              }}
-            >
-              <WallpaperPicker
-                value={wallpaper}
-                onChange={(next) => {
-                  void saveSettings({ consultWallpaper: next });
-                  if (next) setWallpaperOpen(false);
-                }}
-              />
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Messages */}
+      {/* Messages — no header chrome */}
       <div
         ref={scrollerRef}
         style={{
           flex: 1,
           overflowY: 'auto',
-          padding: '28px 20px 88px',
+          padding: '48px 20px 16px',
+          paddingTop: 'calc(48px + env(safe-area-inset-top, 0px))',
           position: 'relative',
           zIndex: 5,
         }}
@@ -400,31 +299,15 @@ export default function ConsultChatPage() {
             <div
               style={{
                 textAlign: 'center',
-                padding: '56px 12px 24px',
-                animation: 'consultMsgIn 0.8s ease both',
+                padding: '20vh 12px 24px',
+                opacity: 0.45,
+                fontSize: 13,
+                color: CONSULT.muted,
+                letterSpacing: '0.06em',
+                fontWeight: 300,
               }}
             >
-              <div
-                style={{
-                  fontFamily: CONSULT.fontDisplay,
-                  fontSize: 22,
-                  letterSpacing: '0.14em',
-                  color: CONSULT.accent,
-                  marginBottom: 12,
-                }}
-              >
-                ……
-              </div>
-              <p
-                style={{
-                  fontSize: 13,
-                  color: CONSULT.muted,
-                  lineHeight: 1.8,
-                  fontWeight: 300,
-                }}
-              >
-                窗帘拉着。你想从哪里开始？
-              </p>
+              ……
             </div>
           )}
 
@@ -481,21 +364,12 @@ export default function ConsultChatPage() {
                       ))}
                     </div>
                   )}
-                  <div
-                    style={{
-                      height: 1,
-                      background: CONSULT.border,
-                      marginTop: 20,
-                      marginLeft: '18%',
-                      marginRight: '18%',
-                    }}
-                  />
                 </>
               )}
             </div>
           ))}
 
-          {loading && (
+          {loading && !streaming?.content && (
             <div style={{ marginTop: 8, display: 'flex', gap: 5 }}>
               {[0, 1, 2].map((i) => (
                 <div
@@ -515,83 +389,23 @@ export default function ConsultChatPage() {
         </div>
       </div>
 
-      {/* Input */}
+      {/* Reuse normal chat composer (text + file/image send) */}
       <div
         style={{
-          flexShrink: 0,
-          padding: '8px 14px',
-          paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
-          background:
-            'linear-gradient(to top, rgba(250,248,252,0.95) 60%, transparent)',
           position: 'relative',
-          zIndex: 5,
+          zIndex: 10,
+          background:
+            'linear-gradient(to top, rgba(255,255,255,0.72) 55%, transparent)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            background: CONSULT.inputBg,
-            border: `1px solid ${CONSULT.borderStrong}`,
-            borderRadius: 20,
-            padding: '4px 6px 4px 18px',
-            boxShadow: CONSULT.shadow,
-          }}
-        >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                void handleSend();
-              }
-            }}
-            disabled={loading}
-            placeholder="说些什么……"
-            style={{
-              flex: 1,
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: CONSULT.text,
-              fontSize: 14,
-              fontFamily: CONSULT.fontBody,
-              fontWeight: 300,
-              padding: '8px 0',
-              opacity: loading ? 0.5 : 1,
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => void handleSend()}
-            disabled={loading}
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: '50%',
-              border: 'none',
-              cursor: loading ? 'wait' : 'pointer',
-              background:
-                input.trim() && !loading ? CONSULT.accent : CONSULT.accentSoft,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background 0.25s',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M2 8L14 8M14 8L9 3M14 8L9 13"
-                stroke={input.trim() && !loading ? '#faf8fc' : CONSULT.muted}
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
+        <ChatInput
+          onSend={(text, attachments) => void handleSend(text, attachments)}
+          onAbort={handleAbort}
+          busy={loading}
+          disabled={!conv}
+          placeholder="说些什么……"
+        />
       </div>
 
       <style>{`
