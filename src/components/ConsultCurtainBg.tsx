@@ -244,16 +244,16 @@ export default function ConsultCurtainBg({
           0%   { transform: scale(1); opacity: 0.8; }
           100% { transform: scale(1.04); opacity: 1; }
         }
-        /* Phone: drop left drape, open the light to the left; keep right curtain. */
+        /* Phone: keep left drape only; open the light to the right. */
         @media (max-width: 767px) {
-          .consult-drape-left { display: none !important; }
-          .consult-sheer-panel { left: -4% !important; right: 18% !important; }
+          .consult-drape-right { display: none !important; }
+          .consult-sheer-panel { left: 18% !important; right: -4% !important; }
           .consult-edge-vignette {
             background: linear-gradient(
               90deg,
-              transparent 0%,
-              transparent 55%,
-              rgba(196,178,210,0.28) 100%
+              rgba(196,178,210,0.28) 0%,
+              transparent 45%,
+              transparent 100%
             ) !important;
           }
         }
