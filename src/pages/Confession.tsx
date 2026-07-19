@@ -356,14 +356,14 @@ function ArchSvg({ lit }: { lit: boolean }) {
 
 const CSS = `
 .cf-root {
-  position: relative;
+  /* fill the main column edge-to-edge so the arch can ground */
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   background: #000;
   color: rgba(245,242,235,0.9);
   font-family: 'Noto Serif SC', 'Songti SC', 'Source Han Serif SC', serif;
-  max-width: 430px;
-  margin: 0 auto;
   overflow: hidden;
 }
 
@@ -405,11 +405,12 @@ const CSS = `
 
 .cf-arch {
   position: absolute;
-  left: 10%;
-  right: 10%;
+  /* narrow phone-like vault, legs flush to bottom edge */
+  left: 50%;
+  transform: translateX(-50%);
   top: 0;
   bottom: 0;
-  width: 80%;
+  width: min(100%, 360px);
   height: 100%;
   z-index: 3;
   pointer-events: none;
@@ -417,7 +418,7 @@ const CSS = `
 
 .cf-apex {
   position: absolute;
-  top: 1.6%;
+  top: max(10px, 1.4%);
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
@@ -429,12 +430,13 @@ const CSS = `
   filter: drop-shadow(0 0 9px rgba(220,120,70,0.72));
 }
 
-/* content well sits inside the arch legs, grounded with the arch */
+/* prose well: inside the double line, same grounded bottom */
 .cf-well {
   position: absolute;
-  left: 18%;
-  right: 18%;
-  top: 7.5%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(72%, 260px);
+  top: 6.5%;
   bottom: 0;
   z-index: 2;
   overflow: hidden;
@@ -497,7 +499,8 @@ const CSS = `
   position: absolute;
   inset: 0;
   overflow-y: auto;
-  padding: 8% 2% 18%;
+  /* sit in the upper/mid vault like the reference frame */
+  padding: 10% 4px 28%;
   scrollbar-width: none;
   animation: cfIn 0.45s ease both;
   box-sizing: border-box;
@@ -548,8 +551,4 @@ const CSS = `
   color: #f0d0bc;
 }
 
-@media (min-width: 400px) {
-  .cf-arch { left: 12%; width: 76%; }
-  .cf-well { left: 20%; right: 20%; }
-}
 `;
