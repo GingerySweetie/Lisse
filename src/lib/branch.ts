@@ -24,15 +24,26 @@ export function getActiveBranchFromMessages(
 
 /**
  * Walk from root to the conversation's currentLeaf, returning ordered messages.
- * Uses parentId to chain. If currentLeafId is null, returns []. */
+ * Uses parentId to chain one hop at a time (avoids materializing the whole
+ * conversation into memory — large imported threads OOMed send/regenerate).
+ * If currentLeafId is null, returns [].
+ */
 export async function getActiveBranch(
   conversation: Conversation,
 ): Promise<Message[]> {
   if (!conversation.currentLeafId) return [];
-  const all = await db.messages
-    .where({ conversationId: conversation.id })
-    .toArray();
-  return getActiveBranchFromMessages(conversation, all);
+  const path: Message[] = [];
+  let id: string | null = conversation.currentLeafId;
+  // Guard against pathological cycles in corrupt imports.
+  const seen = new Set<string>();
+  while (id && !seen.has(id)) {
+    seen.add(id);
+    const m: Message | undefined = await db.messages.get(id);
+    if (!m || m.conversationId !== conversation.id) break;
+    path.unshift(m);
+    id = m.parentId;
+  }
+  return path;
 }
 
 /**

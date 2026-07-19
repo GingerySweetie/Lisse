@@ -73,6 +73,11 @@ import {
   summarizeRecoverOutcome,
   type RecoverableItem,
 } from '../lib/recover';
+import {
+  getStoragePersistState,
+  requestPersistentStorage,
+  type StoragePersistState,
+} from '../lib/storage-persist';
 
 type Status =
   | { kind: 'idle' }
@@ -192,10 +197,14 @@ export default function ImportExportPage() {
   const [diagOpen, setDiagOpen] = useState(false);
   const [counts, setCounts] = useState<DbCounts | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
+  const [persistState, setPersistState] = useState<StoragePersistState | null>(
+    null,
+  );
 
   // Run an initial count on mount so the header badge is always accurate.
   useEffect(() => {
     readAllCounts().then(setCounts).catch(() => undefined);
+    getStoragePersistState().then(setPersistState).catch(() => undefined);
   }, []);
 
   async function refreshCounts() {
@@ -206,6 +215,16 @@ export default function ImportExportPage() {
         await db.open();
       }
       setCounts(await readAllCounts());
+      setPersistState(await getStoragePersistState());
+    } finally {
+      setDiagBusy(false);
+    }
+  }
+
+  async function handleRequestPersist() {
+    setDiagBusy(true);
+    try {
+      setPersistState(await requestPersistentStorage());
     } finally {
       setDiagBusy(false);
     }
@@ -599,7 +618,8 @@ export default function ImportExportPage() {
     if (
       mode === 'replace' &&
       !confirm(
-        '确定要替换全部数据吗？现有的 endpoints / 对话 / 人格都会按备份内容对齐。\n\n' +
+        '确定要按备份对齐数据吗？备份里出现的表（对话 / 消息 / 人格等）会替换为备份内容；' +
+          '备份里没有的表（例如旧备份缺旅行 / 日记）会保留现有数据，不会被清空。\n\n' +
           '大备份会边读边写入（不整文件塞进内存）。中途失败不会先清空再留下空库，' +
           '但仍建议先导出一份当前备份。',
       )
@@ -849,6 +869,36 @@ export default function ImportExportPage() {
                   直接读取 IndexedDB 的原始记录数，绕过 React 状态层。
                   如果下方显示有数据但主界面看起来空的，说明是渲染层出了问题，数据是好的——点「立即导出」就能拿到。
                 </p>
+
+                {persistState && (
+                  <div
+                    className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${
+                      persistState.persisted
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : persistState.supported
+                          ? 'border-amber-200 bg-amber-50 text-amber-800'
+                          : 'border-lavender-100 bg-lavender-50/60 text-ink-500'
+                    }`}
+                  >
+                    <span>
+                      {!persistState.supported
+                        ? '当前环境不支持「持久化存储」请求（桌面浏览器通常仍会保留 IndexedDB）。'
+                        : persistState.persisted
+                          ? '持久化存储已开启：系统存储紧张时不会优先清掉本应用的对话库。'
+                          : '持久化存储未开启：手机存储紧张时，系统可能静默清空 IndexedDB，表现为「一打开对话全没了」。'}
+                    </span>
+                    {persistState.supported && !persistState.persisted && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRequestPersist()}
+                        disabled={diagBusy}
+                        className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        申请持久化
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {counts?.error && (
                   <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">

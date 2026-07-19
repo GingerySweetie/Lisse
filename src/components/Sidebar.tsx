@@ -117,9 +117,14 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     )
       return;
     const ids = [...selected];
-    for (const id of ids) {
-      await deleteConversation(id);
-    }
+    // One transaction so a mid-loop kill (OOM / WebView reclaim) can't leave
+    // "half my conversations disappeared".
+    await db.transaction('rw', db.conversations, db.messages, async () => {
+      for (const id of ids) {
+        await db.messages.where({ conversationId: id }).delete();
+        await db.conversations.delete(id);
+      }
+    });
     if (activeId && selected.has(activeId)) navigate('/chat');
     setSelected(new Set());
   }
