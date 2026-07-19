@@ -301,6 +301,11 @@ export interface AppSettings {
    *  the message stream region (not header / composer / nav). */
   chatWallpaper: string | null;
 
+  // ─── Consult room wallpaper ───
+  /** Custom consult-room wallpaper as a data URL. Null/undefined = the
+   *  default waving white / pale-lavender curtain stripes. */
+  consultWallpaper: string | null;
+
   // ─── Clawd desk pet ───
   /** Floating pixel-crab desk pet that reacts to the current page and
    *  理理酱 chat. Default on. */

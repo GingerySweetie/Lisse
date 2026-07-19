@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FolderOpen, Plus, Trash2, X } from 'lucide-react';
 import ArtifactCard from '../components/ArtifactCard';
+import ConsultBackdrop from '../components/ConsultBackdrop';
 import { db } from '../db';
 import {
   createCollection,
@@ -83,31 +84,14 @@ export default function ArtifactCollectionsPage() {
         height: '100%',
         position: 'relative',
         overflow: 'hidden',
-        background: CONSULT.page,
+        background: CONSULT.bg,
         fontFamily: CONSULT.fontBody,
         color: CONSULT.text,
         display: 'flex',
         flexDirection: 'column',
       }}
     >
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: CONSULT.daylight,
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: CONSULT.curtains,
-          pointerEvents: 'none',
-        }}
-      />
+      <ConsultBackdrop />
 
       <header
         style={{

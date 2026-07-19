@@ -1,4 +1,8 @@
 import { useNavigate } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
+import ConsultBackdrop from '../components/ConsultBackdrop';
+import WallpaperPicker from '../components/WallpaperPicker';
+import { saveSettings, getSettings } from '../db';
 import { CONSULT } from '../lib/consult-theme';
 
 /**
@@ -8,6 +12,8 @@ import { CONSULT } from '../lib/consult-theme';
 
 export default function ConsultPage() {
   const navigate = useNavigate();
+  const settings = useLiveQuery(() => getSettings(), [], null);
+  const wallpaper = settings?.consultWallpaper ?? null;
 
   return (
     <div
@@ -18,48 +24,12 @@ export default function ConsultPage() {
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        background: CONSULT.page,
+        background: CONSULT.bg,
         fontFamily: CONSULT.fontBody,
         color: CONSULT.text,
       }}
     >
-      {/* Daylight seep + curtain bands */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: CONSULT.daylight,
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: CONSULT.curtains,
-          pointerEvents: 'none',
-        }}
-      />
-      {/* Soft vertical curtain folds */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundImage: `repeating-linear-gradient(
-            90deg,
-            transparent 0px,
-            transparent 48px,
-            rgba(92, 61, 122, 0.025) 49px,
-            transparent 50px,
-            transparent 96px
-          )`,
-          pointerEvents: 'none',
-          animation: 'consultCurtainDrift 18s ease-in-out infinite',
-        }}
-      />
+      <ConsultBackdrop />
 
       <header
         style={{
@@ -87,6 +57,10 @@ export default function ConsultPage() {
           ←
         </button>
         <div style={{ flex: 1 }} />
+        <WallpaperPicker
+          value={wallpaper}
+          onChange={(next) => void saveSettings({ consultWallpaper: next })}
+        />
         <button
           type="button"
           onClick={() => navigate('/consult/collections')}
@@ -98,6 +72,7 @@ export default function ConsultPage() {
             fontSize: 12,
             letterSpacing: '0.08em',
             padding: '6px 4px',
+            marginLeft: 8,
           }}
         >
           合集
@@ -201,10 +176,6 @@ export default function ConsultPage() {
         @keyframes consultFadeUp {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes consultCurtainDrift {
-          0%, 100% { opacity: 0.85; transform: translateX(0); }
-          50% { opacity: 1; transform: translateX(2px); }
         }
       `}</style>
     </div>

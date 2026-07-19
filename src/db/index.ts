@@ -705,6 +705,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   billSrcScreenAccessibility: false,
   browserUserAgent: null,
   chatWallpaper: null,
+  consultWallpaper: null,
   clawdPetEnabled: true,
   travelDaemon: {
     enabled: false,

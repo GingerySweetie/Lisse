@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen, ImageIcon } from 'lucide-react';
 import { type ChatTurn } from '../api';
 import ArtifactCard from '../components/ArtifactCard';
-import { db, getSettings } from '../db';
+import ConsultBackdrop from '../components/ConsultBackdrop';
+import WallpaperPicker from '../components/WallpaperPicker';
+import { db, getSettings, saveSettings } from '../db';
 import { parseArtifacts } from '../lib/artifacts';
 import { CONSULT, CONSULT_SYS } from '../lib/consult-theme';
 import { newId } from '../lib/id';
@@ -75,7 +77,10 @@ export default function ConsultChatPage() {
   const [streaming, setStreaming] = useState<LocalMsg | null>(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [wallpaperOpen, setWallpaperOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const settings = useLiveQuery(() => getSettings(), [], null);
+  const wallpaper = settings?.consultWallpaper ?? null;
 
   const view: LocalMsg[] = [
     ...(storedMessages ?? []).map(
@@ -239,31 +244,14 @@ export default function ConsultChatPage() {
         height: '100%',
         position: 'relative',
         overflow: 'hidden',
-        background: CONSULT.page,
+        background: CONSULT.bg,
         color: CONSULT.text,
         display: 'flex',
         flexDirection: 'column',
         fontFamily: CONSULT.fontBody,
       }}
     >
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: CONSULT.daylight,
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: CONSULT.curtains,
-          pointerEvents: 'none',
-        }}
-      />
+      <ConsultBackdrop />
 
       {/* Header */}
       <header
@@ -276,7 +264,7 @@ export default function ConsultChatPage() {
           padding: '12px 14px 10px',
           paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
           borderBottom: `1px solid ${CONSULT.border}`,
-          background: 'rgba(250, 248, 252, 0.82)',
+          background: 'rgba(250, 248, 252, 0.78)',
           backdropFilter: 'blur(14px)',
           flexShrink: 0,
         }}
@@ -324,30 +312,76 @@ export default function ConsultChatPage() {
                 letterSpacing: '0.04em',
               }}
             >
-              窗帘拉着 · 会谈中
+              {wallpaper ? '自定义壁纸 · 会谈中' : '窗帘拉着 · 会谈中'}
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate('/consult/collections')}
-          style={{
-            background: CONSULT.accentSoft,
-            border: `1px solid ${CONSULT.border}`,
-            cursor: 'pointer',
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            color: CONSULT.accent,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          aria-label="产物合集"
-          title="产物合集"
-        >
-          <FolderOpen size={15} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => setWallpaperOpen((v) => !v)}
+            style={{
+              background: wallpaperOpen || wallpaper ? CONSULT.accentSoft : 'transparent',
+              border: `1px solid ${CONSULT.border}`,
+              cursor: 'pointer',
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              color: CONSULT.accent,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            aria-label="更换壁纸"
+            title="更换壁纸"
+          >
+            <ImageIcon size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/consult/collections')}
+            style={{
+              background: CONSULT.accentSoft,
+              border: `1px solid ${CONSULT.border}`,
+              cursor: 'pointer',
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              color: CONSULT.accent,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            aria-label="产物合集"
+            title="产物合集"
+          >
+            <FolderOpen size={15} />
+          </button>
+          {wallpaperOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 38,
+                right: 0,
+                zIndex: 40,
+                background: 'rgba(255,255,255,0.96)',
+                border: `1px solid ${CONSULT.border}`,
+                borderRadius: 12,
+                padding: 10,
+                boxShadow: CONSULT.shadow,
+                backdropFilter: 'blur(12px)',
+              }}
+            >
+              <WallpaperPicker
+                value={wallpaper}
+                onChange={(next) => {
+                  void saveSettings({ consultWallpaper: next });
+                  if (next) setWallpaperOpen(false);
+                }}
+              />
+            </div>
+          )}
+        </div>
       </header>
 
       {/* Messages */}
