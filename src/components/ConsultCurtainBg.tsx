@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Default consult wallpaper: fogged vertical white / pale-lavender folds
- * that breathe like closed daytime curtains — soft haze, not candy stripes.
+ * Fogged curtain wash — pale lavender light pooling in soft vertical folds
+ * behind a white mist. No hard candy stripes.
  */
 
 export default function ConsultCurtainBg() {
@@ -11,7 +11,7 @@ export default function ConsultCurtainBg() {
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -21,10 +21,9 @@ export default function ConsultCurtainBg() {
     let t = 0;
     let running = true;
 
-    // Offscreen buffer for the soft folds so we can blur once per frame
-    // without stacking blur on the whole composite.
-    const folds = document.createElement('canvas');
-    const fctx = folds.getContext('2d');
+    // Low-res field we upscale — this alone softens everything into fog.
+    const field = document.createElement('canvas');
+    const fctx = field.getContext('2d', { alpha: true });
     if (!fctx) return;
 
     function resize() {
@@ -35,131 +34,122 @@ export default function ConsultCurtainBg() {
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      // Draw folds at half res — natural softness before the explicit blur.
-      folds.width = Math.floor(w * dpr * 0.55);
-      folds.height = Math.floor(h * dpr * 0.55);
-      fctx.setTransform(1, 0, 0, 1, 0, 0);
+      // Very low res → bilinear upscale = inherent fog.
+      field.width = Math.max(48, Math.floor(w / 10));
+      field.height = Math.max(64, Math.floor(h / 10));
     }
 
-    function foldX(i: number, yNorm: number, time: number, fw: number): number {
-      const spacing = fw / 7;
-      const base = (i + 0.5) * spacing;
-      const mid = Math.sin(yNorm * Math.PI);
-      return (
-        base +
-        Math.sin(yNorm * 4.2 + time * 0.42 + i * 0.9) * (spacing * 0.11) * (0.7 + mid * 0.4) +
-        Math.sin(yNorm * 1.6 + time * 0.18 + i * 1.7) * (spacing * 0.05)
-      );
-    }
-
-    function drawFolds(time: number) {
+    function drawField(time: number) {
       if (!fctx) return;
-      const fw = folds.width;
-      const fh = folds.height;
-      fctx.clearRect(0, 0, fw, fh);
+      const fw = field.width;
+      const fh = field.height;
 
-      // Warm-white veil base on the buffer.
-      fctx.fillStyle = 'rgba(252, 250, 255, 0.0)';
+      // Milk-white base.
+      fctx.fillStyle = '#faf8fc';
       fctx.fillRect(0, 0, fw, fh);
 
-      const foldsCount = 8;
-      const steps = Math.max(18, Math.ceil(fh / 10));
+      // Soft vertical luminance field: sine folds + slow phase drift.
+      // Sample as wide overlapping Gaussians so no edge ever reads sharp.
+      const image = fctx.createImageData(fw, fh);
+      const data = image.data;
+      const folds = 5.2;
+      for (let y = 0; y < fh; y++) {
+        const yn = y / fh;
+        for (let x = 0; x < fw; x++) {
+          const xn = x / fw;
+          // Waving fold coordinate.
+          const sway =
+            Math.sin(yn * 3.4 + time * 0.35) * 0.045 +
+            Math.sin(yn * 1.1 + time * 0.17) * 0.03;
+          const u = (xn + sway) * folds;
+          // Smooth 0..1 pulse per fold (raised cosine) — never a step.
+          const pulse = 0.5 + 0.5 * Math.cos(u * Math.PI * 2);
+          const soft = pulse * pulse; // bias toward mist, not stripes
 
-      for (let i = 0; i < foldsCount; i++) {
-        // Alternate: denser mist / emptier light — both very soft.
-        const denser = i % 2 === 1;
-        const bandHalf = denser ? fw * 0.07 : fw * 0.055;
-        const alpha = denser ? 0.42 : 0.18;
-        const hue = denser ? '168, 148, 198' : '190, 178, 210';
+          // Depth mist varies slowly across the room.
+          const mist =
+            0.55 +
+            0.25 * Math.sin(xn * 2.2 + time * 0.08) +
+            0.2 * Math.sin(yn * 1.4 - time * 0.11);
 
-        // Build a soft vertical ribbon as stacked horizontal gradients.
-        for (let s = 0; s <= steps; s++) {
-          const y0 = (s / steps) * fh;
-          const y1 = ((s + 1) / steps) * fh;
-          const yMid = (y0 + y1) * 0.5;
-          const yNorm = yMid / fh;
-          const cx = foldX(i, yNorm, time, fw);
-          const g = fctx.createLinearGradient(cx - bandHalf, 0, cx + bandHalf, 0);
-          g.addColorStop(0, `rgba(${hue}, 0)`);
-          g.addColorStop(0.35, `rgba(${hue}, ${alpha * 0.55})`);
-          g.addColorStop(0.5, `rgba(${hue}, ${alpha})`);
-          g.addColorStop(0.65, `rgba(${hue}, ${alpha * 0.55})`);
-          g.addColorStop(1, `rgba(${hue}, 0)`);
-          fctx.fillStyle = g;
-          fctx.fillRect(cx - bandHalf, y0, bandHalf * 2, Math.ceil(y1 - y0) + 1);
+          // Target: mostly white, lavender only as a whisper in the folds.
+          const lav = soft * mist;
+          const r = Math.round(250 - lav * 28); // → ~222
+          const g = Math.round(248 - lav * 36); // → ~212
+          const b = Math.round(252 - lav * 18); // → ~234
+          const i = (y * fw + x) * 4;
+          data[i] = r;
+          data[i + 1] = g;
+          data[i + 2] = b;
+          data[i + 3] = 255;
         }
       }
+      fctx.putImageData(image, 0, 0);
 
-      // Slow drifting fog patches (horizontal haze).
-      for (let k = 0; k < 3; k++) {
-        const cy = fh * (0.2 + k * 0.28) + Math.sin(time * 0.15 + k) * fh * 0.04;
-        const cx = fw * (0.35 + 0.15 * k) + Math.cos(time * 0.12 + k * 1.3) * fw * 0.08;
-        const rg = fctx.createRadialGradient(cx, cy, 0, cx, cy, fw * 0.45);
-        rg.addColorStop(0, 'rgba(230, 220, 242, 0.28)');
-        rg.addColorStop(0.5, 'rgba(245, 240, 252, 0.1)');
+      // Extra fog blobs drifting — painted after so they bloom on upscale.
+      for (let k = 0; k < 4; k++) {
+        const cx = fw * (0.2 + k * 0.2) + Math.sin(time * 0.13 + k * 1.7) * fw * 0.08;
+        const cy = fh * (0.25 + (k % 3) * 0.22) + Math.cos(time * 0.1 + k) * fh * 0.06;
+        const rg = fctx.createRadialGradient(cx, cy, 0, cx, cy, fw * 0.35);
+        rg.addColorStop(0, 'rgba(255, 255, 255, 0.35)');
+        rg.addColorStop(0.55, 'rgba(245, 240, 252, 0.12)');
         rg.addColorStop(1, 'rgba(255, 255, 255, 0)');
         fctx.fillStyle = rg;
-        fctx.fillRect(0, 0, fw, fh);
+        fctx.beginPath();
+        fctx.arc(cx, cy, fw * 0.35, 0, Math.PI * 2);
+        fctx.fill();
       }
     }
 
     function draw() {
       if (!ctx || !running) return;
-      t += 0.016;
+      t += 0.014;
 
-      // Milky white daylight base.
-      const base = ctx.createLinearGradient(0, 0, 0, h);
-      base.addColorStop(0, '#fbf8fd');
-      base.addColorStop(0.45, '#f7f3fb');
-      base.addColorStop(1, '#faf8fc');
-      ctx.fillStyle = base;
-      ctx.fillRect(0, 0, w, h);
+      drawField(t);
 
-      drawFolds(t);
+      // Upscale with browser bilinear filtering = fog.
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(field, 0, 0, w, h);
 
-      // Upscale + blur = fogged curtain folds.
-      ctx.save();
-      ctx.filter = `blur(${Math.max(14, w * 0.028)}px)`;
-      ctx.globalAlpha = 0.9;
-      ctx.drawImage(folds, 0, 0, w, h);
-      ctx.restore();
-
-      // Second lighter pass, slightly offset in time → depth / breath.
-      drawFolds(t + 1.4);
-      ctx.save();
-      ctx.filter = `blur(${Math.max(22, w * 0.045)}px)`;
-      ctx.globalAlpha = 0.45;
-      ctx.drawImage(folds, 0, 0, w, h);
-      ctx.restore();
-
-      // Veil: desaturate edges into white mist so nothing reads as hard candy.
-      const veil = ctx.createRadialGradient(
-        w * 0.5,
-        h * 0.42,
-        w * 0.15,
-        w * 0.5,
-        h * 0.5,
-        w * 0.85,
-      );
-      veil.addColorStop(0, 'rgba(255, 255, 255, 0)');
-      veil.addColorStop(0.55, 'rgba(252, 250, 255, 0.18)');
-      veil.addColorStop(1, 'rgba(250, 248, 252, 0.55)');
-      ctx.fillStyle = veil;
-      ctx.fillRect(0, 0, w, h);
+      // Optional extra blur pass when supported — doubles the mist.
+      try {
+        ctx.save();
+        ctx.filter = `blur(${Math.max(8, w * 0.012)}px)`;
+        ctx.globalAlpha = 0.55;
+        ctx.drawImage(field, 0, 0, w, h);
+        ctx.restore();
+      } catch {
+        /* filter unsupported — low-res upscale already foggy */
+      }
 
       // Daylight seep from above the closed curtains.
       const day = ctx.createRadialGradient(
         w * 0.5,
-        -h * 0.02,
+        -h * 0.04,
         0,
         w * 0.5,
-        h * 0.05,
-        h * 0.62,
+        h * 0.1,
+        h * 0.7,
       );
-      day.addColorStop(0, 'rgba(255, 242, 225, 0.2)');
-      day.addColorStop(0.4, 'rgba(236, 222, 245, 0.08)');
+      day.addColorStop(0, 'rgba(255, 244, 228, 0.28)');
+      day.addColorStop(0.35, 'rgba(240, 228, 248, 0.1)');
       day.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctx.fillStyle = day;
+      ctx.fillRect(0, 0, w, h);
+
+      // Soft vignette into white mist at the edges.
+      const veil = ctx.createRadialGradient(
+        w * 0.5,
+        h * 0.45,
+        w * 0.2,
+        w * 0.5,
+        h * 0.5,
+        w * 0.9,
+      );
+      veil.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      veil.addColorStop(1, 'rgba(252, 250, 255, 0.35)');
+      ctx.fillStyle = veil;
       ctx.fillRect(0, 0, w, h);
 
       raf = requestAnimationFrame(draw);
