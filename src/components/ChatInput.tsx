@@ -39,6 +39,8 @@ interface Props {
   /** Kept for API compatibility; the new layout no longer renders behavior
    *  state chips above the composer (see wis-tags-row mood tags instead). */
   showStateChips?: boolean;
+  /** Hide 长思考 / mood tag row (consult room keeps the composer bare). */
+  hideMoodTags?: boolean;
 }
 
 /** Mood tags rendered above the composer. Tapping toggles the prefix
@@ -66,6 +68,7 @@ export default function ChatInput({
   disabled = false,
   placeholder = '写点什么……',
   supportsImages = true,
+  hideMoodTags = false,
 }: Props) {
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -308,30 +311,32 @@ export default function ChatInput({
           <p className="mb-1.5 text-[11px] font-light text-ink-500">{foldHint}</p>
         )}
 
-        <div className="wis-tags-row">
-          <button
-            type="button"
-            onClick={() => {
-              setDeepThink((v) => !v);
-              queueMicrotask(() => taRef.current?.focus());
-            }}
-            className={`wis-tag wis-tag-deep${deepThink ? ' is-on' : ''}`}
-            title="粘性开关：开着时每轮用 max thinking。深聊/亲密也会自动拉高，忘开也没事。"
-            aria-pressed={deepThink}
-          >
-            长思考
-          </button>
-          {MOOD_TAGS.map((t) => (
+        {!hideMoodTags && (
+          <div className="wis-tags-row">
             <button
-              key={t}
               type="button"
-              onClick={() => toggleTag(t)}
-              className={`wis-tag${activeTags.includes(t) ? ' is-on' : ''}`}
+              onClick={() => {
+                setDeepThink((v) => !v);
+                queueMicrotask(() => taRef.current?.focus());
+              }}
+              className={`wis-tag wis-tag-deep${deepThink ? ' is-on' : ''}`}
+              title="粘性开关：开着时每轮用 max thinking。深聊/亲密也会自动拉高，忘开也没事。"
+              aria-pressed={deepThink}
             >
-              {t}
+              长思考
             </button>
-          ))}
-        </div>
+            {MOOD_TAGS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => toggleTag(t)}
+                className={`wis-tag${activeTags.includes(t) ? ' is-on' : ''}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="wis-composer-row">
           {supportsImages && (

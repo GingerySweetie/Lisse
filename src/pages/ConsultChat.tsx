@@ -405,6 +405,7 @@ export default function ConsultChatPage() {
           busy={loading}
           disabled={!conv}
           placeholder="说些什么……"
+          hideMoodTags
         />
       </div>
 
