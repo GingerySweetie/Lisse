@@ -312,7 +312,7 @@ export default function ConsultChatPage() {
                 letterSpacing: '0.04em',
               }}
             >
-              {wallpaper ? '自定义壁纸 · 会谈中' : '窗帘拉着 · 会谈中'}
+              {wallpaper ? '自定义壁纸 · 会谈中' : '透光纱帘 · 会谈中'}
             </div>
           </div>
         </div>

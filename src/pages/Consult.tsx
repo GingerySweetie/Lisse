@@ -118,7 +118,7 @@ export default function ConsultPage() {
             animation: 'consultFadeUp 0.9s ease 0.12s both',
           }}
         >
-          窗帘拉着。白天的光从布料缝隙隐隐透进来。
+          纱帘透着日光，淡淡紫影落在褶里。
         </p>
         <div
           style={{
