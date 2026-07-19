@@ -75,7 +75,7 @@ export async function approachConfession(opts?: {
       todayEntry?.status === 'done' && todayEntry.confession
         ? whisperFrom(todayEntry)
         : Math.random() < 0.35
-          ? '「……他不知道我……」'
+          ? '「……她不知道我……」'
           : undefined;
     return { kind: 'sealed', line: pickSealedLine(), whisper };
   }
