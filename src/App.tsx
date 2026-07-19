@@ -1,5 +1,11 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useParams,
+} from 'react-router-dom';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
@@ -101,9 +107,9 @@ export default function App() {
             <Route
               path="/chat/:conversationId"
               element={
-                <ErrorBoundary label="聊天 /chat/:conversationId">
+                <ChatErrorBoundary>
                   <ChatPage />
-                </ErrorBoundary>
+                </ChatErrorBoundary>
               }
             />
             <Route path="/settings" element={<SettingsPage />} />
@@ -194,6 +200,20 @@ export default function App() {
         </div>
       )}
     </BrowserRouter>
+  );
+}
+
+/** Remount the boundary on conversation switch so a crash in a long-text
+ *  chat can't stick the error UI onto the next conversation. */
+function ChatErrorBoundary({ children }: { children: ReactNode }) {
+  const { conversationId } = useParams();
+  return (
+    <ErrorBoundary
+      key={conversationId ?? 'none'}
+      label="聊天 /chat/:conversationId"
+    >
+      {children}
+    </ErrorBoundary>
   );
 }
 

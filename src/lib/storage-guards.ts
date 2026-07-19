@@ -13,7 +13,7 @@ export const MAX_CHAT_MESSAGE_CHARS = 120_000;
  * Above this, paste / composer body is auto-folded into a `.txt` attachment
  * (Claude-style) instead of staying in the textarea.
  */
-export const AUTO_FOLD_TEXT_CHARS = 8_000;
+export const AUTO_FOLD_TEXT_CHARS = 2_000;
 
 /** Hard cap for one auto-folded `.txt` payload (IDB / memory safety). */
 export const MAX_FOLDED_TXT_CHARS = 500_000;
@@ -30,8 +30,8 @@ export const MAX_IMPORT_FILE_BYTES = 80 * 1024 * 1024;
  */
 export const MAX_BACKUP_STREAM_IMPORT_BYTES = 1024 * 1024 * 1024;
 
-/** Above this, chat bubbles render a truncated preview instead of full Markdown. */
-export const MAX_BUBBLE_RENDER_CHARS = 40_000;
+/** Above this, chat bubbles render a plain truncated preview (no Markdown). */
+export const MAX_BUBBLE_RENDER_CHARS = 12_000;
 
 export class StorageLimitError extends Error {
   constructor(message: string) {

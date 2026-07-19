@@ -12,7 +12,6 @@ import {
   textToTxtAttachment,
 } from '../lib/fold-long-text';
 import {
-  AUTO_FOLD_TEXT_CHARS,
   assertChatMessageSize,
   formatChars,
   formatStorageError,
@@ -211,16 +210,16 @@ export default function ChatInput({
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const next = e.target.value;
     const delta = next.length - value.length;
-    // Paste fallback: some paths skip the paste event and dump a wall of text.
-    if (delta >= AUTO_FOLD_TEXT_CHARS) {
-      const tags = activeTags;
-      const body = stripPrefix(next, tags).trim();
-      if (shouldAutoFoldText(body)) {
-        void foldTextAsAttachment(body).then((att) => {
-          if (att) setValue(buildPrefix(tags));
-        });
-        return;
-      }
+    const tags = activeTags;
+    const body = stripPrefix(next, tags).trim();
+    const prevBody = stripPrefix(value, tags).trim();
+    // Fold on body size (not delta): replace-selection paste can grow the
+    // body past the threshold while delta stays small.
+    if (shouldAutoFoldText(body) && body.length > prevBody.length) {
+      setValue(buildPrefix(tags));
+      setFoldHint('正在折叠超长文本…');
+      void foldTextAsAttachment(body);
+      return;
     }
     if (typingStartRef.current === null) typingStartRef.current = Date.now();
     if (delta > 0) typedCharsRef.current += delta;
@@ -263,6 +262,9 @@ export default function ChatInput({
   }
 
   async function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const pasted = e.clipboardData.getData('text/plain');
+    const longText = shouldAutoFoldText(pasted);
+
     // File / image paste (when composer supports attachments).
     if (supportsImages) {
       const items = Array.from(e.clipboardData.items);
@@ -276,14 +278,20 @@ export default function ChatInput({
       if (files.length > 0) {
         e.preventDefault();
         await handleFiles(files);
+        // Clipboard sometimes carries both a file stub and long text —
+        // still fold the text so it doesn't land in the textarea next.
+        if (longText) {
+          setFoldHint('正在折叠超长文本…');
+          await foldTextAsAttachment(pasted);
+        }
         return;
       }
     }
 
     // Claude-style: oversized plain-text paste → .txt chip, keep existing draft.
-    const pasted = e.clipboardData.getData('text/plain');
-    if (shouldAutoFoldText(pasted)) {
+    if (longText) {
       e.preventDefault();
+      setFoldHint('正在折叠超长文本…');
       await foldTextAsAttachment(pasted);
     }
   }

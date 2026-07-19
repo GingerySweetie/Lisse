@@ -12,7 +12,7 @@ import {
   letPersonaSpeak,
 } from '../lib/chat';
 import { isGroup } from '../lib/group';
-import { getActiveBranch } from '../lib/branch';
+import { getActiveBranchFromMessages } from '../lib/branch';
 import MessageBubble from '../components/MessageBubble';
 import HandoffReturnShelf from '../components/HandoffReturnShelf';
 import ChatInput from '../components/ChatInput';
@@ -148,16 +148,20 @@ export default function ChatPage() {
 
   const [branch, setBranch] = useState<Message[]>([]);
   useEffect(() => {
-    if (!conversation || !allMessages) {
+    // Don't blank the stream while the new conversation row is still loading —
+    // that flash looks like "all data exploded" when switching away from a
+    // heavy long-text chat.
+    if (!conversationId) {
       setBranch([]);
       return;
     }
+    if (!conversation || conversation.id !== conversationId) return;
     if (!conversation.currentLeafId) {
       setBranch([]);
       return;
     }
-    getActiveBranch(conversation).then(setBranch);
-  }, [conversation, allMessages]);
+    setBranch(getActiveBranchFromMessages(conversation, allMessages ?? []));
+  }, [conversationId, conversation, allMessages]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -703,7 +707,7 @@ export default function ChatPage() {
               onChangeGroup={handleChangeGroup}
               contextText={branch
                 .slice(-4)
-                .map((m) => m.content)
+                .map((m) => m.content.slice(0, 2000))
                 .filter(Boolean)
                 .join('\n')}
             />
@@ -761,7 +765,7 @@ export default function ChatPage() {
           persona={persona}
           contextText={branch
             .slice(-4)
-            .map((m) => m.content)
+            .map((m) => m.content.slice(0, 2000))
             .filter(Boolean)
             .join('\n')}
           onClose={() => setShowSecret(false)}
