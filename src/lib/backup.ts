@@ -375,121 +375,106 @@ export async function importBackup(
   // The old path cleared in tx1 and wrote in tx2 — if tx2 failed (quota /
   // OOM / tab kill after a huge paste+import), the wipe had already
   // committed and the user lost everything.
+  //
+  // Only clear tables the backup actually includes. Clearing every table
+  // (including ones absent from older/partial backups) wiped live data the
+  // file never claimed to replace. Never clear kv when settings is missing.
   try {
     await db.transaction('rw', [...IMPORT_TABLES], async () => {
-      if (opts.mode === 'replace') {
-        await db.endpoints.clear();
-        await db.personas.clear();
-        await db.conversations.clear();
-        await db.messages.clear();
-        await db.memoryFacts.clear();
-        await db.writingStyles.clear();
-        await db.books.clear();
-        await db.bookmarks.clear();
-        await db.mcpServers.clear();
-        await db.bills.clear();
-        await db.periodEntries.clear();
-        await db.weightEntries.clear();
-        await db.browserBookmarks.clear();
-        await db.browserScripts.clear();
-        await db.musicCredentials.clear();
-        await db.musicHistory.clear();
-        await db.circlePosts.clear();
-        await db.circleReactions.clear();
-        await db.healthComments.clear();
-        await db.healthDaily.clear();
-        await db.handoffJobs.clear();
-        await db.travelTrips.clear();
-        await db.travelEvents.clear();
-        await db.travelHeldPushes.clear();
-        await db.diaryEntries.clear();
-        await db.kv.clear();
+      async function replaceTable<T>(
+        table: { clear: () => Promise<unknown>; bulkPut: (items: T[]) => Promise<unknown> },
+        rows: T[] | undefined,
+      ): Promise<number> {
+        if (rows === undefined) return 0;
+        if (opts.mode === 'replace') await table.clear();
+        return upsertAll(table, rows);
       }
 
-      // Upsert everything (merge updates existing ids; replace just cleared).
-      // bulkPut keeps large conversation imports from timing out row-by-row.
-      result.endpointsAdded = await upsertAll(db.endpoints, bundle.endpoints);
-      result.personasAdded = await upsertAll(db.personas, bundle.personas);
-      result.conversationsAdded = await upsertAll(
+      // Upsert everything (merge updates existing ids; replace clears only
+      // present arrays first). bulkPut keeps large conversation imports from
+      // timing out row-by-row.
+      result.endpointsAdded = await replaceTable(db.endpoints, bundle.endpoints);
+      result.personasAdded = await replaceTable(db.personas, bundle.personas);
+      result.conversationsAdded = await replaceTable(
         db.conversations,
         bundle.conversations,
       );
-      result.messagesAdded = await upsertAll(db.messages, bundle.messages);
-      result.memoryFactsAdded = await upsertAll(
+      result.messagesAdded = await replaceTable(db.messages, bundle.messages);
+      result.memoryFactsAdded = await replaceTable(
         db.memoryFacts,
         bundle.memoryFacts,
       );
-      result.writingStylesAdded = await upsertAll(
+      result.writingStylesAdded = await replaceTable(
         db.writingStyles,
         bundle.writingStyles,
       );
-      result.booksAdded = await upsertAll(db.books, bundle.books);
-      result.bookmarksAdded = await upsertAll(db.bookmarks, bundle.bookmarks);
-      result.mcpServersAdded = await upsertAll(db.mcpServers, bundle.mcpServers);
-      result.billsAdded = await upsertAll(db.bills, bundle.bills);
-      result.periodEntriesAdded = await upsertAll(
+      result.booksAdded = await replaceTable(db.books, bundle.books);
+      result.bookmarksAdded = await replaceTable(db.bookmarks, bundle.bookmarks);
+      result.mcpServersAdded = await replaceTable(db.mcpServers, bundle.mcpServers);
+      result.billsAdded = await replaceTable(db.bills, bundle.bills);
+      result.periodEntriesAdded = await replaceTable(
         db.periodEntries,
         bundle.periodEntries,
       );
-      result.weightEntriesAdded = await upsertAll(
+      result.weightEntriesAdded = await replaceTable(
         db.weightEntries,
         bundle.weightEntries,
       );
-      result.browserBookmarksAdded = await upsertAll(
+      result.browserBookmarksAdded = await replaceTable(
         db.browserBookmarks,
         bundle.browserBookmarks,
       );
-      result.browserScriptsAdded = await upsertAll(
+      result.browserScriptsAdded = await replaceTable(
         db.browserScripts,
         bundle.browserScripts,
       );
-      result.musicCredentialsAdded = await upsertAll(
+      result.musicCredentialsAdded = await replaceTable(
         db.musicCredentials,
         bundle.musicCredentials,
       );
-      result.musicHistoryAdded = await upsertAll(
+      result.musicHistoryAdded = await replaceTable(
         db.musicHistory,
         bundle.musicHistory,
       );
-      result.circlePostsAdded = await upsertAll(
+      result.circlePostsAdded = await replaceTable(
         db.circlePosts,
         bundle.circlePosts,
       );
-      result.circleReactionsAdded = await upsertAll(
+      result.circleReactionsAdded = await replaceTable(
         db.circleReactions,
         bundle.circleReactions,
       );
-      result.healthCommentsAdded = await upsertAll(
+      result.healthCommentsAdded = await replaceTable(
         db.healthComments,
         bundle.healthComments,
       );
-      result.healthDailyAdded = await upsertAll(
+      result.healthDailyAdded = await replaceTable(
         db.healthDaily,
         bundle.healthDaily,
       );
-      result.handoffJobsAdded = await upsertAll(
+      result.handoffJobsAdded = await replaceTable(
         db.handoffJobs,
         bundle.handoffJobs,
       );
-      result.travelTripsAdded = await upsertAll(
+      result.travelTripsAdded = await replaceTable(
         db.travelTrips,
         bundle.travelTrips,
       );
-      result.travelEventsAdded = await upsertAll(
+      result.travelEventsAdded = await replaceTable(
         db.travelEvents,
         bundle.travelEvents,
       );
-      result.travelHeldPushesAdded = await upsertAll(
+      result.travelHeldPushesAdded = await replaceTable(
         db.travelHeldPushes,
         bundle.travelHeldPushes,
       );
-      result.diaryEntriesAdded = await upsertAll(
+      result.diaryEntriesAdded = await replaceTable(
         db.diaryEntries,
         bundle.diaryEntries,
       );
 
-      // Apply settings inside the same transaction so replace can't land
-      // with empty kv if settings write would have failed separately.
+      // Apply settings inside the same transaction. Do NOT kv.clear() when
+      // settings is absent — that erased endpoints/wallpaper/backup grants.
       if (bundle.settings) {
         await saveSettings(bundle.settings);
         result.settingsApplied = true;

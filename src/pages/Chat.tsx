@@ -29,6 +29,7 @@ import { WisteriaDecor, LeafButton } from '../components/WisteriaDecor';
 import LeafMenu from '../components/LeafMenu';
 import WisteriaMark from '../components/WisteriaMark';
 import { emitClawd } from '../lib/clawd/bus';
+import { beginChatStream, endChatStream } from '../lib/stream-activity';
 import type { Attachment, Conversation, Message } from '../types';
 
 export default function ChatPage() {
@@ -40,13 +41,14 @@ export default function ChatPage() {
     [conversationId],
   );
 
+  // No default `[]` — that made "still loading" look identical to "empty DB"
+  // and briefly painted a blank chat (panic → destructive recover/replace).
   const allMessages = useLiveQuery(
     () =>
       conversationId
         ? db.messages.where({ conversationId }).sortBy('createdAt')
-        : [],
+        : Promise.resolve([] as Message[]),
     [conversationId],
-    [],
   );
 
   const settings = useLiveQuery(() => getSettings(), [], null);
@@ -148,19 +150,36 @@ export default function ChatPage() {
 
   const [branch, setBranch] = useState<Message[]>([]);
   useEffect(() => {
-    // Don't blank the stream while the new conversation row is still loading —
-    // that flash looks like "all data exploded" when switching away from a
-    // heavy long-text chat.
+    // Drop another conversation's paint immediately on switch (avoid showing
+    // A while B is loading). Same-conversation loading keeps the prior branch
+    // so a slow messages query never flashes "empty / data wiped".
     if (!conversationId) {
       setBranch([]);
       return;
     }
+    setBranch((prev) =>
+      prev.length > 0 && prev[0]?.conversationId === conversationId
+        ? prev
+        : [],
+    );
+  }, [conversationId]);
+  useEffect(() => {
+    if (!conversationId) return;
     if (!conversation || conversation.id !== conversationId) return;
     if (!conversation.currentLeafId) {
       setBranch([]);
       return;
     }
-    setBranch(getActiveBranchFromMessages(conversation, allMessages ?? []));
+    // Messages live-query still resolving: keep same-conversation paint.
+    if (allMessages === undefined) return;
+    // Leaf not in this array yet (or orphan) — wait for a tick that has it.
+    // Brand-new chats use null currentLeafId, so an empty [] here is rare;
+    // only clear when the leaf is confirmed missing after a non-empty load.
+    if (!allMessages.some((m) => m.id === conversation.currentLeafId)) {
+      if (allMessages.length > 0) setBranch([]);
+      return;
+    }
+    setBranch(getActiveBranchFromMessages(conversation, allMessages));
   }, [conversationId, conversation, allMessages]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -329,6 +348,7 @@ export default function ChatPage() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    beginChatStream();
     setStreamingText('');
     setStreamingThinking('');
     emitClawd({ type: 'user-send', personaId });
@@ -450,6 +470,7 @@ export default function ChatPage() {
       const { formatStorageError } = await import('../lib/storage-guards');
       alert(formatStorageError(e));
     } finally {
+      endChatStream();
       setStreamingId(null);
       setStreamingText('');
       setStreamingThinking('');
@@ -483,6 +504,7 @@ export default function ChatPage() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    beginChatStream();
     setStreamingText('');
     setStreamingThinking('');
     try {
@@ -511,6 +533,7 @@ export default function ChatPage() {
       // 避免「保存并重发」点完没动静.
       console.error('[edit] 重发失败:', e);
     } finally {
+      endChatStream();
       setStreamingId(null);
       setStreamingText('');
       setStreamingThinking('');
@@ -525,6 +548,7 @@ export default function ChatPage() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    beginChatStream();
     setStreamingText('');
     setStreamingThinking('');
     try {
@@ -548,6 +572,7 @@ export default function ChatPage() {
     } catch (e) {
       console.error('[regenerate] 重生成失败:', e);
     } finally {
+      endChatStream();
       setStreamingId(null);
       setStreamingText('');
       setStreamingThinking('');

@@ -7,6 +7,7 @@ import {
   downloadBackup,
   suggestedBackupFilename,
 } from '../lib/backup';
+import { hasActiveChatStream } from '../lib/stream-activity';
 
 /**
  * Service-worker update prompter.
@@ -24,6 +25,9 @@ import {
  * Auto-backup: before reloading for an update a full backup JSON is
  * downloaded automatically so the user always has a recent copy of
  * their data even if the update somehow wipes local storage.
+ *
+ * Never reload while a chat stream is active — killing the tab mid-write
+ * left empty assistant bubbles that looked like data loss.
  */
 export default function UpdateBanner() {
   const settings = useLiveQuery(() => getSettings(), [], null);
@@ -74,16 +78,21 @@ export default function UpdateBanner() {
     if (autoAppliedRef.current) return;
     autoAppliedRef.current = true;
 
-    // Download a backup before reloading so the user always has a copy
-    // of their data, even if storage is somehow affected by the update.
+    // Fully await the backup BEFORE asking the SW to take over. The old
+    // 600ms timer fired while large SAF writes were still in flight.
     const apply = async () => {
+      // Wait out in-flight chat streams (poll, don't scan IndexedDB).
+      for (let i = 0; i < 120 && hasActiveChatStream(); i++) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
       try {
         await downloadBackup(suggestedBackupFilename());
       } catch {
         // Non-fatal: if the backup or save fails, proceed with the update.
       }
-      // Small delay so the "新版本就位…" toast renders before reload.
-      setTimeout(() => updateServiceWorker(true), 600);
+      // Brief beat so the "新版本就位…" toast paints, then reload.
+      await new Promise((r) => setTimeout(r, 400));
+      await updateServiceWorker(true);
     };
 
     void apply();

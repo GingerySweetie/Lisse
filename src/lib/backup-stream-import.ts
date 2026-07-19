@@ -124,7 +124,10 @@ type AnyTable = {
   bulkPut: (items: unknown[]) => Promise<unknown>;
   bulkDelete: (keys: string[]) => Promise<unknown>;
   clear: () => Promise<unknown>;
-  toCollection: () => { primaryKeys: () => Promise<unknown[]> };
+  toCollection: () => {
+    primaryKeys: () => Promise<unknown[]>;
+    eachPrimaryKey: (cb: (key: unknown) => void | Promise<void>) => Promise<void>;
+  };
 };
 
 function asTable(name: BackupTableKey): AnyTable {
@@ -143,17 +146,25 @@ async function upsertRows(
   return rows.length;
 }
 
-/** Delete primary keys not present in `keep`. */
+/**
+ * Delete primary keys not present in `keep`, walking keys with a cursor so a
+ * 100k-row messages table never materializes every id into one JS array
+ * (that pattern OOMed mobile WebViews and pushed users into destructive
+ * recover / replace-import flows).
+ */
 async function pruneTable(name: BackupTableKey, keep: Set<string>): Promise<void> {
   const table = asTable(name);
-  const keys = (await table.toCollection().primaryKeys()) as string[];
-  const drop: string[] = [];
-  for (const key of keys) {
-    if (!keep.has(String(key))) drop.push(String(key));
-  }
-  for (let i = 0; i < drop.length; i += UPSERT_CHUNK) {
-    await table.bulkDelete(drop.slice(i, i + UPSERT_CHUNK));
-  }
+  let drop: string[] = [];
+  await table.toCollection().eachPrimaryKey(async (key) => {
+    const id = String(key);
+    if (!keep.has(id)) drop.push(id);
+    if (drop.length >= UPSERT_CHUNK) {
+      const batch = drop;
+      drop = [];
+      await table.bulkDelete(batch);
+    }
+  });
+  if (drop.length) await table.bulkDelete(drop);
 }
 
 export type BackupImportSource =
@@ -235,8 +246,12 @@ async function chunksForSource(
 
 /**
  * Stream-import a backup. Merge upserts by id. Replace upserts then prunes
- * each table down to imported ids (and clears empty/missing tables), so a
- * mid-import crash never leaves a wiped-empty DB the way clear-then-write did.
+ * each *seen* table down to imported ids.
+ *
+ * Tables (and settings) absent from the backup are left untouched — older /
+ * partial backups must never wipe conversations the file never mentioned.
+ * Upsert-then-prune (not clear-then-write) so a mid-import crash never leaves
+ * a wiped-empty DB.
  */
 export async function importBackupStream(
   source: BackupImportSource,
@@ -317,12 +332,11 @@ export async function importBackupStream(
     }
 
     if (opts.mode === 'replace') {
-      report('清理未包含在备份中的旧数据…');
-      for (const name of BACKUP_TABLE_KEYS) {
-        if (!seenTables.has(name)) {
-          await asTable(name).clear();
-          continue;
-        }
+      report('清理备份未保留的旧行…');
+      // Only touch tables the backup actually contained. Clearing unseen
+      // tables (travel / diary / circle / …) on an older backup was wiping
+      // live data the file never claimed to replace.
+      for (const name of seenTables) {
         const keep = keepIds.get(name);
         if (!keep || keep.size === 0) {
           await asTable(name).clear();
@@ -332,8 +346,9 @@ export async function importBackupStream(
         await yieldToUi();
       }
 
-      // Match legacy replace: wipe kv then re-apply settings from the bundle.
-      await db.kv.clear();
+      // Never wipe kv when the backup has no settings — that used to erase
+      // defaultEndpointId / wallpaper / diary / backup-folder pointer even on
+      // a "successful" replace of conversations alone.
       if (settings) {
         await saveSettings(settings);
         result.settingsApplied = true;
@@ -343,12 +358,12 @@ export async function importBackupStream(
       result.settingsApplied = true;
     }
   } catch (err) {
-    // If replace wiped kv mid-way, try to put the folder grant back.
+    // Preserve SAF grant if anything above disturbed kv (legacy path / races).
     if (preservedFolder) {
       try {
         await setBackupFolder(preservedFolder);
-      } catch {
-        // ignore
+      } catch (folderErr) {
+        console.warn('[backup-stream-import] restore backup folder failed', folderErr);
       }
     }
     throw new Error(formatStorageError(err), { cause: err });
@@ -357,8 +372,9 @@ export async function importBackupStream(
   if (preservedFolder) {
     try {
       await setBackupFolder(preservedFolder);
-    } catch {
-      // Non-fatal: data restore already committed.
+    } catch (folderErr) {
+      // Non-fatal: data restore already committed, but surface for debugging.
+      console.warn('[backup-stream-import] restore backup folder failed', folderErr);
     }
   }
 
