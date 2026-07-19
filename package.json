@@ -11,6 +11,7 @@
     "test:handoff": "node --experimental-strip-types --test scripts/test-handoff-protocol.mjs",
     "test:travel": "node --experimental-strip-types --test scripts/test-travel-daemon.mjs",
     "test:diary": "node --experimental-strip-types --test scripts/test-diary.mjs",
+    "test:confession": "node --experimental-strip-types --test scripts/test-confession.mjs",
     "test:thinking-policy": "node --experimental-strip-types --test scripts/test-thinking-policy.mjs",
     "test:cursor-api": "node --experimental-strip-types --test scripts/test-cursor-api.mjs",
     "test:recover": "node --experimental-strip-types --test scripts/test-recover.mjs",

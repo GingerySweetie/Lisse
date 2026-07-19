@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import ErrorBoundary from './ErrorBoundary';
 import ClawdPet from './clawd/ClawdPet';
 import { bootstrapBehavior, recordVisibilityChange } from '../lib/behavior';
+import { bootstrapConfession } from '../lib/confession';
 import { bootstrapDiary } from '../lib/diary';
 import { bootstrapProactiveNudge } from '../lib/proactive-nudge';
 import { bootstrapTravelDaemon } from '../lib/travel';
@@ -13,10 +14,13 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
-  // Restore default lavender status bar whenever we land on any non-bedroom
-  // route. Bedroom routes manage their own colour and reset it on unmount.
+  // Restore default lavender status bar whenever we land on any non-themed
+  // route. Bedroom / confession manage their own colour and reset on unmount.
   useEffect(() => {
-    if (!location.pathname.startsWith('/bedroom')) {
+    const themed =
+      location.pathname.startsWith('/bedroom') ||
+      location.pathname.startsWith('/confession');
+    if (!themed) {
       void resetStatusBar();
     }
   }, [location.pathname]);
@@ -26,6 +30,7 @@ export default function Layout() {
     bootstrapProactiveNudge();
     bootstrapTravelDaemon();
     bootstrapDiary();
+    bootstrapConfession();
     function onVis() {
       recordVisibilityChange();
     }

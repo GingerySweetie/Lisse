@@ -18,6 +18,7 @@ import type {
   BrowserScript,
   CirclePost,
   CircleReaction,
+  ConfessionEntry,
   Conversation,
   DiaryEntry,
   Endpoint,
@@ -90,6 +91,7 @@ export interface BackupBundle {
   travelEvents?: TravelEvent[];
   travelHeldPushes?: TravelHeldPush[];
   diaryEntries?: DiaryEntry[];
+  confessionEntries?: ConfessionEntry[];
 }
 
 type BackupTableName =
@@ -117,7 +119,8 @@ type BackupTableName =
   | 'travelTrips'
   | 'travelEvents'
   | 'travelHeldPushes'
-  | 'diaryEntries';
+  | 'diaryEntries'
+  | 'confessionEntries';
 
 const BACKUP_TABLES: BackupTableName[] = [
   'endpoints',
@@ -145,6 +148,7 @@ const BACKUP_TABLES: BackupTableName[] = [
   'travelEvents',
   'travelHeldPushes',
   'diaryEntries',
+  'confessionEntries',
 ];
 
 function tableRef(name: BackupTableName) {
@@ -179,6 +183,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     travelEvents,
     travelHeldPushes,
     diaryEntries,
+    confessionEntries,
   ] = await Promise.all([
     getSettings(),
     db.endpoints.toArray(),
@@ -206,6 +211,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     db.travelEvents.toArray(),
     db.travelHeldPushes.toArray(),
     db.diaryEntries.toArray(),
+    db.confessionEntries.toArray(),
   ]);
 
   const now = Date.now();
@@ -241,6 +247,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     travelEvents,
     travelHeldPushes,
     diaryEntries,
+    confessionEntries,
   };
 }
 
@@ -281,6 +288,7 @@ export interface ImportBackupResult {
   travelEventsAdded: number;
   travelHeldPushesAdded: number;
   diaryEntriesAdded: number;
+  confessionEntriesAdded: number;
   settingsApplied: boolean;
 }
 
@@ -310,6 +318,7 @@ const IMPORT_TABLES = [
   db.travelEvents,
   db.travelHeldPushes,
   db.diaryEntries,
+  db.confessionEntries,
   db.kv,
 ] as const;
 
@@ -368,6 +377,7 @@ export async function importBackup(
     travelEventsAdded: 0,
     travelHeldPushesAdded: 0,
     diaryEntriesAdded: 0,
+    confessionEntriesAdded: 0,
     settingsApplied: false,
   };
 
@@ -403,6 +413,7 @@ export async function importBackup(
         await db.travelEvents.clear();
         await db.travelHeldPushes.clear();
         await db.diaryEntries.clear();
+        await db.confessionEntries.clear();
         await db.kv.clear();
       }
 
@@ -486,6 +497,10 @@ export async function importBackup(
       result.diaryEntriesAdded = await upsertAll(
         db.diaryEntries,
         bundle.diaryEntries,
+      );
+      result.confessionEntriesAdded = await upsertAll(
+        db.confessionEntries,
+        bundle.confessionEntries,
       );
 
       // Apply settings inside the same transaction so replace can't land

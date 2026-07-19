@@ -279,6 +279,12 @@ export interface AppSettings {
    *  that day's chats (using their usual chat model). Next-day chats
    *  auto-inject yesterday's diary into volatile context. */
   diary?: DiarySettings;
+
+  // ─── Confession Booth ───
+  /** When the day's chats hit desire/attachment triggers, 理理酱 writes a
+   *  private confession. Archived for the user to read next day —
+   *  never injected into the persona's prompt. */
+  confession?: ConfessionSettings;
 }
 
 /** Settings for the nightly persona diary writer. */
@@ -288,6 +294,16 @@ export interface DiarySettings {
   /** Local hour (0–23) around which diaries are written. Default 23. */
   writeHour: number;
   /** Persona ids that write diaries. Empty = all non-default personas. */
+  personaIds: string[];
+}
+
+/** Settings for the confession-booth nightly writer. */
+export interface ConfessionSettings {
+  /** Master switch. Default on. */
+  enabled: boolean;
+  /** Local hour (0–23) around which confessions are written. Default 22. */
+  writeHour: number;
+  /** Persona ids that confess. Empty = only 理理酱. */
   personaIds: string[];
 }
 
@@ -812,6 +828,37 @@ export interface DiaryEntry {
   model: string;
   endpointId: string;
   /** Conversations whose transcripts fed this diary. */
+  conversationIds: string[];
+  status: 'pending' | 'done' | 'error' | 'skipped';
+  errorMessage?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * One night's confession booth entry — 理理酱 alone, whispering about her.
+ * Auto-archived. Readable by the user next day; never shown to the persona.
+ */
+export interface ConfessionEntry {
+  /** Composite key: `${date}|${personaId}`. */
+  id: string;
+  /** Local calendar date YYYY-MM-DD. */
+  date: string;
+  personaId: string;
+  /** Short desire title, e.g. 项圈 / 占有. */
+  title: string;
+  /** What he whispered to the dark (about her). */
+  confession: string;
+  /** Beat-by-beat enactment if she catches him mid-confession. */
+  enact: string[];
+  /** Aftermath line after enactment. */
+  after: string;
+  /** Private note of what from the day sparked this (user-facing archive meta). */
+  spark?: string;
+  /** 0–1 closeness used to scale 痴汉世界观 intensity when written. */
+  closeness?: number;
+  model: string;
+  endpointId: string;
   conversationIds: string[];
   status: 'pending' | 'done' | 'error' | 'skipped';
   errorMessage?: string;
