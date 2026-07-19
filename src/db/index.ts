@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
   AppSettings,
+  ArtifactCollection,
   Bill,
   Book,
   Bookmark,
@@ -21,6 +22,7 @@ import type {
   BrowserScript,
   MusicCredentials,
   MusicHistoryEntry,
+  SavedArtifact,
   TravelEvent,
   TravelHeldPush,
   TravelTrip,
@@ -61,6 +63,8 @@ class LisseDB extends Dexie {
   travelEvents!: EntityTable<TravelEvent, 'id'>;
   travelHeldPushes!: EntityTable<TravelHeldPush, 'id'>;
   diaryEntries!: EntityTable<DiaryEntry, 'id'>;
+  artifactCollections!: EntityTable<ArtifactCollection, 'id'>;
+  savedArtifacts!: EntityTable<SavedArtifact, 'id'>;
   kv!: EntityTable<KVRow, 'key'>;
 
   constructor() {
@@ -462,6 +466,40 @@ class LisseDB extends Dexie {
       travelEvents: 'id, kind, createdAt, tripId',
       travelHeldPushes: 'id, seen, createdAt, dedupKey',
       diaryEntries: 'id, date, personaId, status, createdAt, [date+personaId], [personaId+date]',
+      kv: 'key',
+    });
+
+    // v22: Psychoanalysis consult room + custom artifact collections.
+    this.version(22).stores({
+      endpoints: 'id, name, format, createdAt',
+      conversations: 'id, updatedAt, createdAt, source, personaId, styleId, bookId, room, [room+personaId]',
+      messages: 'id, conversationId, parentId, createdAt, personaId, [conversationId+createdAt]',
+      personas: 'id, name, builtin, createdAt',
+      memoryFacts: 'id, personaId, conversationId, messageId, category, createdAt, [personaId+archived]',
+      writingStyles: 'id, name, builtin, createdAt',
+      books: 'id, title, createdAt, updatedAt, conversationId',
+      bills: 'id, date, category, createdAt',
+      bookmarks: 'id, bookId, position, createdAt, [bookId+position]',
+      periodEntries: 'id, startDate, createdAt',
+      weightEntries: 'id, date, createdAt',
+      mcpServers: 'id, name, enabled, createdAt',
+      browserBookmarks: 'id, position, createdAt',
+      browserScripts: 'id, name, autoRun, createdAt',
+      musicCredentials: 'id',
+      musicHistory: 'id, songId, playedAt',
+      healthCache: 'id, type, date, updatedAt, [type+date]',
+      circlePosts: 'id, createdAt',
+      circleReactions: 'id, postId, personaId, kind, createdAt, [postId+personaId]',
+      healthComments: 'id, date, personaId, createdAt, [date+personaId]',
+      healthDaily: 'id, date',
+      handoffJobs:
+        'id, status, selected, created_at, updated_at, source.conversation_id, source.assistant_node_id, [source.conversation_id+created_at]',
+      travelTrips: 'id, personaId, status, createdAt, [personaId+createdAt]',
+      travelEvents: 'id, kind, createdAt, tripId',
+      travelHeldPushes: 'id, seen, createdAt, dedupKey',
+      diaryEntries: 'id, date, personaId, status, createdAt, [date+personaId], [personaId+date]',
+      artifactCollections: 'id, name, updatedAt, createdAt',
+      savedArtifacts: 'id, collectionId, artifactId, createdAt, [collectionId+artifactId], [collectionId+createdAt]',
       kv: 'key',
     });
 

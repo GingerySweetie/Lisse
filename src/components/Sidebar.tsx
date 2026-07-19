@@ -60,7 +60,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const allVisibleIds = useMemo(
     () =>
       (conversations ?? [])
-        .filter((c) => c.room !== 'bedroom')
+        .filter((c) => c.room !== 'bedroom' && c.room !== 'consult')
         .map((c) => c.id),
     [conversations],
   );
@@ -493,6 +493,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                 { to: '/search', glyph: '⌕', label: '搜索' },
                 { to: '/circle', glyph: '○', label: 'OnlyCircle' },
                 { to: '/travel', glyph: '☁', label: '阳台' },
+                { to: '/consult', glyph: '◈', label: '咨询室' },
                 { to: '/body', glyph: '♡', label: '身体' },
                 { to: '/billing', glyph: '¥', label: '账单' },
                 { to: '/personas', glyph: '◇', label: '人格' },
@@ -551,7 +552,7 @@ function groupConversations(
   // Bedroom conversations are hidden — they live on /bedroom/:personaId.
   const buckets = new Map<string, Conversation[]>();
   for (const c of conversations) {
-    if (c.room === 'bedroom') continue;
+    if (c.room === 'bedroom' || c.room === 'consult') continue;
     let key: string;
     if (c.personaIds && c.personaIds.length >= 2) key = '__group__';
     else key = c.personaId ?? '__none__';
