@@ -283,7 +283,7 @@ export default function ConfessionPage() {
 
           {phase === 'caught-flash' && (
             <>
-              <p className="cf-eyebrow cf-eyebrow--warn">Curtain</p>
+              <p className="cf-eyebrow cf-eyebrow--warn">帘子掀开</p>
               <h1 className="cf-title cf-title--caught">撞见了</h1>
               <p className="cf-sub">
                 告解中断。理理酱抬眼——
@@ -537,23 +537,25 @@ const CSS = `
   position: absolute;
   left: 50%;
   bottom: 0;
-  width: 48%;
-  height: 72%;
+  width: 52%;
+  height: 74%;
   transform: translateX(-50%);
-  background: linear-gradient(180deg, rgba(28,22,18,0.2) 0%, rgba(12,10,8,0.85) 40%, rgba(8,6,5,0.95) 100%);
-  border-radius: 40% 40% 8% 8%;
-  box-shadow: inset 0 0 20px rgba(196,165,116,0.08);
+  background: linear-gradient(180deg, rgba(48,36,26,0.45) 0%, rgba(18,14,10,0.88) 38%, rgba(6,5,4,0.98) 100%);
+  border-radius: 42% 42% 10% 10%;
+  box-shadow:
+    inset 0 0 24px rgba(196,165,116,0.12),
+    0 0 28px rgba(196,165,116,0.08);
 }
 .cf-figure-head {
   position: absolute;
   left: 50%;
-  top: 4%;
-  width: 28%;
-  height: 22%;
+  top: 2%;
+  width: 30%;
+  height: 24%;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, rgba(60,48,36,0.7), rgba(16,12,10,0.95));
-  box-shadow: 0 0 16px rgba(196,165,116,0.12);
+  background: radial-gradient(circle at 40% 35%, rgba(90,70,48,0.75), rgba(20,14,10,0.98));
+  box-shadow: 0 0 20px rgba(196,165,116,0.22);
 }
 
 .cf-panel {

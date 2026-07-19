@@ -489,7 +489,9 @@ export default function HomePage() {
             ? '/body'
             : sp.id === 'confession'
               ? '/confession'
-              : '/billing';
+              : sp.id === 'billing'
+                ? '/billing'
+                : '/home';
     navigate(target);
   }
 
