@@ -82,6 +82,7 @@ export async function completeConfession(
     enact: string[];
     after: string;
     spark?: string;
+    closeness?: number;
   },
 ): Promise<void> {
   await db.confessionEntries.update(id, {
@@ -90,6 +91,8 @@ export async function completeConfession(
     enact: payload.enact,
     after: payload.after.trim(),
     spark: payload.spark?.trim() || undefined,
+    closeness:
+      typeof payload.closeness === 'number' ? payload.closeness : undefined,
     status: 'done',
     errorMessage: undefined,
     updatedAt: Date.now(),

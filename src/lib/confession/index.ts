@@ -35,6 +35,13 @@ export { approachConfession, type ApproachResult } from './approach';
 export { scoreConfessionTrigger } from './trigger';
 export { buildConfessionSystemPrompt, buildConfessionUserPrompt } from './prompt';
 export { parseConfessionOutput } from './parse';
+export { computeRecentCloseness } from './closeness';
+export {
+  buildWorldviewBlock,
+  closenessBand,
+  closenessLabel,
+  composeConfessionCloseness,
+} from './worldview';
 
 let loopTimer: ReturnType<typeof setTimeout> | null = null;
 let tickInFlight = false;

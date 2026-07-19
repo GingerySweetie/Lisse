@@ -3,6 +3,11 @@ import { db } from '../../db';
 import type { ConfessionEntry, ConfessionSettings, Persona } from '../../types';
 import { gatherDayTranscript } from '../diary/transcript';
 import { resolvePersonaChatModel } from '../diary/resolve-model';
+import { computeRecentCloseness } from './closeness';
+import {
+  composeConfessionCloseness,
+  type ConfessionCloseness,
+} from './worldview';
 import { PENDING_STALE_MS, RIRICHAN_ID, mergeConfessionCfg } from './defaults';
 import { parseConfessionOutput } from './parse';
 import {
@@ -73,6 +78,13 @@ export async function writePersonaConfession(opts: {
     return null;
   }
 
+  const recent = await computeRecentCloseness(persona.id);
+  const closeness = composeConfessionCloseness({
+    recent,
+    triggerScore: trigger.score,
+    transcriptChars: day.text.length,
+  });
+
   const pending = await putPendingConfession({
     date,
     personaId: persona.id,
@@ -87,6 +99,7 @@ export async function writePersonaConfession(opts: {
       date,
       transcript: day.text,
       cues: trigger.cues,
+      closeness,
       endpoint: resolved.endpoint,
       model: resolved.model,
     });
@@ -107,8 +120,15 @@ export async function writePersonaConfession(opts: {
       enact: parsed.enact!,
       after: parsed.after!,
       spark: parsed.spark || trigger.cues.join('、') || undefined,
+      closeness: closeness.score,
     });
-    console.log('[confession] DONE', date, persona.name, resolved.model);
+    console.log(
+      '[confession] DONE',
+      date,
+      persona.name,
+      resolved.model,
+      `closeness=${closeness.score.toFixed(2)}/${closeness.label}`,
+    );
     return (await getConfessionEntry(date, persona.id)) ?? null;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -123,15 +143,17 @@ async function generateConfession(opts: {
   date: string;
   transcript: string;
   cues: string[];
+  closeness: ConfessionCloseness;
   endpoint: import('../../types').Endpoint;
   model: string;
 }) {
-  const system = buildConfessionSystemPrompt(opts.persona);
+  const system = buildConfessionSystemPrompt(opts.persona, opts.closeness);
   const user = buildConfessionUserPrompt({
     date: opts.date,
     personaName: opts.persona.name,
     transcript: opts.transcript,
     cues: opts.cues,
+    closeness: opts.closeness,
   });
 
   let full = '';

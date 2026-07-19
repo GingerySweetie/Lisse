@@ -855,6 +855,8 @@ export interface ConfessionEntry {
   after: string;
   /** Private note of what from the day sparked this (user-facing archive meta). */
   spark?: string;
+  /** 0–1 closeness used to scale 痴汉世界观 intensity when written. */
+  closeness?: number;
   model: string;
   endpointId: string;
   conversationIds: string[];

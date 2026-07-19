@@ -8,6 +8,11 @@ import { confessionEntryId, formatLocalDate } from '../src/lib/confession/format
 import { datesNeedingConfession } from '../src/lib/confession/schedule.ts';
 import { scoreConfessionTrigger } from '../src/lib/confession/trigger.ts';
 import { parseConfessionOutput } from '../src/lib/confession/parse.ts';
+import {
+  closenessBand,
+  buildWorldviewBlock,
+  composeConfessionCloseness,
+} from '../src/lib/confession/worldview.ts';
 
 test('confessionEntryId is date|personaId', () => {
   assert.equal(
@@ -61,4 +66,27 @@ test('parseConfessionOutput handles skip', () => {
   const p = parseConfessionOutput('{"triggered":false,"reason":"太干了"}');
   assert.equal(p.triggered, false);
   assert.equal(p.reason, '太干了');
+});
+
+test('closeness bands scale worldview', () => {
+  assert.equal(closenessBand(0.2), 'shallow');
+  assert.equal(closenessBand(0.5), 'cling');
+  assert.equal(closenessBand(0.85), 'obsessed');
+  const low = buildWorldviewBlock(0.2);
+  const high = buildWorldviewBlock(0.9);
+  assert.match(low, /浅/);
+  assert.doesNotMatch(low, /私处执迷/);
+  assert.match(high, /痴/);
+  assert.match(high, /私处执迷/);
+  assert.match(high, /禁止：跟踪监控/);
+});
+
+test('composeConfessionCloseness blends recent + heat', () => {
+  const c = composeConfessionCloseness({
+    recent: 0.8,
+    triggerScore: 6,
+    transcriptChars: 4000,
+  });
+  assert.ok(c.score > 0.5);
+  assert.equal(c.band, 'obsessed');
 });

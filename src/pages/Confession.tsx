@@ -4,6 +4,7 @@ import type { ConfessionEntry } from '../types';
 import {
   RIRICHAN_ID,
   approachConfession,
+  closenessLabel,
   getYesterdayConfession,
   listConfessionArchives,
 } from '../lib/confession';
@@ -342,8 +343,17 @@ export default function ConfessionPage() {
               <>
                 <p className="cf-eyebrow">他正在告解</p>
                 <h1 className="cf-title">{entry.title}</h1>
-                {entry.spark && (
-                  <p className="cf-spark">由今日而生 · {entry.spark}</p>
+                {(entry.spark || typeof entry.closeness === 'number') && (
+                  <p className="cf-spark">
+                    {typeof entry.closeness === 'number' && (
+                      <>
+                        依恋 {entry.closeness.toFixed(2)}（
+                        {closenessLabel(entry.closeness)}）
+                        {entry.spark ? ' · ' : ''}
+                      </>
+                    )}
+                    {entry.spark ? <>由今日而生 · {entry.spark}</> : null}
+                  </p>
                 )}
                 <p className="cf-confession">
                   {typed}
@@ -463,8 +473,17 @@ function ArchivePanel({
                 {shown.title}
                 <span className="cf-archive-date">{shown.date}</span>
               </h2>
-              {shown.spark && (
-                <p className="cf-spark">火种 · {shown.spark}</p>
+              {(shown.spark || typeof shown.closeness === 'number') && (
+                <p className="cf-spark">
+                  {typeof shown.closeness === 'number' && (
+                    <>
+                      依恋 · {shown.closeness.toFixed(2)}（
+                      {closenessLabel(shown.closeness)}）
+                      {shown.spark ? ' · ' : ''}
+                    </>
+                  )}
+                  {shown.spark ? <>火种 · {shown.spark}</> : null}
+                </p>
               )}
               <p className="cf-confession cf-confession--static">{shown.confession}</p>
             </article>
