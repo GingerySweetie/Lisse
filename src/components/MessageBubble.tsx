@@ -92,7 +92,16 @@ export default function MessageBubble({
   const [draft, setDraft] = useState('');
 
   function startEdit() {
-    setDraft(message.content);
+    // Novel-length bodies in a textarea OOMed the tab; only open a preview slice.
+    if (message.content.length > MAX_BUBBLE_RENDER_CHARS) {
+      alert(
+        `这条太长了（${formatChars(message.content.length)}），编辑器只打开前 ${formatChars(MAX_BUBBLE_RENDER_CHARS)}。` +
+          `保存会按截断内容重发——不想丢字就别改这条。`,
+      );
+      setDraft(message.content.slice(0, MAX_BUBBLE_RENDER_CHARS));
+    } else {
+      setDraft(message.content);
+    }
     setEditing(true);
   }
   function cancelEdit() {
