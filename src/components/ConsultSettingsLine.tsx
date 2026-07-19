@@ -51,6 +51,7 @@ export default function ConsultSettingsLine() {
       {/* Hairline: solid at right, fades out toward center */}
       <button
         type="button"
+        className="consult-hairline-btn"
         onClick={() => setOpen((v) => !v)}
         aria-label="咨询室设置"
         aria-expanded={open}
@@ -58,13 +59,18 @@ export default function ConsultSettingsLine() {
         style={{
           pointerEvents: 'auto',
           border: 'none',
-          background: 'none',
-          padding: '12px 0 12px 0',
+          outline: 'none',
+          boxShadow: 'none',
+          background: 'transparent',
+          padding: '14px 0',
           width: '100%',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
+          WebkitTapHighlightColor: 'transparent',
+          appearance: 'none',
+          WebkitAppearance: 'none',
         }}
       >
         <span
@@ -72,17 +78,16 @@ export default function ConsultSettingsLine() {
             display: 'block',
             width: '100%',
             height: open ? 2 : 1.25,
-            borderRadius: 1,
+            border: 'none',
+            outline: 'none',
+            borderRadius: 0,
             background: `linear-gradient(270deg,
               ${CONSULT.accent} 0%,
               rgba(92, 61, 122, 0.7) 18%,
               rgba(92, 61, 122, 0.28) 48%,
               rgba(92, 61, 122, 0.06) 78%,
               transparent 100%)`,
-            boxShadow: open
-              ? '0 0 10px rgba(92, 61, 122, 0.3)'
-              : '0 0 6px rgba(92, 61, 122, 0.16)',
-            transition: 'height 0.2s ease, box-shadow 0.2s ease',
+            transition: 'height 0.2s ease',
           }}
         />
       </button>
@@ -95,11 +100,11 @@ export default function ConsultSettingsLine() {
             top: 36,
             right: 12,
             minWidth: 200,
-            background: 'rgba(255,255,255,0.94)',
-            border: `1px solid ${CONSULT.border}`,
-            borderRadius: 12,
+            background: 'rgba(255,255,255,0.96)',
+            border: 'none',
+            borderRadius: 14,
             padding: 12,
-            boxShadow: CONSULT.shadow,
+            boxShadow: '0 10px 32px rgba(74, 58, 106, 0.12)',
             backdropFilter: 'blur(14px)',
             display: 'flex',
             flexDirection: 'column',
@@ -176,14 +181,24 @@ export default function ConsultSettingsLine() {
           from { opacity: 0; transform: translateY(-4px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        .consult-hairline-btn,
+        .consult-hairline-btn:focus,
+        .consult-hairline-btn:focus-visible,
+        .consult-hairline-btn:active {
+          outline: none !important;
+          border: none !important;
+          box-shadow: none !important;
+          -webkit-tap-highlight-color: transparent;
+        }
       `}</style>
     </div>
   );
 }
 
 const menuBtnStyle: CSSProperties = {
-  background: 'none',
-  border: `1px solid ${CONSULT.border}`,
+  background: 'rgba(250, 248, 252, 0.9)',
+  border: 'none',
+  outline: 'none',
   borderRadius: 8,
   padding: '9px 12px',
   textAlign: 'left',
@@ -192,4 +207,5 @@ const menuBtnStyle: CSSProperties = {
   color: CONSULT.text,
   cursor: 'pointer',
   fontFamily: CONSULT.fontBody,
+  WebkitTapHighlightColor: 'transparent',
 };
