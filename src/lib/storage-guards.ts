@@ -21,8 +21,14 @@ export const MAX_FOLDED_TXT_CHARS = 500_000;
 /** Hard reject for book body text stored as one IndexedDB row. */
 export const MAX_BOOK_CONTENT_CHARS = 2_000_000;
 
-/** Warn / refuse reading a backup or chat-export file entirely into memory. */
+/** Warn / refuse reading a chat-export / config file entirely into memory. */
 export const MAX_IMPORT_FILE_BYTES = 80 * 1024 * 1024;
+
+/**
+ * Soft cap for full-backup import via the streaming path (chunked read +
+ * batched IndexedDB writes). Far above the old in-memory 80MB guard.
+ */
+export const MAX_BACKUP_STREAM_IMPORT_BYTES = 1024 * 1024 * 1024;
 
 /** Above this, chat bubbles render a truncated preview instead of full Markdown. */
 export const MAX_BUBBLE_RENDER_CHARS = 40_000;
@@ -69,6 +75,19 @@ export function assertImportFileSize(file: File, label = '导入文件'): void {
     throw new StorageLimitError(
       `${label}太大了（${formatBytes(file.size)}），上限 ${formatBytes(MAX_IMPORT_FILE_BYTES)}。` +
         `请先在电脑上拆分，或导出一份更小的备份再导入——整文件读进内存会直接把页面打死。`,
+    );
+  }
+}
+
+/** Size guard for streaming full-backup import (not whole-file JSON.parse). */
+export function assertBackupImportFileSize(
+  size: number,
+  label = '备份文件',
+): void {
+  if (size > MAX_BACKUP_STREAM_IMPORT_BYTES) {
+    throw new StorageLimitError(
+      `${label}太大了（${formatBytes(size)}），流式导入上限 ${formatBytes(MAX_BACKUP_STREAM_IMPORT_BYTES)}。` +
+        `请先在电脑上拆成多份更小的备份，或删减对话后再导出。`,
     );
   }
 }
