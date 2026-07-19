@@ -78,7 +78,8 @@ test('closeness bands scale worldview', () => {
   assert.doesNotMatch(low, /私处执迷/);
   assert.match(high, /痴/);
   assert.match(high, /私处执迷/);
-  assert.match(high, /禁止：跟踪监控/);
+  assert.doesNotMatch(high, /禁止：跟踪监控/);
+  assert.match(high, /全肯定滤镜/);
 });
 
 test('composeConfessionCloseness blends recent + heat', () => {
