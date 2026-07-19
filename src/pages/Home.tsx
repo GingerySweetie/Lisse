@@ -259,10 +259,28 @@ const ico: Record<string, IconFn> = {
       <path d="M2 10h20" />
     </svg>
   ),
+  arch: (c) => (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={c}
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 21V11a7 7 0 0 1 14 0v10" />
+      <path d="M12 4v3" />
+      <path d="M10 6h4" />
+      <path d="M9 14h6" />
+      <path d="M9 17h6" />
+    </svg>
+  ),
 };
 
 interface SpaceDef {
-  id: 'chat' | 'books' | 'bedroom' | 'body' | 'billing';
+  id: 'chat' | 'books' | 'bedroom' | 'body' | 'billing' | 'confession';
   top: string;
   left: string;
   lineW: string;
@@ -316,6 +334,16 @@ const spaces: SpaceDef[] = [
     delay: 0.18,
   },
   {
+    id: 'confession',
+    top: '76%',
+    left: '18%',
+    lineW: '22%',
+    label: '告解室',
+    icon: 'arch',
+    color: 'rgba(90,78,58,0.55)',
+    delay: 0.22,
+  },
+  {
     id: 'billing',
     top: '87%',
     left: '52%',
@@ -323,11 +351,11 @@ const spaces: SpaceDef[] = [
     label: '账单',
     icon: 'wallet',
     color: 'rgba(140,120,100,0.45)',
-    delay: 0.24,
+    delay: 0.28,
   },
 ];
 
-const decoLines = [{ top: '83%', left: '36%', lineW: '22%' }];
+const decoLines = [{ top: '83%', left: '36%', lineW: '18%' }];
 
 function SpaceEntry({
   sp,
@@ -459,7 +487,9 @@ export default function HomePage() {
           ? '/bedroom'
           : sp.id === 'body'
             ? '/body'
-            : '/billing';
+            : sp.id === 'confession'
+              ? '/confession'
+              : '/billing';
     navigate(target);
   }
 

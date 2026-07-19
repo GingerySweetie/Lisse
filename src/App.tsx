@@ -28,6 +28,7 @@ const BooksPage = lazy(() => import('./pages/Books'));
 const ReadPage = lazy(() => import('./pages/Read'));
 const BedroomPickerPage = lazy(() => import('./pages/Bedroom'));
 const BedroomChatPage = lazy(() => import('./pages/BedroomChat'));
+const ConfessionPage = lazy(() => import('./pages/Confession'));
 const BillingPage = lazy(() => import('./pages/Billing'));
 const WorkshopPage = lazy(() => import('./pages/Workshop'));
 const BodyPage = lazy(() => import('./pages/Body'));
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="/home" element={<HomePage />} />
             <Route path="/bedroom" element={<BedroomPickerPage />} />
             <Route path="/bedroom/:personaId" element={<BedroomChatPage />} />
+            <Route path="/confession" element={<ConfessionPage />} />
             <Route path="/billing" element={<BillingPage />} />
             <Route path="/bill-sources" element={<BillSourcesPage />} />
             <Route path="/browser" element={<BrowserPage />} />
