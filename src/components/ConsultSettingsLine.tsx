@@ -71,16 +71,17 @@ export default function ConsultSettingsLine() {
           style={{
             display: 'block',
             width: '100%',
-            height: open ? 1.5 : 1,
+            height: open ? 2 : 1.25,
             borderRadius: 1,
             background: `linear-gradient(270deg,
               ${CONSULT.accent} 0%,
-              rgba(92, 61, 122, 0.55) 28%,
-              rgba(92, 61, 122, 0.18) 62%,
+              rgba(92, 61, 122, 0.7) 18%,
+              rgba(92, 61, 122, 0.28) 48%,
+              rgba(92, 61, 122, 0.06) 78%,
               transparent 100%)`,
             boxShadow: open
-              ? '0 0 8px rgba(92, 61, 122, 0.25)'
-              : '0 0 4px rgba(92, 61, 122, 0.12)',
+              ? '0 0 10px rgba(92, 61, 122, 0.3)'
+              : '0 0 6px rgba(92, 61, 122, 0.16)',
             transition: 'height 0.2s ease, box-shadow 0.2s ease',
           }}
         />
