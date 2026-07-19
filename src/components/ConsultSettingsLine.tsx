@@ -94,17 +94,19 @@ export default function ConsultSettingsLine() {
 
       {open && (
         <div
+          className="consult-settings-panel"
           style={{
             pointerEvents: 'auto',
             position: 'absolute',
             top: 36,
             right: 12,
             minWidth: 200,
-            background: 'rgba(255,255,255,0.96)',
-            border: 'none',
+            background: 'rgba(255,255,255,0.97)',
+            border: '0 solid transparent',
+            outline: 'none',
             borderRadius: 14,
             padding: 12,
-            boxShadow: '0 10px 32px rgba(74, 58, 106, 0.12)',
+            boxShadow: '0 12px 36px rgba(90, 70, 120, 0.1)',
             backdropFilter: 'blur(14px)',
             display: 'flex',
             flexDirection: 'column',
@@ -188,6 +190,14 @@ export default function ConsultSettingsLine() {
           outline: none !important;
           border: none !important;
           box-shadow: none !important;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .consult-settings-panel {
+          border: none !important;
+          outline: none !important;
+        }
+        .consult-settings-panel button {
+          outline: none !important;
           -webkit-tap-highlight-color: transparent;
         }
       `}</style>
