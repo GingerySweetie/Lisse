@@ -135,7 +135,6 @@ export default function ConsultChatPage() {
   const persona = personaId
     ? personas?.find((p) => p.id === personaId)
     : undefined;
-  const style = styleId ? styles?.find((s) => s.id === styleId) : undefined;
 
   const view: Message[] = [
     ...(storedMessages ?? []),
