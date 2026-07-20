@@ -5,7 +5,7 @@ import ArtifactCard from '../components/ArtifactCard';
 import ChatInput from '../components/ChatInput';
 import ConsultBackdrop from '../components/ConsultBackdrop';
 import ConsultSettingsLine from '../components/ConsultSettingsLine';
-import { db, getSettings } from '../db';
+import { db, getSettings, saveSettings } from '../db';
 import { parseArtifacts } from '../lib/artifacts';
 import { CONSULT, CONSULT_SYS } from '../lib/consult-theme';
 import { newId } from '../lib/id';
@@ -55,11 +55,11 @@ interface LocalMsg {
 }
 
 export default function ConsultChatPage() {
-  const [conv, setConv] = useState<Conversation | null>(null);
+  const [convId, setConvId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    loadOrCreateConsultConv().then(setConv);
+    loadOrCreateConsultConv().then((c) => setConvId(c.id));
   }, []);
 
   useEffect(() => {
@@ -69,6 +69,56 @@ export default function ConsultChatPage() {
       abortRef.current?.abort();
     };
   }, []);
+
+  const conv = useLiveQuery(
+    () => (convId ? db.conversations.get(convId) : undefined),
+    [convId],
+    undefined,
+  ) ?? null;
+
+  const settings = useLiveQuery(() => getSettings(), [], null);
+  const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
+  const personas = useLiveQuery(() => db.personas.toArray(), [], []);
+  const styles = useLiveQuery(() => db.writingStyles.toArray(), [], []);
+
+  const [endpointId, setEndpointId] = useState<string | null>(null);
+  const [model, setModel] = useState<string | null>(null);
+  const [personaId, setPersonaId] = useState<string | null>(null);
+  const [styleId, setStyleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!endpoints || !settings) return;
+    const fromConv = conv?.defaultEndpointId
+      ? endpoints.find((e) => e.id === conv.defaultEndpointId)
+      : undefined;
+    const fromSettings = settings.defaultEndpointId
+      ? endpoints.find((e) => e.id === settings.defaultEndpointId)
+      : undefined;
+    const ep = fromConv ?? fromSettings ?? endpoints[0];
+    if (!ep) {
+      setEndpointId(null);
+      setModel(null);
+      return;
+    }
+    const m =
+      conv?.defaultModel && ep.chatModels.includes(conv.defaultModel)
+        ? conv.defaultModel
+        : settings.defaultModel && ep.chatModels.includes(settings.defaultModel)
+          ? settings.defaultModel
+          : (ep.chatModels[0] ?? null);
+    setEndpointId(ep.id);
+    setModel(m);
+  }, [endpoints, settings, conv]);
+
+  useEffect(() => {
+    if (!settings) return;
+    setPersonaId(conv?.personaId ?? settings.defaultPersonaId);
+  }, [settings, conv]);
+
+  useEffect(() => {
+    if (!settings) return;
+    setStyleId(settings.defaultStyleId);
+  }, [settings]);
 
   const storedMessages = useLiveQuery(
     () =>
@@ -82,6 +132,11 @@ export default function ConsultChatPage() {
   const [streaming, setStreaming] = useState<LocalMsg | null>(null);
   const [loading, setLoading] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
+
+  const persona = personaId
+    ? personas?.find((p) => p.id === personaId)
+    : undefined;
+  const style = styleId ? styles?.find((s) => s.id === styleId) : undefined;
 
   const view: LocalMsg[] = [
     ...(storedMessages ?? []).map(
@@ -110,19 +165,25 @@ export default function ConsultChatPage() {
     const trimmed = text.trim();
     if (!trimmed && attachments.length === 0) return;
 
-    const settings = await getSettings();
-    const ep = settings.defaultEndpointId
-      ? await db.endpoints.get(settings.defaultEndpointId)
-      : (await db.endpoints.toArray())[0];
+    const liveSettings = settings ?? (await getSettings());
+    const ep = endpointId
+      ? await db.endpoints.get(endpointId)
+      : liveSettings.defaultEndpointId
+        ? await db.endpoints.get(liveSettings.defaultEndpointId)
+        : (await db.endpoints.toArray())[0];
     if (!ep) {
       alert('先去设置里加一个 endpoint');
       return;
     }
-    const model =
-      settings.defaultModel && ep.chatModels.includes(settings.defaultModel)
-        ? settings.defaultModel
-        : (ep.chatModels[0] ?? '');
-    if (!model) {
+    const sendModel =
+      (model && ep.chatModels.includes(model) ? model : null) ??
+      (liveSettings.defaultModel &&
+      ep.chatModels.includes(liveSettings.defaultModel)
+        ? liveSettings.defaultModel
+        : null) ??
+      ep.chatModels[0] ??
+      '';
+    if (!sendModel) {
       alert('这个 endpoint 没配 chat 模型');
       return;
     }
@@ -139,12 +200,15 @@ export default function ConsultChatPage() {
       attachments: attachments.length > 0 ? attachments : undefined,
       status: 'done',
       endpointId: ep.id,
-      model,
+      model: sendModel,
       createdAt: now,
     };
     await db.messages.add(userMessage);
     await db.conversations.update(conv.id, {
       currentLeafId: userMessage.id,
+      defaultEndpointId: ep.id,
+      defaultModel: sendModel,
+      personaId: personaId ?? undefined,
       updatedAt: now,
     });
 
@@ -154,10 +218,25 @@ export default function ConsultChatPage() {
     abortRef.current = controller;
 
     const history = [...(storedMessages ?? []), userMessage];
+    const systemTurns: ChatTurn[] = [{ role: 'system', content: CONSULT_SYS }];
+    // Persona / style sit alongside the room frame (same order as normal chat).
+    if (persona?.systemPrompt?.trim()) {
+      systemTurns.push({ role: 'system', content: persona.systemPrompt.trim() });
+    }
+    if (style?.prompt?.trim()) {
+      systemTurns.push({
+        role: 'system',
+        content:
+          `# 写作风格\n` +
+          `【最高优先级】以下条款覆盖人设中任何关于语气、口吻、说话方式、用词习惯的描述；` +
+          `必须严格遵守，不得用人设语气稀释或覆盖。\n\n` +
+          style.prompt.trim(),
+      });
+    }
     const turns: ChatTurn[] = [
-      { role: 'system', content: CONSULT_SYS },
+      ...systemTurns,
       ...history.map((m) => ({
-        role: m.role,
+        role: m.role as 'user' | 'assistant',
         content: m.content,
         attachments: m.attachments,
       })),
@@ -173,7 +252,7 @@ export default function ConsultChatPage() {
     };
     setStreaming(streamingMsg);
 
-    const tools = settings.toolsEnabled
+    const tools = liveSettings.toolsEnabled
       ? await availableTools({ conversationId: conv.id })
       : [];
 
@@ -184,7 +263,7 @@ export default function ConsultChatPage() {
     try {
       const result = await runToolLoop({
         endpoint: ep,
-        model,
+        model: sendModel,
         initialTurns: turns,
         tools,
         ctx: { conversationId: conv.id },
@@ -239,7 +318,7 @@ export default function ConsultChatPage() {
         status: errored ? 'error' : 'done',
         errorMessage,
         endpointId: ep.id,
-        model,
+        model: sendModel,
         toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
         createdAt: Date.now(),
       };
@@ -247,6 +326,12 @@ export default function ConsultChatPage() {
       await db.conversations.update(conv.id, {
         currentLeafId: assistantId,
         updatedAt: Date.now(),
+      });
+      await saveSettings({
+        defaultEndpointId: ep.id,
+        defaultModel: sendModel,
+        defaultPersonaId: personaId,
+        defaultStyleId: styleId,
       });
     } catch (e) {
       if (!controller.signal.aborted) {
@@ -280,7 +365,26 @@ export default function ConsultChatPage() {
       }}
     >
       <ConsultBackdrop />
-      <ConsultSettingsLine />
+      <ConsultSettingsLine
+        conversation={conv}
+        personaId={personaId}
+        styleId={styleId}
+        endpointId={endpointId}
+        model={model}
+        persona={persona}
+        contextText={view
+          .slice(-4)
+          .map((m) => m.content)
+          .filter(Boolean)
+          .join('\n')}
+        exportDisabled={view.length === 0}
+        onPersonaChange={setPersonaId}
+        onStyleChange={setStyleId}
+        onEndpointChange={(epId, m) => {
+          setEndpointId(epId);
+          setModel(m);
+        }}
+      />
 
       {/* Messages — no header chrome */}
       <div
@@ -403,7 +507,7 @@ export default function ConsultChatPage() {
           onSend={(text, attachments) => void handleSend(text, attachments)}
           onAbort={handleAbort}
           busy={loading}
-          disabled={!conv}
+          disabled={!conv || !endpointId || !model}
           placeholder="说些什么……"
           hideMoodTags
         />

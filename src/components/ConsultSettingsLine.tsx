@@ -1,16 +1,49 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
+import AccentPicker from './AccentPicker';
+import EndpointPicker from './EndpointPicker';
+import ExportMenu from './ExportMenu';
+import PersonaPicker from './PersonaPicker';
+import StylePicker from './StylePicker';
 import WallpaperPicker from './WallpaperPicker';
-import { getSettings, saveSettings } from '../db';
+import { db, getSettings, saveSettings } from '../db';
 import { CONSULT } from '../lib/consult-theme';
+import type { Conversation, Persona } from '../types';
 
 /**
  * Thin purple hairline from the right edge, fading toward the center.
- * Tap to reveal hidden consult settings (wallpaper / collections / leave).
+ * Tap to reveal consult settings — same pickers as normal chat, plus
+ * consult-only exits (collections / curtains / leave).
  */
 
-export default function ConsultSettingsLine() {
+interface Props {
+  conversation: Conversation | null;
+  personaId: string | null;
+  styleId: string | null;
+  endpointId: string | null;
+  model: string | null;
+  persona?: Persona;
+  contextText?: string;
+  exportDisabled?: boolean;
+  onPersonaChange: (id: string | null) => void;
+  onStyleChange: (id: string | null) => void;
+  onEndpointChange: (endpointId: string, model: string) => void;
+}
+
+export default function ConsultSettingsLine({
+  conversation,
+  personaId,
+  styleId,
+  endpointId,
+  model,
+  persona,
+  contextText,
+  exportDisabled,
+  onPersonaChange,
+  onStyleChange,
+  onEndpointChange,
+}: Props) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -32,6 +65,24 @@ export default function ConsultSettingsLine() {
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
+
+  async function handleChangeGroup(nextIds: string[]) {
+    if (!conversation) return;
+    const personaIds = nextIds.length >= 2 ? nextIds : undefined;
+    let nextPersonaId = personaId;
+    if (personaIds && (!nextPersonaId || !personaIds.includes(nextPersonaId))) {
+      nextPersonaId = personaIds[0];
+      onPersonaChange(nextPersonaId);
+    } else if (!personaIds && nextIds.length === 1) {
+      nextPersonaId = nextIds[0];
+      onPersonaChange(nextPersonaId);
+    }
+    await db.conversations.update(conversation.id, {
+      personaIds,
+      personaId: nextPersonaId ?? undefined,
+      updatedAt: Date.now(),
+    });
+  }
 
   return (
     <div
@@ -109,7 +160,9 @@ export default function ConsultSettingsLine() {
             position: 'absolute',
             top: 36,
             right: 12,
-            minWidth: 200,
+            width: 'min(280px, calc(100vw - 28px))',
+            maxHeight: 'min(72vh, 520px)',
+            overflowY: 'auto',
             background: 'rgba(255,255,255,0.97)',
             border: '0 solid transparent',
             outline: 'none',
@@ -119,7 +172,7 @@ export default function ConsultSettingsLine() {
             backdropFilter: 'blur(14px)',
             display: 'flex',
             flexDirection: 'column',
-            gap: 10,
+            gap: 4,
             animation: 'consultSettingsIn 0.2s ease both',
           }}
         >
@@ -129,28 +182,93 @@ export default function ConsultSettingsLine() {
               fontSize: 13,
               letterSpacing: '0.12em',
               color: CONSULT.accent,
-              marginBottom: 2,
+              marginBottom: 4,
+              padding: '0 4px',
             }}
           >
             设置
           </div>
 
-          <div>
-            <div
-              style={{
-                fontSize: 10,
-                color: CONSULT.faint,
-                letterSpacing: '0.06em',
-                marginBottom: 6,
+          <MenuRow label="人格">
+            <PersonaPicker
+              personaId={personaId}
+              onChange={async (id) => {
+                onPersonaChange(id);
+                if (conversation) {
+                  await db.conversations.update(conversation.id, {
+                    personaId: id ?? undefined,
+                    updatedAt: Date.now(),
+                  });
+                }
               }}
-            >
-              壁纸
-            </div>
+              groupPersonaIds={conversation?.personaIds}
+              onChangeGroup={(ids) => void handleChangeGroup(ids)}
+              contextText={contextText}
+            />
+          </MenuRow>
+
+          <MenuRow label="风格">
+            <StylePicker
+              styleId={styleId}
+              onChange={async (id) => {
+                onStyleChange(id);
+                await saveSettings({ defaultStyleId: id });
+              }}
+            />
+          </MenuRow>
+
+          <MenuRow label="模型">
+            <EndpointPicker
+              endpointId={endpointId}
+              model={model}
+              onChange={async (epId, m) => {
+                onEndpointChange(epId, m);
+                if (conversation) {
+                  await db.conversations.update(conversation.id, {
+                    defaultEndpointId: epId,
+                    defaultModel: m,
+                    updatedAt: Date.now(),
+                  });
+                }
+              }}
+            />
+          </MenuRow>
+
+          <MenuRow label="颜色">
+            <AccentPicker
+              value={conversation?.accentColor ?? null}
+              onChange={async (next) => {
+                if (!conversation) return;
+                await db.conversations.update(conversation.id, {
+                  accentColor: next ?? undefined,
+                  updatedAt: Date.now(),
+                });
+              }}
+            />
+          </MenuRow>
+
+          <MenuRow label="壁纸">
             <WallpaperPicker
               value={wallpaper}
               onChange={(next) => void saveSettings({ consultWallpaper: next })}
             />
-          </div>
+          </MenuRow>
+
+          <MenuRow label="导出">
+            <ExportMenu
+              conversation={conversation ?? undefined}
+              persona={persona}
+              disabled={exportDisabled || !conversation}
+            />
+          </MenuRow>
+
+          <div
+            style={{
+              height: 1,
+              background: 'rgba(92, 61, 122, 0.1)',
+              margin: '6px 4px',
+            }}
+          />
 
           <button
             type="button"
@@ -205,11 +323,39 @@ export default function ConsultSettingsLine() {
           border: none !important;
           outline: none !important;
         }
-        .consult-settings-panel button {
+        .consult-settings-panel button,
+        .consult-settings-panel select {
           outline: none !important;
           -webkit-tap-highlight-color: transparent;
         }
       `}</style>
+    </div>
+  );
+}
+
+function MenuRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '6px 4px',
+      }}
+    >
+      <span
+        style={{
+          fontSize: 11,
+          color: CONSULT.muted,
+          letterSpacing: '0.08em',
+          width: 36,
+          flexShrink: 0,
+          fontFamily: CONSULT.fontDisplay,
+        }}
+      >
+        {label}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
     </div>
   );
 }
