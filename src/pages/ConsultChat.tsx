@@ -562,6 +562,12 @@ export default function ConsultChatPage() {
         .consult-session .wis-send-btn:hover {
           background: rgba(192, 198, 227, 0.35);
         }
+        /* User bubbles: keep #CDD2EB but 80% transparent (alpha 0.2),
+           overriding MessageBubble's denser accent fill. */
+        .consult-session .wis-user-bubble {
+          background: ${CONSULT.userBubble} !important;
+          box-shadow: inset 0 0 0 1px ${CONSULT.userBorder} !important;
+        }
         /* Tighter paragraph rhythm than default chat — short analytic lines
            shouldn't read as huge blank bands between sentences. */
         .consult-session .prose-msg p,
