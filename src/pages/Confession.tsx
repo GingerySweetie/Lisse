@@ -241,29 +241,31 @@ export default function ConfessionPage() {
           className="cf-booth"
           onClick={() => setView('booth')}
         >
-          <ArchSvg lit />
-          <div className="cf-well">
-            <div className="cf-prose">
-              {archives.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`cf-chip ${shown?.id === a.id ? 'cf-chip--on' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setArchiveFocus(a);
-                  }}
-                >
-                  {a.date.slice(5)}
-                </button>
-              ))}
-              {shown &&
-                toParagraphs(shown.confession).map((p, i) => (
-                  <div key={i}>
-                    {i > 0 && <StarDivider />}
-                    <p className="cf-para">{p}</p>
-                  </div>
+          <div className="cf-vault">
+            <ArchSvg lit />
+            <div className="cf-well">
+              <div className="cf-prose">
+                {archives.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className={`cf-chip ${shown?.id === a.id ? 'cf-chip--on' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setArchiveFocus(a);
+                    }}
+                  >
+                    {a.date.slice(5)}
+                  </button>
                 ))}
+                {shown &&
+                  toParagraphs(shown.confession).map((p, i) => (
+                    <div key={i}>
+                      {i > 0 && <StarDivider />}
+                      <p className="cf-para">{p}</p>
+                    </div>
+                  ))}
+              </div>
             </div>
           </div>
         </button>
@@ -295,21 +297,23 @@ export default function ConfessionPage() {
         onClick={onBoothActivate}
         aria-label="告解室"
       >
-        <ArchSvg lit={triggered || phase === 'approaching'} />
+        <div className="cf-vault">
+          <ArchSvg lit={triggered || phase === 'approaching'} />
 
-        <div className="cf-well">
-          {!triggered && <StarCurtain />}
+          <div className="cf-well">
+            {!triggered && <StarCurtain />}
 
-          {triggered && prose.length > 0 && (
-            <div className="cf-prose">
-              {prose.map((p, i) => (
-                <div key={`${phase}-${enactIdx}-${i}`}>
-                  {i > 0 && <StarDivider />}
-                  <p className="cf-para">{p}</p>
-                </div>
-              ))}
-            </div>
-          )}
+            {triggered && prose.length > 0 && (
+              <div className="cf-prose">
+                {prose.map((p, i) => (
+                  <div key={`${phase}-${enactIdx}-${i}`}>
+                    {i > 0 && <StarDivider />}
+                    <p className="cf-para">{p}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </button>
     </div>
@@ -403,14 +407,20 @@ const CSS = `
   animation-duration: 0.9s !important;
 }
 
+/* Mobile: arch sits a notch smaller than the screen and lower */
+.cf-vault {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: max(56px, 12%);
+  bottom: 6%;
+  z-index: 2;
+}
+
 .cf-arch {
   position: absolute;
-  /* narrow phone-like vault, legs flush to bottom edge */
-  left: 50%;
-  transform: translateX(-50%);
-  top: 0;
-  bottom: 0;
-  width: min(100%, 360px);
+  inset: 0;
+  width: 100%;
   height: 100%;
   z-index: 3;
   pointer-events: none;
@@ -418,7 +428,7 @@ const CSS = `
 
 .cf-apex {
   position: absolute;
-  top: max(10px, 1.4%);
+  top: max(6px, 1%);
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
@@ -430,16 +440,27 @@ const CSS = `
   filter: drop-shadow(0 0 9px rgba(220,120,70,0.72));
 }
 
-/* prose well: inside the double line, same grounded bottom */
+/* prose well: inside the double line */
 .cf-well {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  width: min(72%, 260px);
-  top: 6.5%;
-  bottom: 0;
+  width: 74%;
+  top: 7%;
+  bottom: 2%;
   z-index: 2;
   overflow: hidden;
+}
+
+@media (min-width: 480px) {
+  .cf-vault {
+    left: 50%;
+    right: auto;
+    width: min(360px, 84%);
+    transform: translateX(-50%);
+    top: max(40px, 8%);
+    bottom: 4%;
+  }
 }
 
 .cf-curtain {
