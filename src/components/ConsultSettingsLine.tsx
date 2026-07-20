@@ -29,6 +29,8 @@ interface Props {
   onPersonaChange: (id: string | null) => void;
   onStyleChange: (id: string | null) => void;
   onEndpointChange: (endpointId: string, model: string) => void;
+  onNewConversation: () => void;
+  onOpenConversationList: () => void;
 }
 
 export default function ConsultSettingsLine({
@@ -43,6 +45,8 @@ export default function ConsultSettingsLine({
   onPersonaChange,
   onStyleChange,
   onEndpointChange,
+  onNewConversation,
+  onOpenConversationList,
 }: Props) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -269,6 +273,28 @@ export default function ConsultSettingsLine({
               margin: '6px 4px',
             }}
           />
+
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onNewConversation();
+            }}
+            style={menuBtnStyle}
+          >
+            新建对话
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onOpenConversationList();
+            }}
+            style={menuBtnStyle}
+          >
+            对话列表
+          </button>
 
           <button
             type="button"

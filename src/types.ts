@@ -198,7 +198,7 @@ export interface Conversation {
   bookId?: string;
   /** Special room marker — e.g. 'bedroom' for intimate per-persona threads,
    *  'living-room' for the 理理酱+Rhema酱 三人群聊 singleton,
-   *  'consult' for the psychoanalysis consultation room singleton. These
+   *  'consult' for psychoanalysis sessions (multiple allowed). These
    *  conversations are hidden from the main conversation sidebar. */
   room?: 'bedroom' | 'living-room' | 'consult';
   /** Per-conversation accent color (hex). Independent of persona — the user

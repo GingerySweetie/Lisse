@@ -404,8 +404,7 @@ function ArtifactViewer({
   }
 
   function handleDownload() {
-    const blob = new Blob([artifact.content], { type: artifact.mimeType + ';charset=utf-8' });
-    saveFile(blob, artifact.name);
+    downloadArtifact(artifact);
   }
 
   const isHtml =
@@ -523,6 +522,13 @@ export interface ArtifactCardProps {
   hideCollect?: boolean;
 }
 
+export function downloadArtifact(artifact: Artifact): void {
+  const blob = new Blob([artifact.content], {
+    type: artifact.mimeType + ';charset=utf-8',
+  });
+  void saveFile(blob, artifact.name);
+}
+
 export default function ArtifactCard({
   artifact,
   sourceConversationId,
@@ -548,6 +554,18 @@ export default function ArtifactCard({
             <span className="artifact-card-name">{artifact.name}</span>
             <span className="artifact-card-meta">{label} · 点击预览</span>
           </span>
+        </button>
+        <button
+          type="button"
+          className="artifact-collect-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            downloadArtifact(artifact);
+          }}
+          title="下载"
+          aria-label="下载产物"
+        >
+          <Download size={15} />
         </button>
         {!hideCollect && (
           <button

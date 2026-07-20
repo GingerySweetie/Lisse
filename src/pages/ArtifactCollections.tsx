@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { FolderOpen, Plus, Trash2, X } from 'lucide-react';
-import ArtifactCard from '../components/ArtifactCard';
+import { Check, Download, FolderOpen, Plus, Trash2, X } from 'lucide-react';
+import JSZip from 'jszip';
+import ArtifactCard, { downloadArtifact } from '../components/ArtifactCard';
 import ConsultBackdrop from '../components/ConsultBackdrop';
 import { db } from '../db';
 import {
@@ -12,6 +13,7 @@ import {
   renameCollection,
 } from '../lib/artifact-collections';
 import { CONSULT } from '../lib/consult-theme';
+import { saveFile } from '../lib/save-file';
 import type { Artifact, ArtifactCollection, SavedArtifact } from '../types';
 
 /**
@@ -198,25 +200,49 @@ export default function ArtifactCollectionsPage() {
           )}
         </div>
         {openCollection ? (
-          <button
-            type="button"
-            onClick={() => void handleDeleteCollection()}
-            style={{
-              background: 'none',
-              border: `1px solid ${CONSULT.border}`,
-              borderRadius: 8,
-              width: 32,
-              height: 32,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: CONSULT.muted,
-              cursor: 'pointer',
-            }}
-            aria-label="删除合集"
-          >
-            <Trash2 size={14} />
-          </button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {items.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void downloadCollectionZip(openCollection, items)}
+                style={{
+                  background: 'none',
+                  border: `1px solid ${CONSULT.border}`,
+                  borderRadius: 8,
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: CONSULT.muted,
+                  cursor: 'pointer',
+                }}
+                aria-label="下载合集"
+                title="打包下载全部产物"
+              >
+                <Download size={14} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleDeleteCollection()}
+              style={{
+                background: 'none',
+                border: `1px solid ${CONSULT.border}`,
+                borderRadius: 8,
+                width: 32,
+                height: 32,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: CONSULT.muted,
+                cursor: 'pointer',
+              }}
+              aria-label="删除合集"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         ) : (
           <button
             type="button"
@@ -254,7 +280,8 @@ export default function ArtifactCollectionsPage() {
           {openCollection ? (
             <CollectionItems
               items={items}
-              onRemove={(id) => void removeSavedArtifact(id)}
+              collectionName={openCollection.name}
+              onRemove={(id) => removeSavedArtifact(id)}
             />
           ) : (
             <CollectionList
@@ -381,13 +408,53 @@ function CollectionList({
   );
 }
 
+async function downloadCollectionZip(
+  collection: ArtifactCollection,
+  items: SavedArtifact[],
+) {
+  if (items.length === 0) return;
+  if (items.length === 1) {
+    downloadArtifact({
+      id: items[0].artifactId,
+      name: items[0].name,
+      content: items[0].content,
+      mimeType: items[0].mimeType,
+    });
+    return;
+  }
+  const zip = new JSZip();
+  const used = new Set<string>();
+  for (const s of items) {
+    let name = s.name.replace(/[\\/:*?"<>|\n\r\t]/g, '_').trim() || '产物';
+    if (used.has(name)) {
+      const i = name.lastIndexOf('.');
+      const base = i > 0 ? name.slice(0, i) : name;
+      const ext = i > 0 ? name.slice(i) : '';
+      let n = 2;
+      while (used.has(`${base}-${n}${ext}`)) n++;
+      name = `${base}-${n}${ext}`;
+    }
+    used.add(name);
+    zip.file(name, s.content);
+  }
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const safe = collection.name.replace(/[\\/:*?"<>|\n\r\t]/g, '_').slice(0, 40);
+  await saveFile(blob, `${safe || '产物合集'}.zip`);
+}
+
 function CollectionItems({
   items,
+  collectionName,
   onRemove,
 }: {
   items: SavedArtifact[];
+  collectionName: string;
   onRemove: (id: string) => void;
 }) {
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+
   if (items.length === 0) {
     return (
       <div
@@ -403,45 +470,257 @@ function CollectionItems({
     );
   }
 
+  const allSelected = items.length > 0 && items.every((s) => selected.has(s.id));
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelect() {
+    setSelectMode(false);
+    setSelected(new Set());
+  }
+
+  async function handleDownloadSelected() {
+    if (selected.size === 0 || busy) return;
+    setBusy(true);
+    try {
+      const picked = items.filter((s) => selected.has(s.id));
+      await downloadCollectionZip(
+        { id: '', name: collectionName, createdAt: 0, updatedAt: 0 },
+        picked,
+      );
+      exitSelect();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemoveSelected() {
+    if (selected.size === 0 || busy) return;
+    if (!confirm(`从合集移出选中的 ${selected.size} 件产物？`)) return;
+    setBusy(true);
+    try {
+      for (const id of selected) await onRemove(id);
+      exitSelect();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {items.map((s) => {
-        const artifact: Artifact = {
-          id: s.artifactId,
-          name: s.name,
-          content: s.content,
-          mimeType: s.mimeType,
-        };
-        return (
-          <li key={s.id} style={{ position: 'relative' }}>
-            <ArtifactCard artifact={artifact} hideCollect />
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          marginBottom: 10,
+          gap: 8,
+        }}
+      >
+        {!selectMode ? (
+          <button
+            type="button"
+            onClick={() => setSelectMode(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: CONSULT.muted,
+              fontSize: 12,
+              letterSpacing: '0.04em',
+            }}
+          >
+            选择
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={exitSelect}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: CONSULT.muted,
+              fontSize: 12,
+            }}
+          >
+            取消
+          </button>
+        )}
+      </div>
+
+      <ul
+        style={{
+          listStyle: 'none',
+          margin: 0,
+          padding: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+        }}
+      >
+        {items.map((s) => {
+          const artifact: Artifact = {
+            id: s.artifactId,
+            name: s.name,
+            content: s.content,
+            mimeType: s.mimeType,
+          };
+          const checked = selected.has(s.id);
+          return (
+            <li key={s.id} style={{ position: 'relative' }}>
+              {selectMode && (
+                <button
+                  type="button"
+                  onClick={() => toggle(s.id)}
+                  style={{
+                    position: 'absolute',
+                    top: 10,
+                    left: 10,
+                    zIndex: 2,
+                    width: 20,
+                    height: 20,
+                    borderRadius: 5,
+                    border: `1.5px solid ${
+                      checked ? CONSULT.accent : CONSULT.borderStrong
+                    }`,
+                    background: checked ? CONSULT.accent : 'rgba(255,255,255,0.9)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                  aria-label={checked ? '取消选择' : '选择'}
+                >
+                  {checked && <Check size={12} strokeWidth={2.5} />}
+                </button>
+              )}
+              <div
+                style={{
+                  opacity: selectMode && !checked ? 0.72 : 1,
+                  paddingLeft: selectMode ? 8 : 0,
+                }}
+              >
+                <ArtifactCard artifact={artifact} hideCollect />
+              </div>
+              {!selectMode && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(s.id)}
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    background: 'rgba(255,255,255,0.9)',
+                    border: `1px solid ${CONSULT.border}`,
+                    borderRadius: 6,
+                    width: 28,
+                    height: 28,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: CONSULT.muted,
+                    cursor: 'pointer',
+                  }}
+                  aria-label="移出合集"
+                  title="移出合集"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {selectMode && (
+        <div
+          style={{
+            position: 'sticky',
+            bottom: 0,
+            marginTop: 16,
+            padding: '12px 0 calc(8px + env(safe-area-inset-bottom, 0px))',
+            background:
+              'linear-gradient(to top, rgba(255,255,255,0.96) 70%, transparent)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() =>
+              setSelected(allSelected ? new Set() : new Set(items.map((s) => s.id)))
+            }
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: CONSULT.muted,
+              fontSize: 12,
+            }}
+          >
+            {allSelected ? '取消全选' : `全选（${items.length}）`}
+          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
-              onClick={() => onRemove(s.id)}
+              disabled={selected.size === 0 || busy}
+              onClick={() => void handleDownloadSelected()}
               style={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                background: 'rgba(255,255,255,0.9)',
-                border: `1px solid ${CONSULT.border}`,
-                borderRadius: 6,
-                width: 28,
-                height: 28,
+                flex: 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: CONSULT.muted,
-                cursor: 'pointer',
+                gap: 6,
+                border: 'none',
+                borderRadius: 10,
+                padding: '10px',
+                fontSize: 12.5,
+                cursor: selected.size === 0 || busy ? 'default' : 'pointer',
+                opacity: selected.size === 0 || busy ? 0.4 : 1,
+                background: 'rgba(205, 210, 235, 0.45)',
+                color: CONSULT.text,
               }}
-              aria-label="移出合集"
-              title="移出合集"
             >
-              <Trash2 size={12} />
+              <Download size={14} />
+              下载{selected.size > 0 ? ` ${selected.size}` : ''}
             </button>
-          </li>
-        );
-      })}
-    </ul>
+            <button
+              type="button"
+              disabled={selected.size === 0 || busy}
+              onClick={() => void handleRemoveSelected()}
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                border: 'none',
+                borderRadius: 10,
+                padding: '10px',
+                fontSize: 12.5,
+                cursor: selected.size === 0 || busy ? 'default' : 'pointer',
+                opacity: selected.size === 0 || busy ? 0.4 : 1,
+                background: 'rgba(244, 220, 224, 0.65)',
+                color: '#b44a5a',
+              }}
+            >
+              <Trash2 size={14} />
+              移出{selected.size > 0 ? ` ${selected.size}` : ''}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

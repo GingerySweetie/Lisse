@@ -4,9 +4,17 @@ import { type ChatTurn } from '../api';
 import ArtifactCard from '../components/ArtifactCard';
 import ChatInput from '../components/ChatInput';
 import ConsultBackdrop from '../components/ConsultBackdrop';
+import ConsultConversationList from '../components/ConsultConversationList';
 import ConsultSettingsLine from '../components/ConsultSettingsLine';
 import { db, getSettings, saveSettings } from '../db';
 import { parseArtifacts } from '../lib/artifacts';
+import {
+  createConsultConversation,
+  deriveConsultTitle,
+  ensureActiveConsultConversation,
+  isDefaultConsultTitle,
+  setActiveConsultConversationId,
+} from '../lib/consult-conversations';
 import { CONSULT, CONSULT_SYS } from '../lib/consult-theme';
 import { newId } from '../lib/id';
 import { setStatusBarColor, resetStatusBar } from '../lib/status-bar';
@@ -15,7 +23,6 @@ import { runToolLoop } from '../lib/tools/loop';
 import type {
   Artifact,
   Attachment,
-  Conversation,
   Message,
   ToolCallRecord,
 } from '../types';
@@ -24,24 +31,6 @@ import type {
  * Consult session — immersive curtains, ChatInput at the bottom,
  * hidden settings behind the top-right purple hairline.
  */
-
-async function loadOrCreateConsultConv(): Promise<Conversation> {
-  const existing = await db.conversations.where({ room: 'consult' }).first();
-  if (existing) return existing;
-  const now = Date.now();
-  const conv: Conversation = {
-    id: newId(),
-    title: '精神分析 · 咨询室',
-    currentLeafId: null,
-    room: 'consult',
-    source: 'native',
-    accentColor: CONSULT.accent,
-    createdAt: now,
-    updatedAt: now,
-  };
-  await db.conversations.add(conv);
-  return conv;
-}
 
 interface LocalMsg {
   id: string;
@@ -56,10 +45,11 @@ interface LocalMsg {
 
 export default function ConsultChatPage() {
   const [convId, setConvId] = useState<string | null>(null);
+  const [listOpen, setListOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    loadOrCreateConsultConv().then((c) => setConvId(c.id));
+    ensureActiveConsultConversation().then((c) => setConvId(c.id));
   }, []);
 
   useEffect(() => {
@@ -133,6 +123,19 @@ export default function ConsultChatPage() {
   const [loading, setLoading] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
+  function switchConversation(id: string) {
+    abortRef.current?.abort();
+    setStreaming(null);
+    setLoading(false);
+    setActiveConsultConversationId(id);
+    setConvId(id);
+  }
+
+  async function handleNewConversation() {
+    const fresh = await createConsultConversation({ copyFrom: conv });
+    switchConversation(fresh.id);
+  }
+
   const persona = personaId
     ? personas?.find((p) => p.id === personaId)
     : undefined;
@@ -204,12 +207,17 @@ export default function ConsultChatPage() {
       createdAt: now,
     };
     await db.messages.add(userMessage);
+    const titlePatch =
+      isDefaultConsultTitle(conv.title) && trimmed
+        ? { title: deriveConsultTitle(trimmed) }
+        : {};
     await db.conversations.update(conv.id, {
       currentLeafId: userMessage.id,
       defaultEndpointId: ep.id,
       defaultModel: sendModel,
       personaId: personaId ?? undefined,
       updatedAt: now,
+      ...titlePatch,
     });
 
     setLoading(true);
@@ -384,7 +392,23 @@ export default function ConsultChatPage() {
           setEndpointId(epId);
           setModel(m);
         }}
+        onNewConversation={() => void handleNewConversation()}
+        onOpenConversationList={() => setListOpen(true)}
       />
+
+      {listOpen && (
+        <ConsultConversationList
+          activeId={convId}
+          onClose={() => setListOpen(false)}
+          onSelect={switchConversation}
+          onDeletedActive={(nextId) => {
+            if (nextId) switchConversation(nextId);
+            else void ensureActiveConsultConversation().then((c) =>
+              switchConversation(c.id),
+            );
+          }}
+        />
+      )}
 
       {/* Messages — no header chrome */}
       <div
