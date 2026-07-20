@@ -1,4 +1,5 @@
 import { db, getSettings, saveSettings } from '../db';
+import { rememberLastBackup } from './data-presence';
 import { saveFile } from './save-file';
 import {
   clearBackupFolder,
@@ -521,17 +522,25 @@ async function upsertAll<T>(
  * native writer in small chunks (no giant base64 bridge payload). Elsewhere
  * it builds a compact Blob and uses the normal saveFile fallbacks.
  */
+export interface BackupSaveResult {
+  filename: string;
+  path?: string;
+}
+
 export async function downloadBackup(
   filename: string,
   opts?: BackupExportOptions,
-): Promise<void> {
+): Promise<BackupSaveResult> {
   beginActiveWork();
   try {
     if (isBackupFolderPickerAvailable()) {
       const folder = await getValidBackupFolder();
       try {
-        await streamBackupToNative(filename, folder?.uri, opts);
-        return;
+        const path = await streamBackupToNative(filename, folder?.uri, opts);
+        const result = { filename, path };
+        rememberLastBackup(result);
+        noteBackupOnSentinel();
+        return result;
       } catch (err) {
         throwIfAborted(opts?.signal);
         const msg = err instanceof Error ? err.message : String(err);
@@ -541,8 +550,11 @@ export async function downloadBackup(
         if (folder && !msg.includes('UNSUPPORTED_API_LEVEL')) {
           // Retry to Downloads without the SAF folder.
           try {
-            await streamBackupToNative(filename, undefined, opts);
-            return;
+            const path = await streamBackupToNative(filename, undefined, opts);
+            const result = { filename, path };
+            rememberLastBackup(result);
+            noteBackupOnSentinel();
+            return result;
           } catch (retryErr) {
             throwIfAborted(opts?.signal);
             console.warn('[backup] native stream failed:', retryErr);
@@ -557,6 +569,10 @@ export async function downloadBackup(
     throwIfAborted(opts?.signal);
     opts?.onProgress?.(makeProgress(1, 1, '写入文件…', 'save'));
     await saveFile(blob, filename, 'JSON 备份文件');
+    const result = { filename };
+    rememberLastBackup(result);
+    noteBackupOnSentinel();
+    return result;
   } finally {
     endActiveWork();
   }
@@ -619,7 +635,7 @@ async function streamBackupToNative(
   filename: string,
   folderUri?: string,
   opts?: BackupExportOptions,
-): Promise<void> {
+): Promise<string | undefined> {
   opts?.onProgress?.(makeProgress(0, 1, '准备备份…', 'prepare'));
   const totalRows = await countBackupRows();
   // +1 for settings / header work so the bar isn't stuck at 0.
@@ -672,9 +688,10 @@ async function streamBackupToNative(
     await out.write('}');
     await out.flush();
     opts?.onProgress?.(makeProgress(total, total, '完成写入…', 'save'));
-    await FileSaver.endSave({ handle });
+    const ended = await FileSaver.endSave({ handle });
     await db.kv.put({ key: LAST_BACKUP_AT_KEY, value: now });
     noteBackupOnSentinel(now);
+    return ended?.path;
   } catch (err) {
     try {
       await FileSaver.abortSave({ handle });

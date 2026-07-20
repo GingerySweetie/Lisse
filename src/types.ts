@@ -76,6 +76,42 @@ export interface Artifact {
   mimeType: string;
 }
 
+/**
+ * User-defined collection for curated AI-generated artifacts
+ * (session notes, dream analyses, free-association dumps, etc.).
+ */
+export interface ArtifactCollection {
+  id: string;
+  /** Display name, e.g. "本周梦境". */
+  name: string;
+  /** Optional short note about what this shelf holds. */
+  note?: string;
+  /** Accent hex for the collection chip / shelf. */
+  color?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * A copy of an Artifact saved into a collection. Content is duplicated so the
+ * collection survives if the source chat message is later deleted.
+ */
+export interface SavedArtifact {
+  id: string;
+  collectionId: string;
+  /** Original artifact id (for de-dupe within a collection). */
+  artifactId: string;
+  name: string;
+  content: string;
+  mimeType: string;
+  /** Optional provenance — which chat / message produced it. */
+  sourceConversationId?: string;
+  sourceMessageId?: string;
+  /** Optional user tag / note at save time. */
+  note?: string;
+  createdAt: number;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -161,9 +197,10 @@ export interface Conversation {
   /** When set, this conversation is the discussion thread for a book. */
   bookId?: string;
   /** Special room marker — e.g. 'bedroom' for intimate per-persona threads,
-   *  'living-room' for the 理理酱+Rhema酱 三人群聊 singleton. These
+   *  'living-room' for the 理理酱+Rhema酱 三人群聊 singleton,
+   *  'consult' for psychoanalysis sessions (multiple allowed). These
    *  conversations are hidden from the main conversation sidebar. */
-  room?: 'bedroom' | 'living-room';
+  room?: 'bedroom' | 'living-room' | 'consult';
   /** Per-conversation accent color (hex). Independent of persona — the user
    *  picks it after choosing who to talk to. Used for the user's own bubble
    *  and small UI accents. Falls back to the default sky tone when unset. */
@@ -263,6 +300,13 @@ export interface AppSettings {
    *  keep the default lavender gradient + WisteriaDecor. Only applied to
    *  the message stream region (not header / composer / nav). */
   chatWallpaper: string | null;
+
+  // ─── Consult room wallpaper ───
+  /** Custom consult-room wallpaper as a data URL. Null/undefined = the
+   *  default waving white / pale-lavender curtain stripes. */
+  consultWallpaper: string | null;
+  /** Custom consult-room system prompt. Null/empty = built-in CONSULT_SYS. */
+  consultSystemPrompt: string | null;
 
   // ─── Clawd desk pet ───
   /** Floating pixel-crab desk pet that reacts to the current page and

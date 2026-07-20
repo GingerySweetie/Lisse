@@ -12,20 +12,22 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
+import { rememberConversationPresence } from '../lib/data-presence';
 import { relativeTime } from '../lib/format';
 import { touchDataSentinel } from '../lib/data-sentinel';
 import { getDbHealth, subscribeDbHealth } from '../lib/db-health';
 import type { Conversation, Persona } from '../types';
+import DataLossRecoverBanner from './DataLossRecoverBanner';
 import WisteriaMark from './WisteriaMark';
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
   const { conversationId: activeId } = useParams();
 
-  // No default `[]` — that made Dexie-blocked / still-opening look identical
-  // to "every conversation wiped" after a service-worker update.
-  const conversations = useLiveQuery(
-    () => db.conversations.orderBy('updatedAt').reverse().toArray(),
+  // No default `[]` — undefined means "still loading" / Dexie-blocked so we
+  // don't flash an empty list (looks like a wipe after SW update).
+  const conversations = useLiveQuery(() =>
+    db.conversations.orderBy('updatedAt').reverse().toArray(),
   );
   const personas = useLiveQuery(() => db.personas.toArray());
   const [dbKind, setDbKind] = useState(() => getDbHealth().kind);
@@ -39,6 +41,12 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         messageCount,
       });
     });
+  }, [conversations]);
+
+  useEffect(() => {
+    if (conversations && conversations.length > 0) {
+      rememberConversationPresence(conversations.length);
+    }
   }, [conversations]);
 
   // Track which conversation group headers are collapsed. Default: all expanded.
@@ -74,7 +82,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const allVisibleIds = useMemo(
     () =>
       (conversations ?? [])
-        .filter((c) => c.room !== 'bedroom')
+        .filter((c) => c.room !== 'bedroom' && c.room !== 'consult')
         .map((c) => c.id),
     [conversations],
   );
@@ -255,6 +263,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* ── Conversation list ───────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
+        <DataLossRecoverBanner onNavigate={onNavigate} />
         {conversations === undefined && (
           <div className="px-3 py-8 text-center text-sm text-ink-500">
             {dbKind === 'blocked' || dbKind === 'error'
@@ -271,7 +280,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         )}
 
         <div className="flex flex-col">
-          {groups.map((g) => {
+          {conversations !== undefined && groups.map((g) => {
             const isCollapsed = collapsed[g.key] ?? false;
             const dotColor = g.persona?.color ?? '#a0a0a0';
             const groupIds = g.conversations.map((c) => c.id);
@@ -519,6 +528,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                 { to: '/search', glyph: '⌕', label: '搜索' },
                 { to: '/circle', glyph: '○', label: 'OnlyCircle' },
                 { to: '/travel', glyph: '☁', label: '阳台' },
+                { to: '/consult', glyph: '◈', label: '咨询室' },
                 { to: '/body', glyph: '♡', label: '身体' },
                 { to: '/billing', glyph: '¥', label: '账单' },
                 { to: '/personas', glyph: '◇', label: '人格' },
@@ -577,7 +587,7 @@ function groupConversations(
   // Bedroom conversations are hidden — they live on /bedroom/:personaId.
   const buckets = new Map<string, Conversation[]>();
   for (const c of conversations) {
-    if (c.room === 'bedroom') continue;
+    if (c.room === 'bedroom' || c.room === 'consult') continue;
     let key: string;
     if (c.personaIds && c.personaIds.length >= 2) key = '__group__';
     else key = c.personaId ?? '__none__';

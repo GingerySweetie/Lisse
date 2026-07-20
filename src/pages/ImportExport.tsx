@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   ChevronLeft,
   Database,
@@ -174,6 +174,7 @@ async function readAllCounts(): Promise<DbCounts> {
 }
 
 export default function ImportExportPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
   const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
   const conversations = useLiveQuery(
@@ -673,6 +674,24 @@ export default function ImportExportPage() {
     });
   }
 
+  // Deep-link from wipe banner: /data?recover=1 → scroll + auto-scan.
+  const recoverParam = searchParams.get('recover');
+  const autoRecoverStarted = useRef(false);
+  useEffect(() => {
+    if (recoverParam !== '1' || autoRecoverStarted.current) return;
+    autoRecoverStarted.current = true;
+    const el = document.getElementById('manual-recover');
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (nativeRecoverAvailable) {
+      void handleScanNativeRecover();
+    }
+    // Drop the query so remounts don't re-scan forever.
+    const next = new URLSearchParams(searchParams);
+    next.delete('recover');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on enter
+  }, [recoverParam]);
+
   async function handleScanNativeRecover() {
     setRecoverStatus({ kind: 'busy', label: '正在扫描隐藏目录与下载文件夹…' });
     setRecoverScanNote(null);
@@ -970,7 +989,7 @@ export default function ImportExportPage() {
           </section>
 
           {/* ── Manual recover ───────────────────────────────────────────── */}
-          <section className="endpoint-card !mt-0">
+          <section id="manual-recover" className="endpoint-card !mt-0 scroll-mt-4">
             <div className="flex items-start gap-2">
               <HardDrive size={16} className="mt-0.5 shrink-0 text-lavender-400" strokeWidth={1.5} />
               <div className="min-w-0 flex-1">
@@ -1071,6 +1090,47 @@ export default function ImportExportPage() {
             )}
 
             <StatusLine status={recoverStatus} className="mt-2" />
+
+            {(() => {
+              const newestBackup = [...recoverItems]
+                .filter(
+                  (i) =>
+                    i.kindGuess === 'backup' ||
+                    /^lisse-backup/i.test(i.name) ||
+                    i.name.toLowerCase().includes('backup'),
+                )
+                .sort((a, b) => b.modifiedAt - a.modifiedAt)[0];
+              const dbLooksEmpty =
+                counts != null &&
+                !counts.error &&
+                counts.conversations === 0 &&
+                counts.messages === 0;
+              if (!newestBackup || !dbLooksEmpty) return null;
+              return (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/90 px-3 py-3">
+                  <p className="text-sm font-medium text-emerald-900">
+                    找到可用备份，可一键恢复
+                  </p>
+                  <p className="mt-1 break-all text-xs text-emerald-800/80">
+                    {newestBackup.name}
+                    {newestBackup.modifiedAt
+                      ? ` · ${new Date(newestBackup.modifiedAt).toLocaleString('zh-CN')}`
+                      : ''}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={recoverStatus.kind === 'busy'}
+                    onClick={() =>
+                      void handleImportRecoverItem(newestBackup, 'merge')
+                    }
+                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    <HardDrive size={14} />
+                    一键合并恢复
+                  </button>
+                </div>
+              );
+            })()}
 
             {recoverItems.length > 0 && (
               <ul className="mt-4 divide-y divide-lavender-100 rounded-xl border border-lavender-100 bg-white/70">
