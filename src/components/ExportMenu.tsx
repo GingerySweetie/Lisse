@@ -11,9 +11,16 @@ interface Props {
   conversation: Conversation | undefined;
   persona?: Persona;
   disabled?: boolean;
+  /** Active branch (default) vs full message tree. Consult uses tree. */
+  scope?: 'branch' | 'tree';
 }
 
-export default function ExportMenu({ conversation, persona, disabled }: Props) {
+export default function ExportMenu({
+  conversation,
+  persona,
+  disabled,
+  scope = 'branch',
+}: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -39,6 +46,7 @@ export default function ExportMenu({ conversation, persona, disabled }: Props) {
     setOpen(false);
     const out = await exportConversation(conversation, {
       format,
+      scope,
       persona,
       includeUsage: true,
     });
@@ -81,7 +89,7 @@ export default function ExportMenu({ conversation, persona, disabled }: Props) {
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-700 transition hover:bg-lavender-50"
           >
             <FileJson size={14} />
-            JSON (可重导入)
+            JSON（可重导入）
           </button>
         </div>
       )}

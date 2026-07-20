@@ -263,6 +263,7 @@ export default function ConsultSettingsLine({
               conversation={conversation ?? undefined}
               persona={persona}
               disabled={exportDisabled || !conversation}
+              scope="tree"
             />
           </MenuRow>
 
