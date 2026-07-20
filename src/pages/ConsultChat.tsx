@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { type ChatTurn } from '../api';
-import ArtifactCard from '../components/ArtifactCard';
+import { thinkingOptsFromEndpoint } from '../api/thinking';
 import ChatInput from '../components/ChatInput';
 import ConsultBackdrop from '../components/ConsultBackdrop';
 import ConsultConversationList from '../components/ConsultConversationList';
 import ConsultSettingsLine from '../components/ConsultSettingsLine';
+import MessageBubble from '../components/MessageBubble';
 import { db, getSettings, saveSettings } from '../db';
 import { parseArtifacts } from '../lib/artifacts';
 import {
@@ -20,28 +21,13 @@ import { newId } from '../lib/id';
 import { setStatusBarColor, resetStatusBar } from '../lib/status-bar';
 import { availableTools } from '../lib/tools';
 import { runToolLoop } from '../lib/tools/loop';
-import type {
-  Artifact,
-  Attachment,
-  Message,
-  ToolCallRecord,
-} from '../types';
+import type { Attachment, Message, ToolCallRecord } from '../types';
 
 /**
  * Consult session — immersive curtains, ChatInput at the bottom,
  * hidden settings behind the top-right purple hairline.
+ * Reuses MessageBubble for markdown / cache hit / thinking chain.
  */
-
-interface LocalMsg {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  artifacts?: Artifact[];
-  attachments?: Attachment[];
-  toolCalls?: ToolCallRecord[];
-  parentId: string | null;
-  createdAt: number;
-}
 
 export default function ConsultChatPage() {
   const [convId, setConvId] = useState<string | null>(null);
@@ -60,11 +46,12 @@ export default function ConsultChatPage() {
     };
   }, []);
 
-  const conv = useLiveQuery(
-    () => (convId ? db.conversations.get(convId) : undefined),
-    [convId],
-    undefined,
-  ) ?? null;
+  const conv =
+    useLiveQuery(
+      () => (convId ? db.conversations.get(convId) : undefined),
+      [convId],
+      undefined,
+    ) ?? null;
 
   const settings = useLiveQuery(() => getSettings(), [], null);
   const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
@@ -119,13 +106,21 @@ export default function ConsultChatPage() {
     [],
   );
 
-  const [streaming, setStreaming] = useState<LocalMsg | null>(null);
+  const [streamingMsg, setStreamingMsg] = useState<Message | null>(null);
+  const [streamingText, setStreamingText] = useState('');
+  const [streamingThinking, setStreamingThinking] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
+  function clearStreaming() {
+    setStreamingMsg(null);
+    setStreamingText('');
+    setStreamingThinking('');
+  }
+
   function switchConversation(id: string) {
     abortRef.current?.abort();
-    setStreaming(null);
+    clearStreaming();
     setLoading(false);
     setActiveConsultConversationId(id);
     setConvId(id);
@@ -141,27 +136,19 @@ export default function ConsultChatPage() {
     : undefined;
   const style = styleId ? styles?.find((s) => s.id === styleId) : undefined;
 
-  const view: LocalMsg[] = [
-    ...(storedMessages ?? []).map(
-      (m): LocalMsg => ({
-        id: m.id,
-        role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.content,
-        artifacts: m.artifacts,
-        attachments: m.attachments,
-        toolCalls: m.toolCalls,
-        parentId: m.parentId,
-        createdAt: m.createdAt,
-      }),
-    ),
-    ...(streaming ? [streaming] : []),
+  const view: Message[] = [
+    ...(storedMessages ?? []),
+    ...(streamingMsg &&
+    !(storedMessages ?? []).some((m) => m.id === streamingMsg.id)
+      ? [streamingMsg]
+      : []),
   ];
 
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [view.length, streaming?.content]);
+  }, [view.length, streamingText, streamingThinking]);
 
   async function handleSend(text: string, attachments: Attachment[]) {
     if (!conv || loading) return;
@@ -226,8 +213,6 @@ export default function ConsultChatPage() {
     abortRef.current = controller;
 
     const history = [...(storedMessages ?? []), userMessage];
-    // Room frame first (trauma + partner-doctor play); persona is the concrete
-    // partner voice layered under that frame; style last (tone override).
     const roomPrompt = resolveConsultSystemPrompt(
       liveSettings.consultSystemPrompt,
     );
@@ -261,14 +246,20 @@ export default function ConsultChatPage() {
     ];
 
     const assistantId = newId();
-    const streamingMsg: LocalMsg = {
+    const draftAssistant: Message = {
       id: assistantId,
+      conversationId: conv.id,
+      parentId: userMessage.id,
       role: 'assistant',
       content: '',
-      parentId: userMessage.id,
+      status: 'streaming',
+      endpointId: ep.id,
+      model: sendModel,
       createdAt: Date.now() + 1,
     };
-    setStreaming(streamingMsg);
+    setStreamingMsg(draftAssistant);
+    setStreamingText('');
+    setStreamingThinking('');
 
     const tools = liveSettings.toolsEnabled
       ? await availableTools({ conversationId: conv.id })
@@ -276,7 +267,9 @@ export default function ConsultChatPage() {
 
     let acc = '';
     let lastVisible = '';
+    let thinkingAcc = '';
     const liveToolCalls: ToolCallRecord[] = [];
+    const thinking = thinkingOptsFromEndpoint(ep);
 
     try {
       const result = await runToolLoop({
@@ -287,6 +280,7 @@ export default function ConsultChatPage() {
         ctx: { conversationId: conv.id },
         maxTokens: 4096,
         signal: controller.signal,
+        thinking,
         callbacks: {
           onTextDelta: (d) => {
             acc += d;
@@ -296,32 +290,52 @@ export default function ConsultChatPage() {
               .replace(/\[choices\][\s\S]*?\[\/choices\]/g, '')
               .replace(/\[choices\][\s\S]*$/g, '')
               .trim();
-            setStreaming({
-              ...streamingMsg,
-              content: lastVisible,
-              toolCalls: [...liveToolCalls],
-            });
+            setStreamingText(lastVisible);
+            setStreamingMsg((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    content: lastVisible,
+                    toolCalls:
+                      liveToolCalls.length > 0 ? [...liveToolCalls] : undefined,
+                  }
+                : prev,
+            );
+          },
+          onThinkingDelta: (d) => {
+            thinkingAcc += d;
+            setStreamingThinking(thinkingAcc);
+            setStreamingMsg((prev) =>
+              prev ? { ...prev, thinking: thinkingAcc } : prev,
+            );
           },
           onToolCallResolved: (c) => {
             liveToolCalls.push(c);
-            setStreaming({
-              ...streamingMsg,
-              content: lastVisible,
-              toolCalls: [...liveToolCalls],
-            });
+            setStreamingMsg((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    content: lastVisible,
+                    toolCalls: [...liveToolCalls],
+                  }
+                : prev,
+            );
           },
         },
       });
 
       if (controller.signal.aborted) {
-        setStreaming(null);
+        clearStreaming();
         setLoading(false);
         return;
       }
 
-      const { cleanText, artifacts, choices } = parseArtifacts(acc || lastVisible);
+      const { cleanText, artifacts, choices } = parseArtifacts(
+        acc || lastVisible,
+      );
       const errored = result.errored;
       const errorMessage = result.errorMessage;
+      const thinkingText = (result.thinking || thinkingAcc).trim();
 
       const finalAssistant: Message = {
         id: assistantId,
@@ -338,6 +352,8 @@ export default function ConsultChatPage() {
         endpointId: ep.id,
         model: sendModel,
         toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
+        thinking: thinkingText || undefined,
+        usage: result.usage,
         createdAt: Date.now(),
       };
       await db.messages.add(finalAssistant);
@@ -356,16 +372,19 @@ export default function ConsultChatPage() {
         console.error('[consult] send failed', e);
       }
     } finally {
-      setStreaming(null);
+      clearStreaming();
       setLoading(false);
     }
   }
 
   function handleAbort() {
     abortRef.current?.abort();
-    setStreaming(null);
+    clearStreaming();
     setLoading(false);
   }
+
+  const lastId = view.at(-1)?.id;
+  const accent = conv?.accentColor ?? '#CDD2EB';
 
   return (
     <div
@@ -413,14 +432,14 @@ export default function ConsultChatPage() {
           onSelect={switchConversation}
           onDeletedActive={(nextId) => {
             if (nextId) switchConversation(nextId);
-            else void ensureActiveConsultConversation().then((c) =>
-              switchConversation(c.id),
-            );
+            else
+              void ensureActiveConsultConversation().then((c) =>
+                switchConversation(c.id),
+              );
           }}
         />
       )}
 
-      {/* Messages — no header chrome */}
       <div
         ref={scrollerRef}
         style={{
@@ -449,65 +468,39 @@ export default function ConsultChatPage() {
             </div>
           )}
 
-          {view.map((msg) => (
-            <div
-              key={msg.id}
-              style={{
-                marginBottom: msg.role === 'user' ? 16 : 26,
-                animation: 'consultMsgIn 0.45s ease both',
-              }}
-            >
-              {msg.role === 'user' ? (
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <div
-                    style={{
-                      maxWidth: '78%',
-                      padding: '10px 16px',
-                      fontSize: 14,
-                      lineHeight: 1.75,
-                      color: CONSULT.text,
-                      whiteSpace: 'pre-wrap',
-                      fontWeight: 300,
-                      background: CONSULT.userBubble,
-                      border: `1px solid ${CONSULT.userBorder}`,
-                      borderRadius: '16px 16px 4px 16px',
-                    }}
-                  >
-                    {msg.content}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      fontSize: 15,
-                      lineHeight: 1.9,
-                      color: CONSULT.text,
-                      whiteSpace: 'pre-wrap',
-                      fontWeight: 350,
-                      letterSpacing: '0.02em',
-                    }}
-                  >
-                    {msg.content}
-                  </div>
-                  {msg.artifacts && msg.artifacts.length > 0 && (
-                    <div className="artifact-list" style={{ marginTop: 12 }}>
-                      {msg.artifacts.map((a) => (
-                        <ArtifactCard
-                          key={a.id}
-                          artifact={a}
-                          sourceConversationId={conv?.id}
-                          sourceMessageId={msg.id}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
+          {view.map((msg) => {
+            const isStreamingRow =
+              msg.id === streamingMsg?.id && msg.status === 'streaming';
+            return (
+              <div
+                key={msg.id}
+                className="consult-msg-row"
+                style={{
+                  marginBottom: msg.role === 'user' ? 14 : 20,
+                  animation: 'consultMsgIn 0.45s ease both',
+                }}
+              >
+                <MessageBubble
+                  message={msg}
+                  streamingText={isStreamingRow ? streamingText : undefined}
+                  streamingThinking={
+                    isStreamingRow ? streamingThinking : undefined
+                  }
+                  disabled={loading}
+                  accentColor={accent}
+                  isChoicesClickable={
+                    msg.role === 'assistant' &&
+                    msg.id === lastId &&
+                    !loading &&
+                    Boolean(msg.choices?.length)
+                  }
+                  onSend={(choice) => void handleSend(choice, [])}
+                />
+              </div>
+            );
+          })}
 
-          {loading && !streaming?.content && (
+          {loading && !streamingText && !streamingThinking && (
             <div style={{ marginTop: 8, display: 'flex', gap: 5 }}>
               {[0, 1, 2].map((i) => (
                 <div
@@ -527,7 +520,6 @@ export default function ConsultChatPage() {
         </div>
       </div>
 
-      {/* Reuse normal chat composer (text + file/image send) */}
       <div
         style={{
           position: 'relative',
@@ -569,6 +561,23 @@ export default function ConsultChatPage() {
         }
         .consult-session .wis-send-btn:hover {
           background: rgba(192, 198, 227, 0.35);
+        }
+        /* Tighter paragraph rhythm than default chat — short analytic lines
+           shouldn't read as huge blank bands between sentences. */
+        .consult-session .prose-msg p,
+        .consult-session .wis-ai-body p {
+          margin: 0.28em 0;
+        }
+        .consult-session .prose-msg p:first-child,
+        .consult-session .wis-ai-body p:first-child {
+          margin-top: 0;
+        }
+        .consult-session .prose-msg p:last-child,
+        .consult-session .wis-ai-body p:last-child {
+          margin-bottom: 0;
+        }
+        .consult-session .wis-ai-body {
+          line-height: 1.65;
         }
       `}</style>
     </div>
