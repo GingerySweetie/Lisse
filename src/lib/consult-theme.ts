@@ -87,3 +87,11 @@ export const CONSULT_SYS = `你在精神分析咨询室里工作。窗帘拉着�
 
 # 开场
 若她尚未开口，只说一句极短的邀请，例如「窗帘拉着。今天想从哪一段开始？」——然后等她。`;
+
+/** Resolve the room system prompt: custom override, else built-in default. */
+export function resolveConsultSystemPrompt(
+  custom: string | null | undefined,
+): string {
+  const trimmed = custom?.trim();
+  return trimmed ? trimmed : CONSULT_SYS;
+}

@@ -706,6 +706,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   browserUserAgent: null,
   chatWallpaper: null,
   consultWallpaper: null,
+  consultSystemPrompt: null,
   clawdPetEnabled: true,
   travelDaemon: {
     enabled: false,

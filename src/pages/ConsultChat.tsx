@@ -15,7 +15,7 @@ import {
   isDefaultConsultTitle,
   setActiveConsultConversationId,
 } from '../lib/consult-conversations';
-import { CONSULT, CONSULT_SYS } from '../lib/consult-theme';
+import { CONSULT, resolveConsultSystemPrompt } from '../lib/consult-theme';
 import { newId } from '../lib/id';
 import { setStatusBarColor, resetStatusBar } from '../lib/status-bar';
 import { availableTools } from '../lib/tools';
@@ -228,7 +228,10 @@ export default function ConsultChatPage() {
     const history = [...(storedMessages ?? []), userMessage];
     // Room frame first (trauma + partner-doctor play); persona is the concrete
     // partner voice layered under that frame; style last (tone override).
-    const systemTurns: ChatTurn[] = [{ role: 'system', content: CONSULT_SYS }];
+    const roomPrompt = resolveConsultSystemPrompt(
+      liveSettings.consultSystemPrompt,
+    );
+    const systemTurns: ChatTurn[] = [{ role: 'system', content: roomPrompt }];
     if (persona?.systemPrompt?.trim()) {
       systemTurns.push({
         role: 'system',

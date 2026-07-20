@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import AccentPicker from './AccentPicker';
+import ConsultPromptEditor from './ConsultPromptEditor';
 import EndpointPicker from './EndpointPicker';
 import ExportMenu from './ExportMenu';
 import PersonaPicker from './PersonaPicker';
@@ -50,9 +51,11 @@ export default function ConsultSettingsLine({
 }: Props) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const settings = useLiveQuery(() => getSettings(), [], null);
   const wallpaper = settings?.consultWallpaper ?? null;
+  const promptCustom = Boolean(settings?.consultSystemPrompt?.trim());
 
   useEffect(() => {
     if (!open) return;
@@ -267,6 +270,17 @@ export default function ConsultSettingsLine({
             />
           </MenuRow>
 
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setPromptOpen(true);
+            }}
+            style={menuBtnStyle}
+          >
+            房间提示词{promptCustom ? ' · 已自定义' : ''}
+          </button>
+
           <div
             style={{
               height: 1,
@@ -330,6 +344,13 @@ export default function ConsultSettingsLine({
             离开咨询室
           </button>
         </div>
+      )}
+
+      {promptOpen && (
+        <ConsultPromptEditor
+          value={settings?.consultSystemPrompt ?? null}
+          onClose={() => setPromptOpen(false)}
+        />
       )}
 
       <style>{`
