@@ -34,13 +34,14 @@ export const CONSULT = {
   accentHover: '#4a2f66',
   border: 'rgba(92, 61, 122, 0.12)',
   borderStrong: 'rgba(92, 61, 122, 0.24)',
-  /** Soft periwinkle for user bubbles + composer field. */
-  uiFill: '#CDD2EB',
-  userBubble: '#CDD2EB',
-  userBorder: 'rgba(168, 175, 210, 0.55)',
-  inputBg: '#CDD2EB',
-  inputBorder: 'rgba(168, 175, 210, 0.65)',
-  inputBorderFocus: 'rgba(140, 150, 190, 0.85)',
+  /** Soft periwinkle for user bubbles + composer field.
+   *  80% transparent → alpha 0.2 over the curtain backdrop. */
+  uiFill: 'rgba(205, 210, 235, 0.2)',
+  userBubble: 'rgba(205, 210, 235, 0.2)',
+  userBorder: 'rgba(168, 175, 210, 0.22)',
+  inputBg: 'rgba(205, 210, 235, 0.2)',
+  inputBorder: 'rgba(168, 175, 210, 0.28)',
+  inputBorderFocus: 'rgba(140, 150, 190, 0.45)',
   shadow: '0 8px 28px rgba(74, 58, 106, 0.06)',
   fontDisplay: "'Cormorant Garamond', 'Noto Serif SC', Georgia, serif",
   fontBody: "'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif",

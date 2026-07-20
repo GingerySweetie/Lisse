@@ -534,7 +534,7 @@ export default function ConsultChatPage() {
           background: ${CONSULT.uiFill};
         }
         .consult-session .wis-send-btn:hover {
-          background: #c0c6e3;
+          background: rgba(192, 198, 227, 0.35);
         }
       `}</style>
     </div>
