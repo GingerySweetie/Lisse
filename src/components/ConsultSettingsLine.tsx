@@ -219,7 +219,14 @@ export default function ConsultSettingsLine({
               styleId={styleId}
               onChange={async (id) => {
                 onStyleChange(id);
+                // Global default + this consult session — so every send picks it up.
                 await saveSettings({ defaultStyleId: id });
+                if (conversation) {
+                  await db.conversations.update(conversation.id, {
+                    styleId: id ?? undefined,
+                    updatedAt: Date.now(),
+                  });
+                }
               }}
             />
           </MenuRow>
