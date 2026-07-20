@@ -203,7 +203,12 @@ export default function MessageBubble({
             {message.artifacts && message.artifacts.length > 0 && !isStreaming && (
               <div className="artifact-list">
                 {message.artifacts.map((a) => (
-                  <ArtifactCard key={a.id} artifact={a} />
+                  <ArtifactCard
+                    key={a.id}
+                    artifact={a}
+                    sourceConversationId={message.conversationId}
+                    sourceMessageId={message.id}
+                  />
                 ))}
               </div>
             )}

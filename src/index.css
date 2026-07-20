@@ -1619,6 +1619,13 @@
   margin-top: 8px;
 }
 
+.artifact-card-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+}
+
 .artifact-card {
   display: flex;
   align-items: center;
@@ -1630,13 +1637,33 @@
   cursor: pointer;
   text-align: left;
   transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   box-shadow: 0 1px 3px rgba(100, 70, 130, 0.06);
 }
 .artifact-card:hover {
   background: rgba(240, 232, 252, 0.92);
   border-color: rgba(176, 138, 204, 0.48);
   box-shadow: 0 2px 8px rgba(100, 70, 130, 0.10);
+}
+
+.artifact-collect-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  flex-shrink: 0;
+  background: rgba(245, 240, 252, 0.75);
+  border: 1px solid rgba(92, 61, 122, 0.22);
+  border-radius: 12px;
+  color: hsla(275, 32%, 38%, 0.85);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.artifact-collect-btn:hover {
+  background: rgba(92, 61, 122, 0.1);
+  border-color: rgba(92, 61, 122, 0.4);
+  color: #5c3d7a;
 }
 
 .artifact-card-icon {

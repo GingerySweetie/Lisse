@@ -259,10 +259,26 @@ const ico: Record<string, IconFn> = {
       <path d="M2 10h20" />
     </svg>
   ),
+  consult: (c) => (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={c}
+      strokeWidth="1.3"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 20V8l8-4 8 4v12" />
+      <path d="M9 20v-6h6v6" />
+      <path d="M4 12h16" />
+    </svg>
+  ),
 };
 
 interface SpaceDef {
-  id: 'chat' | 'books' | 'bedroom' | 'body' | 'billing';
+  id: 'chat' | 'books' | 'bedroom' | 'consult' | 'body' | 'billing';
   top: string;
   left: string;
   lineW: string;
@@ -306,6 +322,16 @@ const spaces: SpaceDef[] = [
     dots: ['rgba(120,55,65,0.5)', 'rgba(50,55,110,0.5)'],
   },
   {
+    id: 'consult',
+    top: '72%',
+    left: '18%',
+    lineW: '24%',
+    label: '咨询室',
+    icon: 'consult',
+    color: 'rgba(92,61,122,0.55)',
+    delay: 0.16,
+  },
+  {
     id: 'body',
     top: '65%',
     left: '75%',
@@ -313,7 +339,7 @@ const spaces: SpaceDef[] = [
     label: '身体',
     icon: 'heart',
     color: 'rgba(90,140,128,0.45)',
-    delay: 0.18,
+    delay: 0.2,
   },
   {
     id: 'billing',
@@ -323,7 +349,7 @@ const spaces: SpaceDef[] = [
     label: '账单',
     icon: 'wallet',
     color: 'rgba(140,120,100,0.45)',
-    delay: 0.24,
+    delay: 0.26,
   },
 ];
 
@@ -457,9 +483,11 @@ export default function HomePage() {
         ? '/books'
         : sp.id === 'bedroom'
           ? '/bedroom'
-          : sp.id === 'body'
-            ? '/body'
-            : '/billing';
+          : sp.id === 'consult'
+            ? '/consult'
+            : sp.id === 'body'
+              ? '/body'
+              : '/billing';
     navigate(target);
   }
 
