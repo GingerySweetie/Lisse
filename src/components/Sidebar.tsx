@@ -14,6 +14,8 @@ import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
 import { rememberConversationPresence } from '../lib/data-presence';
 import { relativeTime } from '../lib/format';
+import { touchDataSentinel } from '../lib/data-sentinel';
+import { getDbHealth, subscribeDbHealth } from '../lib/db-health';
 import type { Conversation, Persona } from '../types';
 import DataLossRecoverBanner from './DataLossRecoverBanner';
 import WisteriaMark from './WisteriaMark';
@@ -22,12 +24,24 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
   const { conversationId: activeId } = useParams();
 
-  // No default `[]` — undefined means "still loading" so we don't flash an
-  // empty list (which looks like a wipe and panics people into replace-import).
+  // No default `[]` — undefined means "still loading" / Dexie-blocked so we
+  // don't flash an empty list (looks like a wipe after SW update).
   const conversations = useLiveQuery(() =>
     db.conversations.orderBy('updatedAt').reverse().toArray(),
   );
-  const personas = useLiveQuery(() => db.personas.toArray(), [], []);
+  const personas = useLiveQuery(() => db.personas.toArray());
+  const [dbKind, setDbKind] = useState(() => getDbHealth().kind);
+  useEffect(() => subscribeDbHealth((h) => setDbKind(h.kind)), []);
+
+  useEffect(() => {
+    if (!conversations || conversations.length === 0) return;
+    void db.messages.count().then((messageCount) => {
+      touchDataSentinel({
+        conversationCount: conversations.length,
+        messageCount,
+      });
+    });
+  }, [conversations]);
 
   useEffect(() => {
     if (conversations && conversations.length > 0) {
@@ -252,7 +266,9 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <DataLossRecoverBanner onNavigate={onNavigate} />
         {conversations === undefined && (
           <div className="px-3 py-8 text-center text-sm text-ink-500">
-            加载对话中…
+            {dbKind === 'blocked' || dbKind === 'error'
+              ? '数据库暂不可用，对话还在本地——请看顶部提示。'
+              : '正在读取对话…'}
           </div>
         )}
         {conversations !== undefined && groups.length === 0 && (

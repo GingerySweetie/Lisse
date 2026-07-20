@@ -15,6 +15,8 @@ import {
 import { formatStorageError } from './storage-guards';
 import { yieldToUi } from './export-progress';
 import type { ImportBackupOptions, ImportBackupResult } from './backup';
+import { beginActiveWork, endActiveWork } from './stream-activity';
+import { touchDataSentinel } from './data-sentinel';
 
 const UPSERT_CHUNK = 200;
 
@@ -257,6 +259,7 @@ export async function importBackupStream(
   source: BackupImportSource,
   opts: StreamImportBackupOptions,
 ): Promise<ImportBackupResult> {
+  beginActiveWork();
   const result = emptyResult();
   const preservedFolder =
     opts.mode === 'replace' ? await getBackupFolder() : null;
@@ -272,112 +275,131 @@ export async function importBackupStream(
   };
 
   try {
-    report('正在解析备份…');
-    const chunks = await chunksForSource(source);
+    try {
+      report('正在解析备份…');
+      const chunks = await chunksForSource(source);
 
-    for await (const ev of parseJsonObjectStream(chunks, {
-      arrayBatchSize: 50,
-    })) {
-      if (ev.type === 'value') {
-        if (ev.key === '__lisse') {
-          marker = typeof ev.value === 'string' ? ev.value : null;
-          if (marker !== 'backup') {
-            throw new Error('不是 Lisse 的备份文件');
+      for await (const ev of parseJsonObjectStream(chunks, {
+        arrayBatchSize: 50,
+      })) {
+        if (ev.type === 'value') {
+          if (ev.key === '__lisse') {
+            marker = typeof ev.value === 'string' ? ev.value : null;
+            if (marker !== 'backup') {
+              throw new Error('不是 Lisse 的备份文件');
+            }
+          } else if (ev.key === 'version') {
+            version = typeof ev.value === 'number' ? ev.value : null;
+          } else if (ev.key === 'settings') {
+            if (ev.value && typeof ev.value === 'object') {
+              settings = ev.value as AppSettings;
+            }
           }
-        } else if (ev.key === 'version') {
-          version = typeof ev.value === 'number' ? ev.value : null;
-        } else if (ev.key === 'settings') {
-          if (ev.value && typeof ev.value === 'object') {
-            settings = ev.value as AppSettings;
+          // exportedAt and unknown scalars ignored
+          continue;
+        }
+
+        if (ev.type === 'array-start') {
+          if (!TABLE_KEY_SET.has(ev.key)) continue;
+          const name = ev.key as BackupTableKey;
+          seenTables.add(name);
+          if (!keepIds.has(name)) keepIds.set(name, new Set());
+          report(`导入 ${name}…`);
+          continue;
+        }
+
+        if (ev.type === 'array-items') {
+          if (!TABLE_KEY_SET.has(ev.key)) continue;
+          const name = ev.key as BackupTableKey;
+          const keep = keepIds.get(name) ?? new Set<string>();
+          keepIds.set(name, keep);
+          for (const row of ev.items) {
+            const id = rowId(row);
+            if (id) keep.add(id);
           }
+          const n = await upsertRows(name, ev.items);
+          const field = RESULT_FIELD[name];
+          if (field !== 'settingsApplied') {
+            (result[field] as number) += n;
+          }
+          report(`导入 ${name}…已写入 ${result[field]} 条`);
+          await yieldToUi();
+          continue;
         }
-        // exportedAt and unknown scalars ignored
-        continue;
       }
 
-      if (ev.type === 'array-start') {
-        if (!TABLE_KEY_SET.has(ev.key)) continue;
-        const name = ev.key as BackupTableKey;
-        seenTables.add(name);
-        if (!keepIds.has(name)) keepIds.set(name, new Set());
-        report(`导入 ${name}…`);
-        continue;
+      if (marker !== 'backup') {
+        throw new Error('不是 Lisse 的备份文件');
+      }
+      if (version != null && version !== 4 && version !== 5) {
+        throw new Error(`不支持的备份版本：${version}`);
       }
 
-      if (ev.type === 'array-items') {
-        if (!TABLE_KEY_SET.has(ev.key)) continue;
-        const name = ev.key as BackupTableKey;
-        const keep = keepIds.get(name) ?? new Set<string>();
-        keepIds.set(name, keep);
-        for (const row of ev.items) {
-          const id = rowId(row);
-          if (id) keep.add(id);
+      if (opts.mode === 'replace') {
+        report('清理备份未保留的旧行…');
+        // Only touch tables the backup actually contained. Clearing unseen
+        // tables (travel / diary / circle / …) on an older backup was wiping
+        // live data the file never claimed to replace.
+        for (const name of seenTables) {
+          const keep = keepIds.get(name);
+          if (!keep || keep.size === 0) {
+            await asTable(name).clear();
+          } else {
+            await pruneTable(name, keep);
+          }
+          await yieldToUi();
         }
-        const n = await upsertRows(name, ev.items);
-        const field = RESULT_FIELD[name];
-        if (field !== 'settingsApplied') {
-          (result[field] as number) += n;
+
+        // Never wipe kv when the backup has no settings — that used to erase
+        // defaultEndpointId / wallpaper / diary / backup-folder pointer even on
+        // a "successful" replace of conversations alone.
+        if (settings) {
+          await saveSettings(settings);
+          result.settingsApplied = true;
         }
-        report(`导入 ${name}…已写入 ${result[field]} 条`);
-        await yieldToUi();
-        continue;
-      }
-    }
-
-    if (marker !== 'backup') {
-      throw new Error('不是 Lisse 的备份文件');
-    }
-    if (version != null && version !== 4 && version !== 5) {
-      throw new Error(`不支持的备份版本：${version}`);
-    }
-
-    if (opts.mode === 'replace') {
-      report('清理备份未保留的旧行…');
-      // Only touch tables the backup actually contained. Clearing unseen
-      // tables (travel / diary / circle / …) on an older backup was wiping
-      // live data the file never claimed to replace.
-      for (const name of seenTables) {
-        const keep = keepIds.get(name);
-        if (!keep || keep.size === 0) {
-          await asTable(name).clear();
-        } else {
-          await pruneTable(name, keep);
-        }
-        await yieldToUi();
-      }
-
-      // Never wipe kv when the backup has no settings — that used to erase
-      // defaultEndpointId / wallpaper / diary / backup-folder pointer even on
-      // a "successful" replace of conversations alone.
-      if (settings) {
+      } else if (settings) {
         await saveSettings(settings);
         result.settingsApplied = true;
       }
-    } else if (settings) {
-      await saveSettings(settings);
-      result.settingsApplied = true;
+    } catch (err) {
+      // Preserve SAF grant if anything above disturbed kv (legacy path / races).
+      if (preservedFolder) {
+        try {
+          await setBackupFolder(preservedFolder);
+        } catch (folderErr) {
+          console.warn(
+            '[backup-stream-import] restore backup folder failed',
+            folderErr,
+          );
+        }
+      }
+      throw new Error(formatStorageError(err), { cause: err });
     }
-  } catch (err) {
-    // Preserve SAF grant if anything above disturbed kv (legacy path / races).
+
     if (preservedFolder) {
       try {
         await setBackupFolder(preservedFolder);
       } catch (folderErr) {
-        console.warn('[backup-stream-import] restore backup folder failed', folderErr);
+        // Non-fatal: data restore already committed, but surface for debugging.
+        console.warn(
+          '[backup-stream-import] restore backup folder failed',
+          folderErr,
+        );
       }
     }
-    throw new Error(formatStorageError(err), { cause: err });
-  }
 
-  if (preservedFolder) {
     try {
-      await setBackupFolder(preservedFolder);
-    } catch (folderErr) {
-      // Non-fatal: data restore already committed, but surface for debugging.
-      console.warn('[backup-stream-import] restore backup folder failed', folderErr);
+      const [conversationCount, messageCount] = await Promise.all([
+        db.conversations.count(),
+        db.messages.count(),
+      ]);
+      touchDataSentinel({ conversationCount, messageCount });
+    } catch {
+      // ignore
     }
+    report('导入完成');
+    return result;
+  } finally {
+    endActiveWork();
   }
-
-  report('导入完成');
-  return result;
 }

@@ -31,11 +31,13 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         navigateFallbackDenylist: [/^\/api/],
-        // Take over from old SW the moment a new one is installed, instead of
-        // waiting for every tab to close. Combined with autoUpdate this means
-        // a new deploy is picked up on the next page load.
-        skipWaiting: true,
-        clientsClaim: true,
+        // Do NOT claim clients immediately. Aggressive skipWaiting+clientsClaim
+        // activated the new SW while the old tab was still running hashed
+        // chunks → ChunkLoadError / blank UI that users read as "data wiped".
+        // UpdateBanner calls updateServiceWorker(true) which posts SKIP_WAITING
+        // and reloads atomically after the safety backup finishes.
+        skipWaiting: false,
+        clientsClaim: false,
         // Cache the bundled web font (霞鹜文楷 from jsDelivr) on first
         // request so it's available offline thereafter.
         runtimeCaching: [
