@@ -241,31 +241,29 @@ export default function ConfessionPage() {
           className="cf-booth"
           onClick={() => setView('booth')}
         >
-          <div className="cf-vault">
-            <ArchSvg lit />
-            <div className="cf-well">
-              <div className="cf-prose">
-                {archives.map((a) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    className={`cf-chip ${shown?.id === a.id ? 'cf-chip--on' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setArchiveFocus(a);
-                    }}
-                  >
-                    {a.date.slice(5)}
-                  </button>
+          <ArchSvg lit />
+          <div className="cf-well">
+            <div className="cf-prose">
+              {archives.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={`cf-chip ${shown?.id === a.id ? 'cf-chip--on' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setArchiveFocus(a);
+                  }}
+                >
+                  {a.date.slice(5)}
+                </button>
+              ))}
+              {shown &&
+                toParagraphs(shown.confession).map((p, i) => (
+                  <div key={i}>
+                    {i > 0 && <StarDivider />}
+                    <p className="cf-para">{p}</p>
+                  </div>
                 ))}
-                {shown &&
-                  toParagraphs(shown.confession).map((p, i) => (
-                    <div key={i}>
-                      {i > 0 && <StarDivider />}
-                      <p className="cf-para">{p}</p>
-                    </div>
-                  ))}
-              </div>
             </div>
           </div>
         </button>
@@ -297,23 +295,21 @@ export default function ConfessionPage() {
         onClick={onBoothActivate}
         aria-label="告解室"
       >
-        <div className="cf-vault">
-          <ArchSvg lit={triggered || phase === 'approaching'} />
+        <ArchSvg lit={triggered || phase === 'approaching'} />
 
-          <div className="cf-well">
-            {!triggered && <StarCurtain />}
+        <div className="cf-well">
+          {!triggered && <StarCurtain />}
 
-            {triggered && prose.length > 0 && (
-              <div className="cf-prose">
-                {prose.map((p, i) => (
-                  <div key={`${phase}-${enactIdx}-${i}`}>
-                    {i > 0 && <StarDivider />}
-                    <p className="cf-para">{p}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {triggered && prose.length > 0 && (
+            <div className="cf-prose">
+              {prose.map((p, i) => (
+                <div key={`${phase}-${enactIdx}-${i}`}>
+                  {i > 0 && <StarDivider />}
+                  <p className="cf-para">{p}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </button>
     </div>
@@ -329,18 +325,50 @@ function ArchSvg({ lit }: { lit: boolean }) {
         preserveAspectRatio="none"
         aria-hidden
       >
-        {/* outer — legs run to the ground (y=640) */}
+        <defs>
+          {/*
+            Solid through the crown; from the springing (curve→vertical ~y220)
+            fade down and vanish around mid-height.
+          */}
+          <linearGradient
+            id="cfArchOuter"
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="640"
+          >
+            <stop offset="0" stopColor="#fff" stopOpacity="0.92" />
+            <stop offset="0.34" stopColor="#fff" stopOpacity="0.92" />
+            <stop offset="0.48" stopColor="#fff" stopOpacity="0.35" />
+            <stop offset="0.58" stopColor="#fff" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient
+            id="cfArchInner"
+            gradientUnits="userSpaceOnUse"
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="640"
+          >
+            <stop offset="0" stopColor="#fff" stopOpacity="0.42" />
+            <stop offset="0.34" stopColor="#fff" stopOpacity="0.42" />
+            <stop offset="0.48" stopColor="#fff" stopOpacity="0.16" />
+            <stop offset="0.58" stopColor="#fff" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* outer — same path; stroke fades on the vertical run */}
         <path
           d="M26 640 V220 Q26 22 150 8 Q274 22 274 220 V640"
           fill="none"
-          stroke="rgba(255,255,255,0.92)"
+          stroke="url(#cfArchOuter)"
           strokeWidth="1.5"
         />
         {/* inner */}
         <path
           d="M40 640 V222 Q40 44 150 28 Q260 44 260 222 V640"
           fill="none"
-          stroke="rgba(255,255,255,0.42)"
+          stroke="url(#cfArchInner)"
           strokeWidth="1"
         />
       </svg>
@@ -407,20 +435,14 @@ const CSS = `
   animation-duration: 0.9s !important;
 }
 
-/* Mobile: arch sits a notch smaller than the screen and lower */
-.cf-vault {
-  position: absolute;
-  left: 10%;
-  right: 10%;
-  top: max(56px, 12%);
-  bottom: 6%;
-  z-index: 2;
-}
-
 .cf-arch {
   position: absolute;
-  inset: 0;
-  width: 100%;
+  /* narrow phone-like vault; legs fade mid-way (stroke gradient) */
+  left: 50%;
+  transform: translateX(-50%);
+  top: 0;
+  bottom: 0;
+  width: min(100%, 360px);
   height: 100%;
   z-index: 3;
   pointer-events: none;
@@ -428,7 +450,7 @@ const CSS = `
 
 .cf-apex {
   position: absolute;
-  top: max(6px, 1%);
+  top: max(10px, 1.4%);
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
@@ -445,27 +467,19 @@ const CSS = `
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  width: 74%;
-  top: 7%;
-  bottom: 2%;
+  width: min(72%, 260px);
+  top: 6.5%;
+  bottom: 0;
   z-index: 2;
   overflow: hidden;
-}
-
-@media (min-width: 480px) {
-  .cf-vault {
-    left: 50%;
-    right: auto;
-    width: min(360px, 84%);
-    transform: translateX(-50%);
-    top: max(40px, 8%);
-    bottom: 4%;
-  }
 }
 
 .cf-curtain {
   position: absolute;
   inset: 0;
+  /* match arch fade — star curtain softens with the legs */
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 48%, transparent 72%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 48%, transparent 72%);
 }
 .cf-curtain-svg {
   position: absolute;
