@@ -7,8 +7,9 @@
  *    Writes to the public Downloads folder via MediaStore (no picker).
  *    Large files are written in base64 chunks so they stay under the
  *    Android Binder ~1 MiB limit (a single giant payload crashes the app).
- *    Backup exports may instead use a user-chosen SAF folder — see
- *    backup-location.ts and FileSaverPlugin.pickBackupFolder.
+ *    Backup / config / conversation exports may instead use a user-chosen
+ *    SAF folder — see backup-location.ts saveExportBlob and
+ *    FileSaverPlugin.pickBackupFolder.
  *
  * 1. File System Access API (`showSaveFilePicker`)
  *    Chrome / Edge desktop: opens a native "Save As" dialog.
