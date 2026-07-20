@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   ChevronLeft,
   Database,
@@ -174,6 +174,7 @@ async function readAllCounts(): Promise<DbCounts> {
 }
 
 export default function ImportExportPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
   const endpoints = useLiveQuery(() => db.endpoints.toArray(), [], []);
   const conversations = useLiveQuery(
@@ -673,6 +674,24 @@ export default function ImportExportPage() {
     });
   }
 
+  // Deep-link from wipe banner: /data?recover=1 → scroll + auto-scan.
+  const recoverParam = searchParams.get('recover');
+  const autoRecoverStarted = useRef(false);
+  useEffect(() => {
+    if (recoverParam !== '1' || autoRecoverStarted.current) return;
+    autoRecoverStarted.current = true;
+    const el = document.getElementById('manual-recover');
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (nativeRecoverAvailable) {
+      void handleScanNativeRecover();
+    }
+    // Drop the query so remounts don't re-scan forever.
+    const next = new URLSearchParams(searchParams);
+    next.delete('recover');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on enter
+  }, [recoverParam]);
+
   async function handleScanNativeRecover() {
     setRecoverStatus({ kind: 'busy', label: '正在扫描隐藏目录与下载文件夹…' });
     setRecoverScanNote(null);
@@ -970,7 +989,7 @@ export default function ImportExportPage() {
           </section>
 
           {/* ── Manual recover ───────────────────────────────────────────── */}
-          <section className="endpoint-card !mt-0">
+          <section id="manual-recover" className="endpoint-card !mt-0 scroll-mt-4">
             <div className="flex items-start gap-2">
               <HardDrive size={16} className="mt-0.5 shrink-0 text-lavender-400" strokeWidth={1.5} />
               <div className="min-w-0 flex-1">

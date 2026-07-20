@@ -94,8 +94,9 @@ export default function ConsultChatPage() {
 
   useEffect(() => {
     if (!settings) return;
-    setStyleId(settings.defaultStyleId);
-  }, [settings]);
+    // Consult: prefer this session's style, then global default.
+    setStyleId(conv?.styleId ?? settings.defaultStyleId);
+  }, [settings, conv?.styleId]);
 
   const storedMessages = useLiveQuery(
     () =>
@@ -134,7 +135,6 @@ export default function ConsultChatPage() {
   const persona = personaId
     ? personas?.find((p) => p.id === personaId)
     : undefined;
-  const style = styleId ? styles?.find((s) => s.id === styleId) : undefined;
 
   const view: Message[] = [
     ...(storedMessages ?? []),
@@ -203,6 +203,7 @@ export default function ConsultChatPage() {
       defaultEndpointId: ep.id,
       defaultModel: sendModel,
       personaId: personaId ?? undefined,
+      styleId: styleId ?? conv.styleId ?? liveSettings.defaultStyleId ?? undefined,
       updatedAt: now,
       ...titlePatch,
     });
@@ -213,6 +214,14 @@ export default function ConsultChatPage() {
     abortRef.current = controller;
 
     const history = [...(storedMessages ?? []), userMessage];
+    // Resolve style fresh each send so picker / settings changes always apply.
+    const activeStyleId =
+      styleId ?? conv.styleId ?? liveSettings.defaultStyleId ?? null;
+    const activeStyle = activeStyleId
+      ? ((await db.writingStyles.get(activeStyleId)) ??
+        styles?.find((s) => s.id === activeStyleId))
+      : undefined;
+
     const roomPrompt = resolveConsultSystemPrompt(
       liveSettings.consultSystemPrompt,
     );
@@ -226,14 +235,16 @@ export default function ConsultChatPage() {
           persona.systemPrompt.trim(),
       });
     }
-    if (style?.prompt?.trim()) {
+    // Writing style must win on tone every consult turn (room/persona cannot
+    // dilute delivery). Mirror normal chat's BP2 + per-turn style_reminder.
+    if (activeStyle?.prompt?.trim()) {
       systemTurns.push({
         role: 'system',
         content:
           `# 写作风格\n` +
-          `【最高优先级】以下条款覆盖人设中任何关于语气、口吻、说话方式、用词习惯的描述；` +
-          `必须严格遵守，不得用人设语气稀释或覆盖。\n\n` +
-          style.prompt.trim(),
+          `【最高优先级 · 每轮强制】以下条款覆盖房间提示词与人设中任何关于语气、口吻、` +
+          `说话方式、用词习惯、句式节奏的描述；必须严格遵守，不得稀释或覆盖。\n\n` +
+          activeStyle.prompt.trim(),
       });
     }
     const turns: ChatTurn[] = [
@@ -244,6 +255,19 @@ export default function ConsultChatPage() {
         attachments: m.attachments,
       })),
     ];
+    if (activeStyle?.prompt?.trim()) {
+      const last = turns[turns.length - 1];
+      const nudge =
+        '<style_reminder>按系统「# 写作风格」作答；本房间每一轮都必须遵守。</style_reminder>';
+      if (last?.role === 'user') {
+        turns[turns.length - 1] = {
+          ...last,
+          content: `${last.content}\n\n${nudge}`,
+        };
+      } else {
+        turns.push({ role: 'user', content: nudge });
+      }
+    }
 
     const assistantId = newId();
     const draftAssistant: Message = {
@@ -365,7 +389,7 @@ export default function ConsultChatPage() {
         defaultEndpointId: ep.id,
         defaultModel: sendModel,
         defaultPersonaId: personaId,
-        defaultStyleId: styleId,
+        defaultStyleId: activeStyleId ?? styleId,
       });
     } catch (e) {
       if (!controller.signal.aborted) {

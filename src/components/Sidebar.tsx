@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -12,20 +12,28 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
+import { rememberConversationPresence } from '../lib/data-presence';
 import { relativeTime } from '../lib/format';
 import type { Conversation, Persona } from '../types';
+import DataLossRecoverBanner from './DataLossRecoverBanner';
 import WisteriaMark from './WisteriaMark';
 
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
   const { conversationId: activeId } = useParams();
 
-  const conversations = useLiveQuery(
-    () => db.conversations.orderBy('updatedAt').reverse().toArray(),
-    [],
-    [],
+  // No default `[]` — undefined means "still loading" so we don't flash an
+  // empty list (which looks like a wipe and panics people into replace-import).
+  const conversations = useLiveQuery(() =>
+    db.conversations.orderBy('updatedAt').reverse().toArray(),
   );
   const personas = useLiveQuery(() => db.personas.toArray(), [], []);
+
+  useEffect(() => {
+    if (conversations && conversations.length > 0) {
+      rememberConversationPresence(conversations.length);
+    }
+  }, [conversations]);
 
   // Track which conversation group headers are collapsed. Default: all expanded.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -241,7 +249,13 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* ── Conversation list ───────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
-        {groups.length === 0 && (
+        <DataLossRecoverBanner onNavigate={onNavigate} />
+        {conversations === undefined && (
+          <div className="px-3 py-8 text-center text-sm text-ink-500">
+            加载对话中…
+          </div>
+        )}
+        {conversations !== undefined && groups.length === 0 && (
           <div className="px-3 py-8 text-center text-sm text-ink-500">
             还没有对话喵
             <br />
@@ -250,7 +264,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         )}
 
         <div className="flex flex-col">
-          {groups.map((g) => {
+          {conversations !== undefined && groups.map((g) => {
             const isCollapsed = collapsed[g.key] ?? false;
             const dotColor = g.persona?.color ?? '#a0a0a0';
             const groupIds = g.conversations.map((c) => c.id);
