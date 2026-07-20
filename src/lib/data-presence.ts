@@ -86,8 +86,49 @@ export async function looksLikeDataWipe(opts: {
   } catch {
     /* ignore */
   }
+  if (getLastBackups().length > 0) return true;
   if (opts.endpointCount && opts.endpointCount > 0) return true;
   if (opts.hasDefaultEndpoint) return true;
 
   return false;
+}
+
+// ── Last backup filenames (survive IndexedDB wipe) ─────────────────────────
+
+const LAST_BACKUPS_KEY = 'lisse.lastBackupFiles';
+const MAX_BACKUPS_REMEMBERED = 5;
+
+export interface RememberedBackup {
+  filename: string;
+  path?: string;
+  at: number;
+}
+
+export function rememberLastBackup(entry: {
+  filename: string;
+  path?: string;
+}): void {
+  const next: RememberedBackup = {
+    filename: entry.filename,
+    path: entry.path,
+    at: Date.now(),
+  };
+  const prev = getLastBackups().filter((b) => b.filename !== next.filename);
+  const list = [next, ...prev].slice(0, MAX_BACKUPS_REMEMBERED);
+  try {
+    localStorage.setItem(LAST_BACKUPS_KEY, JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getLastBackups(): RememberedBackup[] {
+  try {
+    const raw = localStorage.getItem(LAST_BACKUPS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as RememberedBackup[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }

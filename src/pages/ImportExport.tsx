@@ -1091,6 +1091,47 @@ export default function ImportExportPage() {
 
             <StatusLine status={recoverStatus} className="mt-2" />
 
+            {(() => {
+              const newestBackup = [...recoverItems]
+                .filter(
+                  (i) =>
+                    i.kindGuess === 'backup' ||
+                    /^lisse-backup/i.test(i.name) ||
+                    i.name.toLowerCase().includes('backup'),
+                )
+                .sort((a, b) => b.modifiedAt - a.modifiedAt)[0];
+              const dbLooksEmpty =
+                counts != null &&
+                !counts.error &&
+                counts.conversations === 0 &&
+                counts.messages === 0;
+              if (!newestBackup || !dbLooksEmpty) return null;
+              return (
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/90 px-3 py-3">
+                  <p className="text-sm font-medium text-emerald-900">
+                    找到可用备份，可一键恢复
+                  </p>
+                  <p className="mt-1 break-all text-xs text-emerald-800/80">
+                    {newestBackup.name}
+                    {newestBackup.modifiedAt
+                      ? ` · ${new Date(newestBackup.modifiedAt).toLocaleString('zh-CN')}`
+                      : ''}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={recoverStatus.kind === 'busy'}
+                    onClick={() =>
+                      void handleImportRecoverItem(newestBackup, 'merge')
+                    }
+                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    <HardDrive size={14} />
+                    一键合并恢复
+                  </button>
+                </div>
+              );
+            })()}
+
             {recoverItems.length > 0 && (
               <ul className="mt-4 divide-y divide-lavender-100 rounded-xl border border-lavender-100 bg-white/70">
                 {recoverItems.map((item) => {

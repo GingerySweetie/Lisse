@@ -5,24 +5,30 @@ import { AlertTriangle, HardDrive, X } from 'lucide-react';
 import { db, getSettings } from '../db';
 import {
   dismissWipeBanner,
+  getLastBackups,
   isWipeBannerDismissed,
+  lastKnownConversationCount,
   looksLikeDataWipe,
   rememberConversationPresence,
 } from '../lib/data-presence';
 import { requestPersistentStorage } from '../lib/storage-persist';
 
 /**
- * Sidebar / home banner when IndexedDB looks wiped after an update.
- * Points the user at 导入导出 → 手动找回 (auto-scan via ?recover=1).
+ * Banner when IndexedDB looks wiped after an update.
+ * Mount in Sidebar AND Home (mobile often has the drawer closed).
  */
 export default function DataLossRecoverBanner({
   onNavigate,
+  variant = 'inline',
 }: {
   onNavigate?: () => void;
+  /** `fixed` sits over the Home art; `inline` sits in the sidebar list. */
+  variant?: 'inline' | 'fixed';
 }) {
   const navigate = useNavigate();
   const [show, setShow] = useState(false);
   const [lastCount, setLastCount] = useState(0);
+  const [backupNames, setBackupNames] = useState<string[]>([]);
 
   const conversationCount = useLiveQuery(
     () => db.conversations.count(),
@@ -54,11 +60,9 @@ export default function DataLossRecoverBanner({
       });
       if (cancelled) return;
       if (wipe) {
-        setLastCount(
-          Number(localStorage.getItem('lisse.lastKnownConvCount') || '0') || 0,
-        );
+        setLastCount(lastKnownConversationCount());
+        setBackupNames(getLastBackups().map((b) => b.filename).slice(0, 3));
         setShow(true);
-        // Re-request persist so the next restore isn't evicted again.
         void requestPersistentStorage();
       } else {
         setShow(false);
@@ -71,11 +75,20 @@ export default function DataLossRecoverBanner({
 
   if (!show) return null;
 
+  const shell =
+    variant === 'fixed'
+      ? 'fixed inset-x-3 z-[80] rounded-xl border border-amber-200 bg-amber-50/97 px-3 py-3 text-[12.5px] leading-relaxed text-amber-950 shadow-lg backdrop-blur'
+      : 'mx-2 mb-2 rounded-xl border border-amber-200 bg-amber-50/95 px-3 py-3 text-[12.5px] leading-relaxed text-amber-950 shadow-sm';
+
+  const topStyle =
+    variant === 'fixed'
+      ? {
+          top: 'calc(12px + env(safe-area-inset-top, 0px))',
+        }
+      : undefined;
+
   return (
-    <div
-      className="mx-2 mb-2 rounded-xl border border-amber-200 bg-amber-50/95 px-3 py-3 text-[12.5px] leading-relaxed text-amber-950 shadow-sm"
-      role="alert"
-    >
+    <div className={shell} style={topStyle} role="alert">
       <div className="flex items-start gap-2">
         <AlertTriangle
           size={16}
@@ -87,10 +100,28 @@ export default function DataLossRecoverBanner({
           <p className="mt-1 text-amber-900/85">
             多半是系统在更新时清掉了本地库（不是气泡透明度改动导致的）。
             {lastCount > 0 ? ` 之前大约有 ${lastCount} 条对话。` : ''}
-            请立刻去找回：更新前自动备份通常在「下载」里，文件名类似{' '}
-            <code className="rounded bg-amber-100/80 px-1">lisse-backup-…json</code>
-            。
+            请立刻去找回。
           </p>
+          {backupNames.length > 0 ? (
+            <p className="mt-1.5 text-[11px] text-amber-900/75">
+              上次自动备份文件名：
+              {backupNames.map((n) => (
+                <code
+                  key={n}
+                  className="ml-1 inline-block rounded bg-amber-100/90 px-1"
+                >
+                  {n}
+                </code>
+              ))}
+            </p>
+          ) : (
+            <p className="mt-1.5 text-[11px] text-amber-900/75">
+              在「下载」里找{' '}
+              <code className="rounded bg-amber-100/80 px-1">
+                lisse-backup-….json
+              </code>
+            </p>
+          )}
           <div className="mt-2.5 flex flex-wrap gap-2">
             <button
               type="button"

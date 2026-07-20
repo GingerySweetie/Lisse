@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import DataLossRecoverBanner from '../components/DataLossRecoverBanner';
 import GroupChatSetup from '../components/GroupChatSetup';
 
 const FONTS_URL =
@@ -504,6 +505,7 @@ export default function HomePage() {
         margin: '0 auto',
       }}
     >
+      <DataLossRecoverBanner variant="fixed" />
       <canvas
         ref={canvasRef}
         style={{
