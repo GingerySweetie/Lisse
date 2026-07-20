@@ -522,6 +522,20 @@ export default function ConsultChatPage() {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        .consult-session .wis-composer-field {
+          background: ${CONSULT.inputBg};
+          border-color: ${CONSULT.inputBorder};
+        }
+        .consult-session .wis-composer-field:focus {
+          border-color: ${CONSULT.inputBorderFocus};
+        }
+        .consult-session .wis-send-btn {
+          border-color: ${CONSULT.inputBorder};
+          background: ${CONSULT.uiFill};
+        }
+        .consult-session .wis-send-btn:hover {
+          background: #c0c6e3;
+        }
       `}</style>
     </div>
   );
