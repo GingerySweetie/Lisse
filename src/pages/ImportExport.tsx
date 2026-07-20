@@ -222,10 +222,20 @@ export default function ImportExportPage() {
     }
   }
 
+  const [persistFeedback, setPersistFeedback] = useState<string | null>(null);
+
   async function handleRequestPersist() {
     setDiagBusy(true);
+    setPersistFeedback('正在向系统申请…');
     try {
-      setPersistState(await requestPersistentStorage());
+      const next = await requestPersistentStorage();
+      setPersistState(next);
+      setPersistFeedback(
+        next.message ??
+          (next.persisted
+            ? '已开启持久化存储。'
+            : '申请完成，但系统未批准（Android 上常见，不一定会弹窗）。'),
+      );
     } finally {
       setDiagBusy(false);
     }
@@ -891,7 +901,7 @@ export default function ImportExportPage() {
 
                 {persistState && (
                   <div
-                    className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${
+                    className={`space-y-2 rounded-lg border px-3 py-2 text-xs ${
                       persistState.persisted
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                         : persistState.supported
@@ -899,22 +909,42 @@ export default function ImportExportPage() {
                           : 'border-lavender-100 bg-lavender-50/60 text-ink-500'
                     }`}
                   >
-                    <span>
-                      {!persistState.supported
-                        ? '当前环境不支持「持久化存储」请求（桌面浏览器通常仍会保留 IndexedDB）。'
-                        : persistState.persisted
-                          ? '持久化存储已开启：系统存储紧张时不会优先清掉本应用的对话库。'
-                          : '持久化存储未开启：手机存储紧张时，系统可能静默清空 IndexedDB，表现为「一打开对话全没了」。'}
-                    </span>
-                    {persistState.supported && !persistState.persisted && (
-                      <button
-                        type="button"
-                        onClick={() => void handleRequestPersist()}
-                        disabled={diagBusy}
-                        className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span>
+                        {!persistState.supported
+                          ? '当前环境不支持「持久化存储」请求（桌面浏览器通常仍会保留 IndexedDB）。'
+                          : persistState.persisted
+                            ? '持久化存储已开启：系统存储紧张时不会优先清掉本应用的对话库。'
+                            : '持久化存储未开启：手机存储紧张时，系统可能静默清空 IndexedDB，表现为「一打开对话全没了」。'}
+                      </span>
+                      {persistState.supported && !persistState.persisted && (
+                        <button
+                          type="button"
+                          onClick={() => void handleRequestPersist()}
+                          disabled={diagBusy}
+                          className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+                        >
+                          {diagBusy ? '申请中…' : '申请持久化'}
+                        </button>
+                      )}
+                    </div>
+                    {persistFeedback && (
+                      <p
+                        className={`rounded-md px-2 py-1.5 text-[11px] leading-relaxed ${
+                          persistState.persisted
+                            ? 'bg-emerald-100/80 text-emerald-900'
+                            : 'bg-white/70 text-amber-950'
+                        }`}
+                        role="status"
                       >
-                        申请持久化
-                      </button>
+                        {persistFeedback}
+                      </p>
+                    )}
+                    {persistState.supported && !persistState.persisted && (
+                      <p className="text-[10.5px] leading-relaxed opacity-80">
+                        Android 应用里点这个常常<strong>不会弹窗</strong>，直接被系统拒掉——看起来像没反应。
+                        真正稳妥的是：上面设好备份目录 + 更新前自动备份，不要清应用数据。
+                      </p>
                     )}
                   </div>
                 )}
