@@ -15,7 +15,7 @@ import {
   isDefaultConsultTitle,
   setActiveConsultConversationId,
 } from '../lib/consult-conversations';
-import { CONSULT, CONSULT_SYS } from '../lib/consult-theme';
+import { CONSULT, resolveConsultSystemPrompt } from '../lib/consult-theme';
 import { newId } from '../lib/id';
 import { setStatusBarColor, resetStatusBar } from '../lib/status-bar';
 import { availableTools } from '../lib/tools';
@@ -226,10 +226,20 @@ export default function ConsultChatPage() {
     abortRef.current = controller;
 
     const history = [...(storedMessages ?? []), userMessage];
-    const systemTurns: ChatTurn[] = [{ role: 'system', content: CONSULT_SYS }];
-    // Persona / style sit alongside the room frame (same order as normal chat).
+    // Room frame first (trauma + partner-doctor play); persona is the concrete
+    // partner voice layered under that frame; style last (tone override).
+    const roomPrompt = resolveConsultSystemPrompt(
+      liveSettings.consultSystemPrompt,
+    );
+    const systemTurns: ChatTurn[] = [{ role: 'system', content: roomPrompt }];
     if (persona?.systemPrompt?.trim()) {
-      systemTurns.push({ role: 'system', content: persona.systemPrompt.trim() });
+      systemTurns.push({
+        role: 'system',
+        content:
+          `# 伴侣人格（咨询室里的「你」）\n` +
+          `以下是你作为具体伴侣／医生的身份与习惯；与房间用途冲突时，以创伤看见与同意边界为先。\n\n` +
+          persona.systemPrompt.trim(),
+      });
     }
     if (style?.prompt?.trim()) {
       systemTurns.push({
@@ -532,7 +542,7 @@ export default function ConsultChatPage() {
           onAbort={handleAbort}
           busy={loading}
           disabled={!conv || !endpointId || !model}
-          placeholder="说些什么……"
+          placeholder="可以从一段记忆、身体感觉，或今天想被看见的地方开始……"
           hideMoodTags
         />
       </div>

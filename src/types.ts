@@ -305,6 +305,8 @@ export interface AppSettings {
   /** Custom consult-room wallpaper as a data URL. Null/undefined = the
    *  default waving white / pale-lavender curtain stripes. */
   consultWallpaper: string | null;
+  /** Custom consult-room system prompt. Null/empty = built-in CONSULT_SYS. */
+  consultSystemPrompt: string | null;
 
   // ─── Clawd desk pet ───
   /** Floating pixel-crab desk pet that reacts to the current page and

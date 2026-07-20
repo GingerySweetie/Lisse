@@ -15,6 +15,8 @@ import {
   downloadText,
   exportAllConversationsZip,
   exportConversation,
+  exportConversationsJson,
+  type ConversationFormat,
 } from '../lib/export';
 import { relativeTime } from '../lib/format';
 import type { Conversation } from '../types';
@@ -40,6 +42,7 @@ export default function ConsultConversationList({
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [formatOpen, setFormatOpen] = useState(false);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -72,6 +75,7 @@ export default function ConsultConversationList({
   function exitSelect() {
     setSelectMode(false);
     setSelected(new Set());
+    setFormatOpen(false);
   }
 
   async function handleNew() {
@@ -113,23 +117,32 @@ export default function ConsultConversationList({
     }
   }
 
-  async function handleDownloadSelected() {
+  async function handleDownloadSelected(format: ConversationFormat) {
     if (selected.size === 0 || busy) return;
     setBusy(true);
+    setFormatOpen(false);
     try {
       const ids = [...selected];
-      if (ids.length === 1) {
+      // JSON uses the same `__lisse: "conversation(s)"` bundles as Import/Export
+      // → recoverable via the app's conversation import path.
+      if (format === 'json') {
+        const out = await exportConversationsJson({
+          conversationIds: ids,
+          scope: 'tree',
+        });
+        await downloadText(out.content, out.filename, out.mime);
+      } else if (ids.length === 1) {
         const conv = await db.conversations.get(ids[0]);
         if (!conv) return;
         const out = await exportConversation(conv, {
-          format: 'markdown',
+          format,
           scope: 'tree',
         });
         await downloadText(out.content, out.filename, out.mime);
       } else {
         const { blob, filename } = await exportAllConversationsZip({
           conversationIds: ids,
-          format: 'markdown',
+          format,
           scope: 'tree',
         });
         await downloadBlob(blob, filename);
@@ -365,7 +378,7 @@ export default function ConsultConversationList({
               <button
                 type="button"
                 disabled={selected.size === 0 || busy}
-                onClick={() => void handleDownloadSelected()}
+                onClick={() => setFormatOpen((v) => !v)}
                 style={{
                   ...actionBtn,
                   flex: 1,
@@ -391,6 +404,42 @@ export default function ConsultConversationList({
                 删除{selected.size > 0 ? ` ${selected.size}` : ''}
               </button>
             </div>
+            {formatOpen && selected.size > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                  padding: 4,
+                  borderRadius: 10,
+                  background: 'rgba(250, 248, 252, 0.95)',
+                  border: `1px solid ${CONSULT.border}`,
+                }}
+              >
+                {(
+                  [
+                    ['markdown', 'Markdown (.md)'],
+                    ['text', '纯文本 (.txt)'],
+                    ['json', 'JSON（可重导入）'],
+                  ] as const
+                ).map(([fmt, label]) => (
+                  <button
+                    key={fmt}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleDownloadSelected(fmt)}
+                    style={{
+                      ...ghostBtnWide,
+                      textAlign: 'left',
+                      padding: '9px 12px',
+                      background: 'transparent',
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
