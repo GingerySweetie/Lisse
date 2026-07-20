@@ -12,27 +12,15 @@ import { hasActiveChatStream } from '../lib/stream-activity';
 /**
  * Service-worker update prompter.
  *
- * Aggressive detection:
- *  - immediate check on mount
- *  - re-check whenever the tab/PWA returns to the foreground
- *  - poll every 5 minutes while open
- *
- * Auto-apply (default on, via AppSettings.autoApplyUpdate): the moment
- * a new SW is detected, the page reloads itself with a half-second
- * "新版本就位…" toast. The user never needs to manually clear the SW
- * cache. Toggle off to fall back to the classic banner.
- *
- * Auto-backup: before reloading for an update a full backup JSON is
- * downloaded automatically so the user always has a recent copy of
- * their data even if the update somehow wipes local storage.
- *
- * Never reload while a chat stream is active — killing the tab mid-write
- * left empty assistant bubbles that looked like data loss.
+ * Auto-apply (default on): backup first, then reload. Toast shows the
+ * backup filename so the user knows what to look for if IDB is later
+ * evicted. Manual refresh path also backs up before reloading.
  */
 export default function UpdateBanner() {
   const settings = useLiveQuery(() => getSettings(), [], null);
   const autoApply = settings?.autoApplyUpdate ?? true;
   const autoAppliedRef = useRef(false);
+  const [backupNote, setBackupNote] = useState<string | null>(null);
 
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -58,8 +46,6 @@ export default function UpdateBanner() {
       window.addEventListener('focus', onVisible);
       window.addEventListener('pageshow', onVisible);
 
-      // Note: vite-plugin-pwa's onRegisteredSW does not call this cleanup
-      // automatically, but it is kept here for documentation purposes.
       return () => {
         clearInterval(interval);
         document.removeEventListener('visibilitychange', onVisible);
@@ -69,33 +55,30 @@ export default function UpdateBanner() {
     },
   });
 
-  // Auto-apply path: when needRefresh flips true and the user hasn't
-  // opted out, create a safety backup then reload.
-  // Ref guard so React StrictMode double-invocation doesn't double-apply.
+  async function backupThenReload() {
+    for (let i = 0; i < 120 && hasActiveChatStream(); i++) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    const filename = suggestedBackupFilename();
+    try {
+      const saved = await downloadBackup(filename);
+      setBackupNote(saved.filename);
+      // Keep the note visible briefly so she can read the filename.
+      await new Promise((r) => setTimeout(r, 900));
+    } catch {
+      // Non-fatal: proceed with the update even if backup fails.
+    }
+    await new Promise((r) => setTimeout(r, 350));
+    await updateServiceWorker(true);
+  }
+
   useEffect(() => {
     if (!needRefresh) return;
     if (!autoApply) return;
     if (autoAppliedRef.current) return;
     autoAppliedRef.current = true;
-
-    // Fully await the backup BEFORE asking the SW to take over. The old
-    // 600ms timer fired while large SAF writes were still in flight.
-    const apply = async () => {
-      // Wait out in-flight chat streams (poll, don't scan IndexedDB).
-      for (let i = 0; i < 120 && hasActiveChatStream(); i++) {
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      try {
-        await downloadBackup(suggestedBackupFilename());
-      } catch {
-        // Non-fatal: if the backup or save fails, proceed with the update.
-      }
-      // Brief beat so the "新版本就位…" toast paints, then reload.
-      await new Promise((r) => setTimeout(r, 400));
-      await updateServiceWorker(true);
-    };
-
-    void apply();
+    void backupThenReload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needRefresh, autoApply, updateServiceWorker]);
 
   const [visible, setVisible] = useState(false);
@@ -109,8 +92,6 @@ export default function UpdateBanner() {
 
   if (!needRefresh) return null;
 
-  // Sit above the transparent Android gesture-nav bar in edge-to-edge mode
-  // (safe-area-inset-bottom falls back to 0px in normal browsers).
   const bottomStyle = {
     bottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
   } as const;
@@ -119,12 +100,23 @@ export default function UpdateBanner() {
     return (
       <div
         style={bottomStyle}
-        className={`pointer-events-none fixed inset-x-0 z-[100] mx-auto flex w-[min(92vw,22rem)] items-center justify-center gap-2 rounded-2xl border border-lavender-300 bg-white/95 px-4 py-3 shadow-lg backdrop-blur transition-all duration-200 ${
+        className={`pointer-events-none fixed inset-x-0 z-[100] mx-auto flex w-[min(92vw,24rem)] flex-col items-center justify-center gap-1 rounded-2xl border border-lavender-300 bg-white/95 px-4 py-3 shadow-lg backdrop-blur transition-all duration-200 ${
           visible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
         }`}
       >
-        <RefreshCw size={14} className="animate-spin text-sky-500" />
-        <span className="text-sm text-ink-700">新版本就位 · 备份后自动应用…</span>
+        <div className="flex items-center gap-2">
+          <RefreshCw size={14} className="animate-spin text-sky-500" />
+          <span className="text-sm text-ink-700">
+            {backupNote
+              ? '备份完成 · 正在应用新版本…'
+              : '新版本就位 · 备份后自动应用…'}
+          </span>
+        </div>
+        {backupNote && (
+          <span className="max-w-full truncate text-[10px] text-ink-500">
+            {backupNote}
+          </span>
+        )}
       </div>
     );
   }
@@ -136,9 +128,14 @@ export default function UpdateBanner() {
         visible ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
       }`}
     >
-      <div className="flex items-center gap-2 text-sm text-ink-900">
-        <RefreshCw size={16} className="text-sky-500" />
-        <span>有新版本啦，点一下刷新喵～</span>
+      <div className="flex min-w-0 flex-col gap-0.5 text-sm text-ink-900">
+        <div className="flex items-center gap-2">
+          <RefreshCw size={16} className="shrink-0 text-sky-500" />
+          <span>有新版本啦，点一下刷新喵～</span>
+        </div>
+        <span className="pl-6 text-[10px] text-ink-500">
+          刷新前会先自动备份到下载文件夹
+        </span>
       </div>
       <div className="flex shrink-0 gap-1">
         <button
@@ -150,10 +147,10 @@ export default function UpdateBanner() {
         </button>
         <button
           type="button"
-          onClick={() => updateServiceWorker(true)}
+          onClick={() => void backupThenReload()}
           className="rounded-lg bg-lavender-200 px-3 py-1 text-xs font-medium text-ink-900 transition hover:bg-lavender-300"
         >
-          刷新
+          备份并刷新
         </button>
       </div>
     </div>
