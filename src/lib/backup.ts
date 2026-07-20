@@ -44,6 +44,8 @@ import {
   type ExportProgressCallback,
 } from './export-progress';
 import { formatStorageError } from './storage-guards';
+import { beginActiveWork, endActiveWork } from './stream-activity';
+import { noteBackupOnSentinel, touchDataSentinel } from './data-sentinel';
 
 const LAST_BACKUP_AT_KEY = 'last_backup_at';
 
@@ -210,6 +212,12 @@ export async function exportBackup(): Promise<BackupBundle> {
 
   const now = Date.now();
   await db.kv.put({ key: LAST_BACKUP_AT_KEY, value: now });
+  noteBackupOnSentinel(now);
+  touchDataSentinel({
+    conversationCount: conversations.length,
+    messageCount: messages.length,
+    lastBackupAt: now,
+  });
 
   return {
     __lisse: 'backup',
@@ -517,36 +525,41 @@ export async function downloadBackup(
   filename: string,
   opts?: BackupExportOptions,
 ): Promise<void> {
-  if (isBackupFolderPickerAvailable()) {
-    const folder = await getValidBackupFolder();
-    try {
-      await streamBackupToNative(filename, folder?.uri, opts);
-      return;
-    } catch (err) {
-      throwIfAborted(opts?.signal);
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('PERMISSION_LOST')) {
-        await clearBackupFolder();
-      }
-      if (folder && !msg.includes('UNSUPPORTED_API_LEVEL')) {
-        // Retry to Downloads without the SAF folder.
-        try {
-          await streamBackupToNative(filename, undefined, opts);
-          return;
-        } catch (retryErr) {
-          throwIfAborted(opts?.signal);
-          console.warn('[backup] native stream failed:', retryErr);
+  beginActiveWork();
+  try {
+    if (isBackupFolderPickerAvailable()) {
+      const folder = await getValidBackupFolder();
+      try {
+        await streamBackupToNative(filename, folder?.uri, opts);
+        return;
+      } catch (err) {
+        throwIfAborted(opts?.signal);
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('PERMISSION_LOST')) {
+          await clearBackupFolder();
         }
-      } else if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
-        console.warn('[backup] native stream failed:', msg);
+        if (folder && !msg.includes('UNSUPPORTED_API_LEVEL')) {
+          // Retry to Downloads without the SAF folder.
+          try {
+            await streamBackupToNative(filename, undefined, opts);
+            return;
+          } catch (retryErr) {
+            throwIfAborted(opts?.signal);
+            console.warn('[backup] native stream failed:', retryErr);
+          }
+        } else if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
+          console.warn('[backup] native stream failed:', msg);
+        }
       }
     }
-  }
 
-  const blob = await buildBackupBlob(opts);
-  throwIfAborted(opts?.signal);
-  opts?.onProgress?.(makeProgress(1, 1, '写入文件…', 'save'));
-  await saveFile(blob, filename, 'JSON 备份文件');
+    const blob = await buildBackupBlob(opts);
+    throwIfAborted(opts?.signal);
+    opts?.onProgress?.(makeProgress(1, 1, '写入文件…', 'save'));
+    await saveFile(blob, filename, 'JSON 备份文件');
+  } finally {
+    endActiveWork();
+  }
 }
 
 /** @deprecated Prefer downloadBackup — kept for callers that already have a bundle. */
@@ -661,6 +674,7 @@ async function streamBackupToNative(
     opts?.onProgress?.(makeProgress(total, total, '完成写入…', 'save'));
     await FileSaver.endSave({ handle });
     await db.kv.put({ key: LAST_BACKUP_AT_KEY, value: now });
+    noteBackupOnSentinel(now);
   } catch (err) {
     try {
       await FileSaver.abortSave({ handle });
@@ -713,6 +727,7 @@ async function buildBackupBlob(opts?: BackupExportOptions): Promise<Blob> {
 
   parts.push('}');
   await db.kv.put({ key: LAST_BACKUP_AT_KEY, value: now });
+  noteBackupOnSentinel(now);
   return new Blob(parts, { type: 'application/json' });
 }
 

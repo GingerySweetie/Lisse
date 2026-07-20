@@ -9,6 +9,7 @@ import {
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import UpdateBanner from './components/UpdateBanner';
+import DataHealthBanner from './components/DataHealthBanner';
 import ExportJobBanner from './components/ExportJobBanner';
 import ShareReceiver from './components/ShareReceiver';
 import BillReceiver from './components/BillReceiver';
@@ -133,6 +134,7 @@ export default function App() {
           </Route>
         </Routes>
       </Suspense>
+      <DataHealthBanner />
       <UpdateBanner />
       <ExportJobBanner />
       {globalError && (

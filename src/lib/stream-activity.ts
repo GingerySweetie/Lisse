@@ -1,13 +1,11 @@
 /**
- * In-memory flag for an active chat/completion stream.
- *
- * Used by UpdateBanner to defer service-worker reloads until the write path
- * finishes — reloading mid-stream left empty `status: 'streaming'` assistant
- * rows that looked like wiped messages. Avoids scanning IndexedDB (status is
- * not an indexed key on messages).
+ * In-memory counters for work that must not be interrupted by a service-worker
+ * reload (chat streams, backup import/export). Reloading mid-write left empty
+ * assistant rows or half-imported DBs that looked like wiped data.
  */
 
 let activeStreams = 0;
+let activeWork = 0;
 
 export function beginChatStream(): void {
   activeStreams += 1;
@@ -19,4 +17,17 @@ export function endChatStream(): void {
 
 export function hasActiveChatStream(): boolean {
   return activeStreams > 0;
+}
+
+/** Long-running import / export / other durable writes. */
+export function beginActiveWork(): void {
+  activeWork += 1;
+}
+
+export function endActiveWork(): void {
+  activeWork = Math.max(0, activeWork - 1);
+}
+
+export function hasActiveWork(): boolean {
+  return activeWork > 0 || activeStreams > 0;
 }

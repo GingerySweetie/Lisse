@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -13,6 +13,8 @@ import {
 import { db } from '../db';
 import { createConversation, deleteConversation } from '../lib/chat';
 import { relativeTime } from '../lib/format';
+import { touchDataSentinel } from '../lib/data-sentinel';
+import { getDbHealth, subscribeDbHealth } from '../lib/db-health';
 import type { Conversation, Persona } from '../types';
 import WisteriaMark from './WisteriaMark';
 
@@ -20,12 +22,24 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
   const { conversationId: activeId } = useParams();
 
+  // No default `[]` — that made Dexie-blocked / still-opening look identical
+  // to "every conversation wiped" after a service-worker update.
   const conversations = useLiveQuery(
     () => db.conversations.orderBy('updatedAt').reverse().toArray(),
-    [],
-    [],
   );
-  const personas = useLiveQuery(() => db.personas.toArray(), [], []);
+  const personas = useLiveQuery(() => db.personas.toArray());
+  const [dbKind, setDbKind] = useState(() => getDbHealth().kind);
+  useEffect(() => subscribeDbHealth((h) => setDbKind(h.kind)), []);
+
+  useEffect(() => {
+    if (!conversations || conversations.length === 0) return;
+    void db.messages.count().then((messageCount) => {
+      touchDataSentinel({
+        conversationCount: conversations.length,
+        messageCount,
+      });
+    });
+  }, [conversations]);
 
   // Track which conversation group headers are collapsed. Default: all expanded.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -241,7 +255,14 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* ── Conversation list ───────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
-        {groups.length === 0 && (
+        {conversations === undefined && (
+          <div className="px-3 py-8 text-center text-sm text-ink-500">
+            {dbKind === 'blocked' || dbKind === 'error'
+              ? '数据库暂不可用，对话还在本地——请看顶部提示。'
+              : '正在读取对话…'}
+          </div>
+        )}
+        {conversations !== undefined && groups.length === 0 && (
           <div className="px-3 py-8 text-center text-sm text-ink-500">
             还没有对话喵
             <br />

@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { RefreshCw } from 'lucide-react';
-import { getSettings } from '../db';
+import { db, getSettings } from '../db';
 import {
   downloadBackup,
   suggestedBackupFilename,
 } from '../lib/backup';
-import { hasActiveChatStream } from '../lib/stream-activity';
+import { hasActiveWork } from '../lib/stream-activity';
+import {
+  noteBackupOnSentinel,
+  touchDataSentinel,
+} from '../lib/data-sentinel';
 
 /**
  * Service-worker update prompter.
@@ -17,22 +21,20 @@ import { hasActiveChatStream } from '../lib/stream-activity';
  *  - re-check whenever the tab/PWA returns to the foreground
  *  - poll every 5 minutes while open
  *
- * Auto-apply (default on, via AppSettings.autoApplyUpdate): the moment
- * a new SW is detected, the page reloads itself with a half-second
- * "新版本就位…" toast. The user never needs to manually clear the SW
- * cache. Toggle off to fall back to the classic banner.
+ * Auto-apply (default on, via AppSettings.autoApplyUpdate): after a new SW
+ * is detected we write a safety backup, then call updateServiceWorker(true)
+ * which SKIP_WAITINGs and reloads. Workbox skipWaiting is false so the new
+ * SW does not claim the tab mid-session (that used to blank the UI).
  *
- * Auto-backup: before reloading for an update a full backup JSON is
- * downloaded automatically so the user always has a recent copy of
- * their data even if the update somehow wipes local storage.
- *
- * Never reload while a chat stream is active — killing the tab mid-write
- * left empty assistant bubbles that looked like data loss.
+ * Module-level guard survives banner remounts during chunk races.
  */
+
+/** Survives UpdateBanner remounts (chunk reload / StrictMode). */
+let autoApplyStarted = false;
+
 export default function UpdateBanner() {
   const settings = useLiveQuery(() => getSettings(), [], null);
   const autoApply = settings?.autoApplyUpdate ?? true;
-  const autoAppliedRef = useRef(false);
 
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -58,8 +60,6 @@ export default function UpdateBanner() {
       window.addEventListener('focus', onVisible);
       window.addEventListener('pageshow', onVisible);
 
-      // Note: vite-plugin-pwa's onRegisteredSW does not call this cleanup
-      // automatically, but it is kept here for documentation purposes.
       return () => {
         clearInterval(interval);
         document.removeEventListener('visibilitychange', onVisible);
@@ -69,29 +69,52 @@ export default function UpdateBanner() {
     },
   });
 
-  // Auto-apply path: when needRefresh flips true and the user hasn't
-  // opted out, create a safety backup then reload.
-  // Ref guard so React StrictMode double-invocation doesn't double-apply.
+  const [backupPhase, setBackupPhase] = useState<
+    'idle' | 'waiting' | 'backing' | 'done' | 'backup-failed'
+  >('idle');
+
   useEffect(() => {
     if (!needRefresh) return;
     if (!autoApply) return;
-    if (autoAppliedRef.current) return;
-    autoAppliedRef.current = true;
+    if (autoApplyStarted) return;
+    autoApplyStarted = true;
+    setBackupPhase('waiting');
 
-    // Fully await the backup BEFORE asking the SW to take over. The old
-    // 600ms timer fired while large SAF writes were still in flight.
     const apply = async () => {
-      // Wait out in-flight chat streams (poll, don't scan IndexedDB).
-      for (let i = 0; i < 120 && hasActiveChatStream(); i++) {
+      // Wait out chat streams + import/export so reload can't truncate writes.
+      for (let i = 0; i < 180 && hasActiveWork(); i++) {
         await new Promise((r) => setTimeout(r, 500));
       }
+
+      // Refresh the localStorage sentinel BEFORE reload so a post-update
+      // empty IDB still proves the user once had data.
+      try {
+        const [conversationCount, messageCount] = await Promise.all([
+          db.conversations.count(),
+          db.messages.count(),
+        ]);
+        touchDataSentinel({ conversationCount, messageCount });
+      } catch {
+        // ignore — sentinel best-effort
+      }
+
+      setBackupPhase('backing');
+      let backupOk = false;
       try {
         await downloadBackup(suggestedBackupFilename());
-      } catch {
-        // Non-fatal: if the backup or save fails, proceed with the update.
+        backupOk = true;
+        noteBackupOnSentinel();
+      } catch (err) {
+        console.warn('[update] pre-update backup failed:', err);
+        setBackupPhase('backup-failed');
+        // Still proceed — SW updates do not wipe IndexedDB. The sentinel +
+        // recover UI cover the real eviction/reinstall cases. Blocking the
+        // update forever when the share sheet fails would leave users stuck
+        // on broken chunk hashes after skipWaiting=false installs.
       }
-      // Brief beat so the "新版本就位…" toast paints, then reload.
-      await new Promise((r) => setTimeout(r, 400));
+
+      setBackupPhase(backupOk ? 'done' : 'backup-failed');
+      await new Promise((r) => setTimeout(r, backupOk ? 400 : 1200));
       await updateServiceWorker(true);
     };
 
@@ -109,13 +132,19 @@ export default function UpdateBanner() {
 
   if (!needRefresh) return null;
 
-  // Sit above the transparent Android gesture-nav bar in edge-to-edge mode
-  // (safe-area-inset-bottom falls back to 0px in normal browsers).
   const bottomStyle = {
     bottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
   } as const;
 
   if (autoApply) {
+    const label =
+      backupPhase === 'waiting'
+        ? '新版本就位 · 等待进行中的写入…'
+        : backupPhase === 'backing'
+          ? '新版本就位 · 正在备份…'
+          : backupPhase === 'backup-failed'
+            ? '备份未完成 · 仍将刷新（数据在本地库）…'
+            : '新版本就位 · 备份后自动应用…';
     return (
       <div
         style={bottomStyle}
@@ -124,7 +153,7 @@ export default function UpdateBanner() {
         }`}
       >
         <RefreshCw size={14} className="animate-spin text-sky-500" />
-        <span className="text-sm text-ink-700">新版本就位 · 备份后自动应用…</span>
+        <span className="text-sm text-ink-700">{label}</span>
       </div>
     );
   }
@@ -150,10 +179,25 @@ export default function UpdateBanner() {
         </button>
         <button
           type="button"
-          onClick={() => updateServiceWorker(true)}
+          onClick={() => {
+            void (async () => {
+              try {
+                const [conversationCount, messageCount] = await Promise.all([
+                  db.conversations.count(),
+                  db.messages.count(),
+                ]);
+                touchDataSentinel({ conversationCount, messageCount });
+                await downloadBackup(suggestedBackupFilename());
+                noteBackupOnSentinel();
+              } catch (err) {
+                console.warn('[update] manual backup before refresh failed:', err);
+              }
+              await updateServiceWorker(true);
+            })();
+          }}
           className="rounded-lg bg-lavender-200 px-3 py-1 text-xs font-medium text-ink-900 transition hover:bg-lavender-300"
         >
-          刷新
+          备份并刷新
         </button>
       </div>
     </div>

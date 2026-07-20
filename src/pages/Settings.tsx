@@ -801,6 +801,19 @@ function AppMaintenance() {
     setBusy(true);
     setMsg('清理中…');
     try {
+      // Snapshot counts into localStorage first — SW/cache clear must never
+      // be mistaken for wiped IndexedDB if the next boot paints empty.
+      try {
+        const { db } = await import('../db');
+        const { touchDataSentinel } = await import('../lib/data-sentinel');
+        const [conversationCount, messageCount] = await Promise.all([
+          db.conversations.count(),
+          db.messages.count(),
+        ]);
+        touchDataSentinel({ conversationCount, messageCount });
+      } catch {
+        // ignore — best-effort breadcrumb
+      }
       if ('serviceWorker' in navigator) {
         const regs = await navigator.serviceWorker.getRegistrations();
         await Promise.all(regs.map((r) => r.unregister()));

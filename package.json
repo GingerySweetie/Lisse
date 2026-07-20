@@ -19,7 +19,8 @@
     "test:parse-document": "node --experimental-strip-types --test scripts/test-parse-document.mjs",
     "test:fold-long-text": "node --experimental-strip-types --test scripts/test-fold-long-text.mjs",
     "test:stream-activity": "node --experimental-strip-types --test scripts/test-stream-activity.mjs",
-    "test:storage-persist": "node --experimental-strip-types --test scripts/test-storage-persist.mjs"
+    "test:storage-persist": "node --experimental-strip-types --test scripts/test-storage-persist.mjs",
+    "test:data-sentinel": "node --experimental-strip-types --test scripts/test-data-sentinel.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",

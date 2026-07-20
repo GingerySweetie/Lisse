@@ -28,6 +28,7 @@ import type {
   WritingStyle,
 } from '../types';
 import type { HandoffJob } from '../lib/workshop/handoff-protocol';
+import { ensureDbOpen, wireDbHealthHandlers } from '../lib/db-health';
 
 interface KVRow {
   key: string;
@@ -639,6 +640,11 @@ const BUILTIN_STYLES: Omit<WritingStyle, 'createdAt' | 'updatedAt'>[] = [
 ];
 
 export const db = new LisseDB();
+
+// Surface blocked / versionchange instead of letting live queries sit on
+// empty defaults after a service-worker update (looks like total data loss).
+wireDbHealthHandlers(db);
+void ensureDbOpen(db).catch(() => undefined);
 
 const SETTINGS_KEY = 'app_settings';
 

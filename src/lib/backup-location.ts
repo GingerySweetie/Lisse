@@ -2,6 +2,10 @@ import { Capacitor } from '@capacitor/core';
 import { db } from '../db';
 import FileSaver from './native/file-saver';
 import { saveBlobNativeChunked } from './native-chunked-save';
+import {
+  mirrorBackupFolder,
+  readMirroredBackupFolder,
+} from './data-sentinel';
 
 const BACKUP_FOLDER_URI_KEY = 'backup_folder_uri';
 const BACKUP_FOLDER_LABEL_KEY = 'backup_folder_label';
@@ -17,28 +21,38 @@ export function isBackupFolderPickerAvailable(): boolean {
 }
 
 export async function getBackupFolder(): Promise<BackupFolder | null> {
-  const [uriRow, labelRow] = await Promise.all([
-    db.kv.get(BACKUP_FOLDER_URI_KEY),
-    db.kv.get(BACKUP_FOLDER_LABEL_KEY),
-  ]);
-  if (!uriRow?.value || typeof uriRow.value !== 'string') return null;
-  return {
-    uri: uriRow.value,
-    label:
-      typeof labelRow?.value === 'string' && labelRow.value
-        ? labelRow.value
-        : '已选目录',
-  };
+  try {
+    const [uriRow, labelRow] = await Promise.all([
+      db.kv.get(BACKUP_FOLDER_URI_KEY),
+      db.kv.get(BACKUP_FOLDER_LABEL_KEY),
+    ]);
+    if (uriRow?.value && typeof uriRow.value === 'string') {
+      const folder = {
+        uri: uriRow.value,
+        label:
+          typeof labelRow?.value === 'string' && labelRow.value
+            ? labelRow.value
+            : '已选目录',
+      };
+      mirrorBackupFolder(folder);
+      return folder;
+    }
+  } catch {
+    // IDB unreadable — fall through to localStorage mirror.
+  }
+  return readMirroredBackupFolder();
 }
 
 export async function setBackupFolder(folder: BackupFolder): Promise<void> {
   await db.kv.put({ key: BACKUP_FOLDER_URI_KEY, value: folder.uri });
   await db.kv.put({ key: BACKUP_FOLDER_LABEL_KEY, value: folder.label });
+  mirrorBackupFolder(folder);
 }
 
 export async function clearBackupFolder(): Promise<void> {
   await db.kv.delete(BACKUP_FOLDER_URI_KEY);
   await db.kv.delete(BACKUP_FOLDER_LABEL_KEY);
+  mirrorBackupFolder(null);
 }
 
 /** Returns the saved folder only if the persisted SAF grant is still valid. */
