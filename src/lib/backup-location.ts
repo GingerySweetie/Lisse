@@ -6,6 +6,11 @@ import {
   mirrorBackupFolder,
   readMirroredBackupFolder,
 } from './data-sentinel';
+import { saveFile } from './save-file';
+import type { ExportSaveResult } from './export-save-result';
+
+export type { ExportSaveResult } from './export-save-result';
+export { formatExportSaveLabel } from './export-save-result';
 
 const BACKUP_FOLDER_URI_KEY = 'backup_folder_uri';
 const BACKUP_FOLDER_LABEL_KEY = 'backup_folder_label';
@@ -89,6 +94,47 @@ export async function saveBlobToBackupFolder(
   blob: Blob,
   filename: string,
   folderUri: string,
-): Promise<void> {
-  await saveBlobNativeChunked(blob, filename, { folderUri });
+): Promise<string> {
+  return saveBlobNativeChunked(blob, filename, { folderUri });
+}
+
+/**
+ * Save an export next to full backups when a SAF folder is set.
+ * Falls back to Downloads / web saveFile if unset, or if the grant was lost.
+ */
+export async function saveExportBlob(
+  blob: Blob,
+  filename: string,
+  description = 'File',
+): Promise<ExportSaveResult> {
+  if (isBackupFolderPickerAvailable()) {
+    const folder = await getValidBackupFolder();
+    if (folder) {
+      try {
+        const path = await saveBlobNativeChunked(blob, filename, {
+          folderUri: folder.uri,
+        });
+        return { usedBackupFolder: true, folder, path };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('PERMISSION_LOST')) {
+          await clearBackupFolder();
+        } else if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
+          throw err;
+        }
+      }
+    }
+    try {
+      const path = await saveBlobNativeChunked(blob, filename);
+      return { usedBackupFolder: false, folder: null, path };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
+        console.warn('[export] native save failed:', msg);
+      }
+    }
+  }
+
+  await saveFile(blob, filename, description);
+  return { usedBackupFolder: false, folder: null };
 }
