@@ -8,6 +8,7 @@ import {
   getValidBackupFolder,
   isBackupFolderPickerAvailable,
 } from './backup-location';
+import { formatExportSaveLabel } from './export-save-result';
 import {
   downloadConfigBundle,
   type ConfigExportOptions,
@@ -258,10 +259,11 @@ async function runSpec(
         onProgress,
       });
       onProgress(makeProgress(1, 1, '写入文件…', 'save'));
-      await downloadText(r.content, r.filename, r.mime);
-      return spec.titleHint
+      const saved = await downloadText(r.content, r.filename, r.mime);
+      const base = spec.titleHint
         ? `已导出${spec.titleHint} ${r.count} 条对话`
         : `已导出 ${r.count} 条对话 JSON`;
+      return formatExportSaveLabel(saved, base);
     }
     case 'conversations-zip': {
       const r = await exportAllConversationsZip({
@@ -274,8 +276,8 @@ async function runSpec(
         onProgress,
       });
       onProgress(makeProgress(1, 1, '写入文件…', 'save'));
-      await downloadBlob(r.blob, r.filename);
-      return `已导出 ${r.count} 条对话`;
+      const saved = await downloadBlob(r.blob, r.filename);
+      return formatExportSaveLabel(saved, `已导出 ${r.count} 条对话`);
     }
     case 'config': {
       const opts: ConfigExportOptions = {
@@ -286,8 +288,8 @@ async function runSpec(
         signal,
         onProgress,
       };
-      await downloadConfigBundle(opts);
-      return '已保存配置 JSON';
+      const saved = await downloadConfigBundle(opts);
+      return formatExportSaveLabel(saved, '已保存配置 JSON');
     }
   }
 }

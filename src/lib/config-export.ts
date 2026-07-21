@@ -1,5 +1,6 @@
 import { db, getSettings, saveSettings } from '../db';
 import type { AppSettings, Endpoint, Persona, WritingStyle } from '../types';
+import type { ExportSaveResult } from './export-save-result';
 import { downloadText } from './export';
 import {
   makeProgress,
@@ -137,11 +138,11 @@ export async function exportConfigBundle(
 
 export async function downloadConfigBundle(
   opts: ConfigExportOptions,
-): Promise<void> {
+): Promise<ExportSaveResult> {
   const r = await exportConfigBundle(opts);
   throwIfAborted(opts.signal);
   opts.onProgress?.(makeProgress(1, 1, '写入文件…', 'save'));
-  await downloadText(r.content, r.filename, r.mime);
+  return downloadText(r.content, r.filename, r.mime);
 }
 
 export async function importConfigBundle(

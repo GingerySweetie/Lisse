@@ -1,6 +1,10 @@
 import JSZip from 'jszip';
 import { db } from '../db';
 import type { Conversation, MemoryFact, Message, Persona } from '../types';
+import {
+  saveExportBlob,
+  type ExportSaveResult,
+} from './backup-location';
 import { getActiveBranch } from './branch';
 import {
   makeProgress,
@@ -8,7 +12,6 @@ import {
   yieldToUi,
   type ExportProgressCallback,
 } from './export-progress';
-import { saveFile } from './save-file';
 
 const CATEGORY_LABEL: Record<MemoryFact['category'], string> = {
   user_fact: '事实',
@@ -434,12 +437,19 @@ export async function exportPersonaMemoryMarkdown(
   };
 }
 
-export async function downloadBlob(blob: Blob, filename: string): Promise<void> {
-  await saveFile(blob, filename);
+export async function downloadBlob(
+  blob: Blob,
+  filename: string,
+): Promise<ExportSaveResult> {
+  return saveExportBlob(blob, filename);
 }
 
-export async function downloadText(content: string, filename: string, mime: string): Promise<void> {
-  await saveFile(new Blob([content], { type: mime }), filename);
+export async function downloadText(
+  content: string,
+  filename: string,
+  mime: string,
+): Promise<ExportSaveResult> {
+  return saveExportBlob(new Blob([content], { type: mime }), filename);
 }
 
 function sanitizeFilename(name: string): string {

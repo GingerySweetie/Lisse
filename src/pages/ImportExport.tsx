@@ -34,6 +34,7 @@ import {
   pickBackupFolder,
   type BackupFolder,
 } from '../lib/backup-location';
+import { formatExportSaveLabel } from '../lib/export-save-result';
 import {
   importChatGPT,
   importClaude,
@@ -465,7 +466,7 @@ export default function ImportExportPage() {
       setBackupFolderPermissionLost(false);
       setBackupStatus({
         kind: 'ok',
-        label: `已设置备份目录：${folder.label}`,
+        label: `已设置导出目录：${folder.label}`,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -615,8 +616,11 @@ export default function ImportExportPage() {
     setMemoryExportStatus({ kind: 'busy', label: '导出中…' });
     try {
       const r = await exportPersonaMemoryMarkdown(memoryPersonaId);
-      await downloadText(r.content, r.filename, r.mime);
-      setMemoryExportStatus({ kind: 'ok', label: '已保存' });
+      const saved = await downloadText(r.content, r.filename, r.mime);
+      setMemoryExportStatus({
+        kind: 'ok',
+        label: formatExportSaveLabel(saved, '已保存'),
+      });
     } catch (err) {
       setMemoryExportStatus({
         kind: 'fail',
@@ -1334,6 +1338,50 @@ export default function ImportExportPage() {
             </div>
           </section>
 
+          {backupFolderPickerAvailable && (
+            <section className="endpoint-card !mt-0">
+              <div className="rounded-xl border-2 border-dashed border-lavender-300 bg-lavender-50/80 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-ink-900">
+                      导出保存位置
+                    </p>
+                    {backupFolder ? (
+                      <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-600">
+                        <FolderCheck size={15} className="shrink-0 text-emerald-600" />
+                        <span className="truncate">{backupFolder.label}</span>
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-sm text-ink-500">
+                        {backupFolderPermissionLost
+                          ? '先前选择的目录权限已失效，请重新选择。'
+                          : '未设置时，导出到系统默认位置（如下载文件夹）。'}
+                      </p>
+                    )}
+                    <p className="mt-1.5 text-xs text-ink-400">
+                      全量备份、配置 JSON、对话 JSON / ZIP、记忆 Markdown，以及聊天页单条导出，都会写到同一目录。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePickBackupFolder}
+                    disabled={backupFolderBusy}
+                    className="flex shrink-0 items-center gap-2 rounded-xl bg-lavender-300 px-5 py-2.5 text-sm font-semibold text-ink-900 shadow-sm transition hover:bg-lavender-400 disabled:opacity-60"
+                  >
+                    <FolderOpen size={18} />
+                    {backupFolder ? '更改保存位置' : '选择保存位置'}
+                  </button>
+                </div>
+                {backupFolderPermissionLost && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <ShieldAlert size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                    <span>目录访问权限已失效，请点击上方按钮重新授权。</span>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* Bulk export conversations */}
           <section className="endpoint-card !mt-0">
             <h3 className="text-base font-semibold text-ink-900">
@@ -1499,6 +1547,7 @@ export default function ImportExportPage() {
             </h3>
             <p className="mt-1 text-sm text-ink-500">
               只打包配置类数据；导入后会写回人格页、风格页、Endpoints（含 API key）和默认选项。
+              会与全量备份写到同一导出目录。
               <strong className="font-medium text-ink-700">
                 {' '}勾选 Endpoints 时文件里会有 API key
               </strong>
@@ -1662,45 +1711,6 @@ export default function ImportExportPage() {
               大备份（超过原先 80MB 内存上限的也可以）会边读边写入，避免整文件把页面打死。
               <strong>API key 也会在文件里</strong>，请妥善保管喵。
             </p>
-
-            {backupFolderPickerAvailable && (
-              <div className="mt-4 rounded-xl border-2 border-dashed border-lavender-300 bg-lavender-50/80 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-ink-900">
-                      备份保存位置
-                    </p>
-                    {backupFolder ? (
-                      <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-600">
-                        <FolderCheck size={15} className="shrink-0 text-emerald-600" />
-                        <span className="truncate">{backupFolder.label}</span>
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-sm text-ink-500">
-                        {backupFolderPermissionLost
-                          ? '先前选择的目录权限已失效，请重新选择。'
-                          : '未设置时，备份会保存到系统默认位置（如下载文件夹）。'}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handlePickBackupFolder}
-                    disabled={backupFolderBusy}
-                    className="flex shrink-0 items-center gap-2 rounded-xl bg-lavender-300 px-5 py-2.5 text-sm font-semibold text-ink-900 shadow-sm transition hover:bg-lavender-400 disabled:opacity-60"
-                  >
-                    <FolderOpen size={18} />
-                    {backupFolder ? '更改保存位置' : '选择保存位置'}
-                  </button>
-                </div>
-                {backupFolderPermissionLost && (
-                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    <ShieldAlert size={15} className="mt-0.5 shrink-0 text-amber-500" />
-                    <span>备份目录访问权限已失效，请点击上方按钮重新授权。</span>
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="mt-4 flex flex-wrap gap-3">
               <button

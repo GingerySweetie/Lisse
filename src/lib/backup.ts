@@ -6,10 +6,10 @@ import {
   getBackupFolder,
   getValidBackupFolder,
   isBackupFolderPickerAvailable,
+  saveExportBlob,
   setBackupFolder,
 } from './backup-location';
 import FileSaver from './native/file-saver';
-import { saveBlobNativeChunked } from './native-chunked-save';
 import type {
   AppSettings,
   Bill,
@@ -584,34 +584,7 @@ export async function downloadJSON(data: unknown, filename: string): Promise<voi
   const blob = new Blob([JSON.stringify(data)], {
     type: 'application/json',
   });
-
-  if (isBackupFolderPickerAvailable()) {
-    const folder = await getValidBackupFolder();
-    if (folder) {
-      try {
-        await saveBlobNativeChunked(blob, filename, { folderUri: folder.uri });
-        return;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('PERMISSION_LOST')) {
-          await clearBackupFolder();
-        } else {
-          throw err;
-        }
-      }
-    }
-    try {
-      await saveBlobNativeChunked(blob, filename);
-      return;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('UNSUPPORTED_API_LEVEL')) {
-        console.warn('[backup] chunked save failed:', msg);
-      }
-    }
-  }
-
-  await saveFile(blob, filename, 'JSON 备份文件');
+  await saveExportBlob(blob, filename, 'JSON 备份文件');
 }
 
 export function suggestedBackupFilename(): string {
