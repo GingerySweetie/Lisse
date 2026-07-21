@@ -5,9 +5,12 @@
  * may silently evict the whole `lisse` database when disk is low — the classic
  * "I opened the app and every conversation was gone" symptom.
  *
- * Important UX note: on many Android WebViews, `persist()` returns `false`
- * immediately with **no system dialog**. Callers must surface that result so
- * the button doesn't look dead.
+ * Important UX notes:
+ * - On many Android WebViews, `persist()` returns `false` with **no dialog**.
+ * - Do **not** `await persisted()` before starting `persist()` — some engines
+ *   drop transient user activation across awaits, so the click looks dead
+ *   (hangs or silently denies with no UI update path the user notices).
+ * - Always race against a short timeout; never leave the button spinning forever.
  */
 
 import { Capacitor } from '@capacitor/core';
@@ -21,7 +24,11 @@ export type StoragePersistState = {
   requested: boolean | null;
   /** Human-readable outcome for the last interactive request. */
   message?: string;
+  /** True when persist/persisted did not settle before the timeout. */
+  timedOut?: boolean;
 };
+
+const PERSIST_TIMEOUT_MS = 2500;
 
 function isAndroidWebView(): boolean {
   try {
@@ -31,9 +38,39 @@ function isAndroidWebView(): boolean {
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(fallback);
+    }, ms);
+    promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
+}
+
 function explainResult(state: StoragePersistState): string {
   if (!state.supported) {
     return '当前环境没有 StorageManager.persist（无法用按钮申请）。请照常使用自动备份 / 备份目录。';
+  }
+  if (state.timedOut) {
+    return isAndroidWebView()
+      ? '系统没有回应持久化申请（Android 上常见，通常也不会弹窗）。这不代表失败闪退——请改设备份目录并打开自动备份。'
+      : '浏览器没有在时限内回应持久化申请。请再试一次，或依赖定期备份。';
   }
   if (state.persisted) {
     return state.requested === true
@@ -42,7 +79,7 @@ function explainResult(state: StoragePersistState): string {
   }
   if (state.requested === false) {
     return isAndroidWebView()
-      ? '系统没有批准持久化（Android 应用里很常见，往往不会弹出确认框）。请务必设置备份目录并打开自动备份；别清应用数据。'
+      ? '系统已拒绝持久化（没有弹窗是正常的，不是按钮坏了）。请务必设置备份目录并打开自动备份；别清应用数据。'
       : '浏览器拒绝了持久化请求。可把站点「安装到主屏幕」后再试，或依赖定期备份。';
   }
   if (state.persisted === null) {
@@ -64,30 +101,35 @@ export async function requestPersistentStorage(): Promise<StoragePersistState> {
   }
 
   try {
-    const already =
-      typeof storage.persisted === 'function' ? await storage.persisted() : false;
-    if (already) {
-      const state: StoragePersistState = {
-        supported: true,
-        persisted: true,
-        requested: null,
-      };
-      return { ...state, message: explainResult(state) };
-    }
-    const granted = await storage.persist();
-    // Re-read — some engines report persist() true but persisted() lags a tick.
+    // Start persist() in the same turn as the user gesture. Checking
+    // persisted() first (with await) can drop activation on some WebViews.
+    const persistPromise = storage.persist();
+    type PersistSettle =
+      | { ok: true; value: boolean; timedOut?: undefined }
+      | { ok: false; value: boolean; timedOut?: boolean };
+
+    const grantOrTimeout: PersistSettle = await withTimeout<PersistSettle>(
+      persistPromise.then(
+        (v): PersistSettle => ({ ok: true, value: v }),
+        (): PersistSettle => ({ ok: false, value: false }),
+      ),
+      PERSIST_TIMEOUT_MS,
+      { ok: false, value: false, timedOut: true },
+    );
+
+    const timedOut = grantOrTimeout.timedOut === true;
+    const granted = grantOrTimeout.ok ? grantOrTimeout.value : false;
+
     let persisted = granted;
     if (typeof storage.persisted === 'function') {
-      try {
-        persisted = (await storage.persisted()) || granted;
-      } catch {
-        persisted = granted;
-      }
+      persisted = await withTimeout(storage.persisted(), PERSIST_TIMEOUT_MS, granted);
     }
+
     const state: StoragePersistState = {
       supported: true,
       persisted,
-      requested: granted,
+      requested: timedOut ? null : granted,
+      timedOut: timedOut || undefined,
     };
     return { ...state, message: explainResult(state) };
   } catch {
@@ -107,7 +149,7 @@ export async function getStoragePersistState(): Promise<StoragePersistState> {
     return { supported: false, persisted: null, requested: null };
   }
   try {
-    const persisted = await storage.persisted();
+    const persisted = await withTimeout(storage.persisted(), PERSIST_TIMEOUT_MS, null);
     return { supported: true, persisted, requested: null };
   } catch {
     return { supported: true, persisted: null, requested: null };

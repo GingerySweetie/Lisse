@@ -202,6 +202,8 @@ export default function ImportExportPage() {
   const [persistState, setPersistState] = useState<StoragePersistState | null>(
     null,
   );
+  const [persistBusy, setPersistBusy] = useState(false);
+  const [persistStatus, setPersistStatus] = useState<Status>({ kind: 'idle' });
 
   // Run an initial count on mount so the header badge is always accurate.
   useEffect(() => {
@@ -223,22 +225,23 @@ export default function ImportExportPage() {
     }
   }
 
-  const [persistFeedback, setPersistFeedback] = useState<string | null>(null);
-
   async function handleRequestPersist() {
-    setDiagBusy(true);
-    setPersistFeedback('正在向系统申请…');
+    setPersistBusy(true);
+    setPersistStatus({ kind: 'busy', label: '正在向系统申请持久化…' });
     try {
       const next = await requestPersistentStorage();
       setPersistState(next);
-      setPersistFeedback(
+      const label =
         next.message ??
-          (next.persisted
-            ? '已开启持久化存储。'
-            : '申请完成，但系统未批准（Android 上常见，不一定会弹窗）。'),
-      );
+        (next.persisted
+          ? '已开启持久化存储。'
+          : '申请完成，但系统未批准（Android 上常见，不会弹窗）。');
+      setPersistStatus({
+        kind: next.persisted ? 'ok' : 'fail',
+        label,
+      });
     } finally {
-      setDiagBusy(false);
+      setPersistBusy(false);
     }
   }
 
@@ -905,7 +908,7 @@ export default function ImportExportPage() {
 
                 {persistState && (
                   <div
-                    className={`space-y-2 rounded-lg border px-3 py-2 text-xs ${
+                    className={`rounded-lg border px-3 py-2 text-xs ${
                       persistState.persisted
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                         : persistState.supported
@@ -913,43 +916,11 @@ export default function ImportExportPage() {
                           : 'border-lavender-100 bg-lavender-50/60 text-ink-500'
                     }`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span>
-                        {!persistState.supported
-                          ? '当前环境不支持「持久化存储」请求（桌面浏览器通常仍会保留 IndexedDB）。'
-                          : persistState.persisted
-                            ? '持久化存储已开启：系统存储紧张时不会优先清掉本应用的对话库。'
-                            : '持久化存储未开启：手机存储紧张时，系统可能静默清空 IndexedDB，表现为「一打开对话全没了」。'}
-                      </span>
-                      {persistState.supported && !persistState.persisted && (
-                        <button
-                          type="button"
-                          onClick={() => void handleRequestPersist()}
-                          disabled={diagBusy}
-                          className="shrink-0 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
-                        >
-                          {diagBusy ? '申请中…' : '申请持久化'}
-                        </button>
-                      )}
-                    </div>
-                    {persistFeedback && (
-                      <p
-                        className={`rounded-md px-2 py-1.5 text-[11px] leading-relaxed ${
-                          persistState.persisted
-                            ? 'bg-emerald-100/80 text-emerald-900'
-                            : 'bg-white/70 text-amber-950'
-                        }`}
-                        role="status"
-                      >
-                        {persistFeedback}
-                      </p>
-                    )}
-                    {persistState.supported && !persistState.persisted && (
-                      <p className="text-[10.5px] leading-relaxed opacity-80">
-                        Android 应用里点这个常常<strong>不会弹窗</strong>，直接被系统拒掉——看起来像没反应。
-                        真正稳妥的是：上面设好备份目录 + 更新前自动备份，不要清应用数据。
-                      </p>
-                    )}
+                    {!persistState.supported
+                      ? '当前环境不支持「持久化存储」请求（桌面浏览器通常仍会保留 IndexedDB）。'
+                      : persistState.persisted
+                        ? '持久化存储已开启：系统存储紧张时不会优先清掉本应用的对话库。'
+                        : '持久化存储未开启。请用下方「存储保护」里的按钮申请；Android 通常不会弹窗。'}
                   </div>
                 )}
 
@@ -1019,6 +990,55 @@ export default function ImportExportPage() {
                   </p>
                 )}
               </div>
+            )}
+          </section>
+
+          {/* ── Storage persist (always visible — not buried in diagnostics) ─ */}
+          <section id="storage-persist" className="endpoint-card !mt-0 scroll-mt-4">
+            <div className="flex items-start gap-2">
+              <ShieldAlert
+                size={16}
+                className="mt-0.5 shrink-0 text-amber-500"
+                strokeWidth={1.5}
+              />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-semibold text-ink-900">存储保护</h3>
+                <p className="mt-1 text-sm text-ink-500">
+                  向系统申请「持久化存储」，降低手机空间紧张时把对话库清掉的概率。
+                  Android 应用里点了<strong>通常不会弹任何系统窗口</strong>——下方会立刻显示结果；
+                  被拒绝很常见，真正稳妥仍是备份目录 + 自动备份。
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              {persistState?.persisted ? (
+                <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+                  已开启持久化
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleRequestPersist()}
+                  disabled={persistBusy || persistState?.supported === false}
+                  className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:opacity-60"
+                >
+                  {persistBusy ? '申请中…' : '申请持久化'}
+                </button>
+              )}
+              <StatusLine status={persistStatus} />
+            </div>
+
+            {persistState && !persistState.persisted && persistState.supported !== false && (
+              <p className="mt-3 text-xs leading-relaxed text-ink-500">
+                若按钮从「申请中…」回到可点、且旁边出现红色说明，就是系统已经回应了（多半是拒绝）。
+                请继续往下设置「备份保存位置」。
+              </p>
+            )}
+            {persistState?.supported === false && (
+              <p className="mt-3 text-xs leading-relaxed text-ink-500">
+                当前环境不支持此申请接口，不影响使用备份功能。
+              </p>
             )}
           </section>
 
