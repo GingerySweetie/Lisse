@@ -235,16 +235,19 @@ export default function ConsultChatPage() {
           persona.systemPrompt.trim(),
       });
     }
-    // Writing style must win on tone every consult turn (room/persona cannot
-    // dilute delivery). Mirror normal chat's BP2 + per-turn style_reminder.
-    if (activeStyle?.prompt?.trim()) {
+    // Writing style: keep a system copy (readable + stable prefix) AND append
+    // the FULL prompt after the current user turn. Consult prioritizes style
+    // obedience over cache hit rate — a short nudge was not enough against
+    // strong persona / room voice.
+    const stylePrompt = activeStyle?.prompt?.trim() ?? '';
+    if (stylePrompt) {
       systemTurns.push({
         role: 'system',
         content:
           `# 写作风格\n` +
           `【最高优先级 · 每轮强制】以下条款覆盖房间提示词与人设中任何关于语气、口吻、` +
           `说话方式、用词习惯、句式节奏的描述；必须严格遵守，不得稀释或覆盖。\n\n` +
-          activeStyle.prompt.trim(),
+          stylePrompt,
       });
     }
     const turns: ChatTurn[] = [
@@ -255,17 +258,22 @@ export default function ConsultChatPage() {
         attachments: m.attachments,
       })),
     ];
-    if (activeStyle?.prompt?.trim()) {
+    if (stylePrompt) {
+      // Full style at the end of THIS user message only (not persisted to DB).
+      // Next turn re-sends raw history — history cache can still help; the
+      // style tokens themselves are uncached every turn (accepted tradeoff).
+      const styleTail =
+        `<style_reminder>本轮写作风格要求（务必遵守；与房间/人设语气冲突时以本风格为准；勿复述）：\n` +
+        `${stylePrompt}\n` +
+        `</style_reminder>`;
       const last = turns[turns.length - 1];
-      const nudge =
-        '<style_reminder>按系统「# 写作风格」作答；本房间每一轮都必须遵守。</style_reminder>';
       if (last?.role === 'user') {
         turns[turns.length - 1] = {
           ...last,
-          content: `${last.content}\n\n${nudge}`,
+          content: `${last.content}\n\n${styleTail}`,
         };
       } else {
-        turns.push({ role: 'user', content: nudge });
+        turns.push({ role: 'user', content: styleTail });
       }
     }
 
