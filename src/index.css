@@ -1263,18 +1263,146 @@
   );
 }
 
-/* Chat skins (紫雾 / 石榴 / 千夜 / 苔青): page + header take the palette;
-   the message band keeps a light frosted wash so existing bubbles stay readable. */
-.wis-chat-page.has-skin .wis-chat-body::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: hsla(270, 28%, 96%, 0.52);
-  pointer-events: none;
-  z-index: 0;
-}
+/* Chat skins (紫雾 / 石榴 / 千夜 / 苔青): no frosted light wash — text and
+   bubbles use the skin's own inverted palette against the dark page. */
 .wis-chat-page.has-skin .wis-chat-body.has-wallpaper::before {
-  background: hsla(270, 28%, 96%, 0.28);
+  /* Wallpaper still gets a soft veil; tint it with the skin bg so it
+     doesn't bleach the dark palette. */
+  background: color-mix(in srgb, var(--skin-bg) 55%, transparent);
+}
+
+.wis-chat-page.has-skin .wis-date-sep-line {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--skin-bd),
+    transparent
+  );
+}
+.wis-chat-page.has-skin .wis-date-sep-text {
+  color: var(--skin-tm);
+  opacity: 0.7;
+}
+
+.wis-chat-page.has-skin .wis-ai-bud {
+  background: var(--skin-ac);
+  opacity: 0.55;
+}
+.wis-chat-page.has-skin .wis-ai-stroke {
+  background: linear-gradient(90deg, var(--skin-bd), transparent);
+}
+.wis-chat-page.has-skin .wis-ai-body {
+  color: var(--skin-text);
+}
+.wis-chat-page.has-skin .wis-ai-body strong,
+.wis-chat-page.has-skin .wis-ai-body b {
+  color: var(--skin-tu);
+}
+.wis-chat-page.has-skin .wis-ai-body em,
+.wis-chat-page.has-skin .wis-ai-body i {
+  color: var(--skin-tm);
+}
+.wis-chat-page.has-skin .wis-ai-body .prose-msg a,
+.wis-chat-page.has-skin .wis-ai-body a {
+  color: var(--skin-ac);
+}
+.wis-chat-page.has-skin .wis-ai-body code {
+  background: color-mix(in srgb, var(--skin-sl) 80%, transparent);
+  color: var(--skin-tu);
+}
+.wis-chat-page.has-skin .wis-ai-body pre {
+  background: color-mix(in srgb, var(--skin-sl) 90%, transparent);
+  border-color: var(--skin-bd);
+  color: var(--skin-text);
+}
+.wis-chat-page.has-skin .wis-ai-body blockquote {
+  border-left-color: var(--skin-ac);
+  color: var(--skin-tm);
+}
+
+/* Usage / muted Tailwind ink utilities inside AI letters */
+.wis-chat-page.has-skin .wis-ai-msg [class*='text-ink'] {
+  color: var(--skin-tm) !important;
+}
+.wis-chat-page.has-skin .msg-actions,
+.wis-chat-page.has-skin .msg-actions button {
+  color: var(--skin-tm);
+}
+.wis-chat-page.has-skin .thinking-head {
+  color: var(--skin-tm);
+}
+.wis-chat-page.has-skin .thinking-head:hover {
+  color: var(--skin-ac);
+}
+
+.wis-chat-page.has-skin .wis-user-bubble {
+  background: var(--skin-ub);
+  border-color: var(--skin-ur);
+  color: var(--skin-tu);
+  box-shadow: none;
+}
+.wis-chat-page.has-skin .wis-msg-time {
+  color: var(--skin-tm);
+  opacity: 0.7;
+}
+
+.wis-chat-page.has-skin .wis-tag {
+  color: var(--skin-tm);
+  border-color: var(--skin-bd);
+}
+.wis-chat-page.has-skin .wis-tag:hover,
+.wis-chat-page.has-skin .wis-tag.is-on {
+  background: color-mix(in srgb, var(--skin-ac) 22%, transparent);
+  color: var(--skin-tu);
+  border-color: var(--skin-ac);
+}
+.wis-chat-page.has-skin .wis-tag-deep.is-on {
+  background: color-mix(in srgb, var(--skin-ac) 28%, transparent);
+  color: var(--skin-tu);
+  border-color: var(--skin-ac);
+}
+.wis-chat-page.has-skin .wis-composer-field {
+  border-color: var(--skin-bd);
+  color: var(--skin-tu);
+  background: color-mix(in srgb, var(--skin-sl) 70%, transparent);
+}
+.wis-chat-page.has-skin .wis-composer-field::placeholder {
+  color: var(--skin-tm);
+  opacity: 0.65;
+}
+.wis-chat-page.has-skin .wis-composer-field:focus {
+  border-color: var(--skin-ac);
+}
+.wis-chat-page.has-skin .wis-send-btn {
+  border-color: var(--skin-bd);
+  color: var(--skin-ac);
+}
+.wis-chat-page.has-skin .wis-send-btn:hover {
+  background: color-mix(in srgb, var(--skin-ac) 22%, transparent);
+  color: var(--skin-tu);
+}
+.wis-chat-page.has-skin .wis-send-btn.is-stop {
+  border-color: rgba(255, 120, 120, 0.35);
+  color: #e88888;
+}
+
+/* Tool chips / empty states under dark skins */
+.wis-chat-page.has-skin .empty-state-text {
+  color: var(--skin-tm);
+}
+.wis-chat-page.has-skin .handoff-job-chip {
+  background: color-mix(in srgb, var(--skin-sl) 85%, transparent);
+  border-color: var(--skin-bd);
+  color: var(--skin-text);
+}
+.wis-chat-page.has-skin .wis-composer-wrap [class*='text-ink'] {
+  color: var(--skin-tm) !important;
+}
+.wis-chat-page.has-skin .wis-ai-msg [class*='bg-white'],
+.wis-chat-page.has-skin .wis-ai-msg [class*='border-lavender'] {
+  background: color-mix(in srgb, var(--skin-sl) 88%, transparent) !important;
+  border-color: var(--skin-bd) !important;
+  color: var(--skin-tm) !important;
 }
 
 .wis-chat-frame {
