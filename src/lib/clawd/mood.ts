@@ -15,7 +15,6 @@ export function moodFromRoute(pathname: string): ClawdEmoteId {
   if (p.startsWith('/workshop')) return 'coding';
   if (p.startsWith('/browser')) return 'photo';
   if (p.startsWith('/billing') || p.startsWith('/bill-sources')) return 'coffee';
-  if (p.startsWith('/bedroom')) return 'sleeping';
   if (p.startsWith('/circle')) return 'valentine';
   if (p.startsWith('/screen-time')) return 'gaming';
   if (p.startsWith('/search') || p.startsWith('/memory')) return 'reading';

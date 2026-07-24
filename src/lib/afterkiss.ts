@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 
 /**
  * AfterKiss BLE manager. Singleton so connection state survives panel
- * open/close and route navigation within the bedroom. Subscribers
- * (React components) re-render via the `useAfterKiss` hook.
+ * open/close and route navigation within chat. Subscribers (React
+ * components) re-render via the `useAfterKiss` hook.
  *
  * Protocol (0x600A characteristic, 4 bytes):
  *   [0x00, thrust, vibe, clit]   (values 0–100)
@@ -21,12 +21,22 @@ export interface LogLine {
   text: string;
 }
 
+export interface ToyChannels {
+  thrust: number;
+  vibe: number;
+  clit: number;
+}
+
 export interface AfterKissState {
   connected: boolean;
   connecting: boolean;
   deviceName: string | null;
   lastError: string | null;
   log: LogLine[];
+  /** Last commanded channel intensities (0–100). Survives disconnect. */
+  thrust: number;
+  vibe: number;
+  clit: number;
 }
 
 class AfterKissManager {
@@ -39,6 +49,9 @@ class AfterKissManager {
     deviceName: null,
     lastError: null,
     log: [],
+    thrust: 0,
+    vibe: 0,
+    clit: 0,
   };
   private subscribers = new Set<(s: AfterKissState) => void>();
 
@@ -154,12 +167,34 @@ class AfterKissManager {
     }
   }
 
+  getChannels(): ToyChannels {
+    return {
+      thrust: this.state.thrust,
+      vibe: this.state.vibe,
+      clit: this.state.clit,
+    };
+  }
+
+  /** Update remembered intensities without writing to the device. */
+  rememberChannels(thrust: number, vibe: number, clit: number): void {
+    this.setState({
+      thrust: clamp(thrust),
+      vibe: clamp(vibe),
+      clit: clamp(clit),
+    });
+  }
+
   setChannels(thrust: number, vibe: number, clit: number): Promise<void> {
-    return this.writeMotor([0x00, clamp(thrust), clamp(vibe), clamp(clit)]);
+    const t = clamp(thrust);
+    const v = clamp(vibe);
+    const c = clamp(clit);
+    this.setState({ thrust: t, vibe: v, clit: c });
+    return this.writeMotor([0x00, t, v, c]);
   }
 
   async emergencyStop(): Promise<void> {
     this.pushLog('!!! 急停 !!!');
+    this.setState({ thrust: 0, vibe: 0, clit: 0 });
     await this.writeMotor([0x00, 0x00, 0x00, 0x00]);
   }
 

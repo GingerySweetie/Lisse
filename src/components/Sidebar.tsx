@@ -584,7 +584,7 @@ function groupConversations(
   const personaById = new Map(personas.map((p) => [p.id, p]));
 
   // Bucketize. Multi-persona conversations go into '__group__'.
-  // Bedroom conversations are hidden — they live on /bedroom/:personaId.
+  // Legacy bedroom conversations stay hidden (room feature removed).
   const buckets = new Map<string, Conversation[]>();
   for (const c of conversations) {
     if (c.room === 'bedroom' || c.room === 'consult') continue;

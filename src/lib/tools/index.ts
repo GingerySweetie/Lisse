@@ -3,6 +3,7 @@ import type { Persona } from '../../types';
 import { memoryTools } from './memory';
 import { musicTools } from './music';
 import { documentTools } from './documents';
+import { toyTools } from './toy';
 import { mcpTools } from '../mcp/tools';
 
 /**
@@ -13,7 +14,8 @@ import { mcpTools } from '../mcp/tools';
  *
  * Built-ins: memory (remember / recall / update_memory / forget_memory),
  *            music (play / search / history),
- *            documents (parse_document).
+ *            documents (parse_document),
+ *            toy (control_toy — when 玩具 is started in chat settings).
  * External:  MCP servers registered on /mcp page (streamable HTTP).
  */
 
@@ -37,6 +39,7 @@ export async function availableTools(ctx: ToolContext): Promise<Tool[]> {
   for (const t of await memoryTools(ctx)) out.push(t);
   for (const t of await musicTools(ctx)) out.push(t);
   for (const t of await documentTools(ctx)) out.push(t);
+  for (const t of await toyTools(ctx)) out.push(t);
   for (const t of await mcpTools(ctx)) out.push(t);
   return out;
 }

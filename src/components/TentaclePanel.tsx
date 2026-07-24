@@ -9,13 +9,12 @@ import {
 import type { BedroomTheme } from '../lib/bedroom-themes';
 
 /**
- * Bedroom touch controller — slides up over the BedroomChat, drives the
- * AfterKiss device via Web Bluetooth. Three tabs: 控制 (sliders),
- * 八音盒 (paper-tape score player), 测试 (raw hex / log).
+ * Toy / 触手 controller — slides up over chat, drives the AfterKiss
+ * device via Web Bluetooth. Three tabs: 控制 (sliders), 八音盒
+ * (paper-tape score player), 测试 (raw hex / log).
  *
- * Theme palette is inherited from the room so the panel feels of-a-piece
- * with the wall color. Channel colors (cyan/gold/pink) stay fixed for
- * identification.
+ * Theme palette comes from the active chat skin (or a default dark
+ * palette). Channel colors (cyan/gold/pink) stay fixed for identification.
  */
 
 interface Props {
@@ -88,7 +87,7 @@ export default function TentaclePanel({ theme: t, onClose }: Props) {
               strokeLinejoin="round"
             />
           </svg>
-          回房间
+          返回
         </button>
         <div style={{ textAlign: 'center' }}>
           <div
@@ -232,11 +231,19 @@ export default function TentaclePanel({ theme: t, onClose }: Props) {
 // ─── Control panel (3 sliders) ────────────────────────────────────────
 
 function ControlPanel({ theme: t, connected }: { theme: BedroomTheme; connected: boolean }) {
-  const [thrust, setThrust] = useState(0);
-  const [vibe, setVibe] = useState(0);
-  const [clit, setClit] = useState(0);
+  const ak = useAfterKiss();
+  const [thrust, setThrust] = useState(ak.thrust);
+  const [vibe, setVibe] = useState(ak.vibe);
+  const [clit, setClit] = useState(ak.clit);
   const [realtime, setRealtime] = useState(true);
   const lastSendRef = useRef(0);
+
+  // Keep sliders in sync when the model (or another tab) changes channels.
+  useEffect(() => {
+    setThrust(ak.thrust);
+    setVibe(ak.vibe);
+    setClit(ak.clit);
+  }, [ak.thrust, ak.vibe, ak.clit]);
 
   function maybeSendRealtime(t: number, v: number, c: number) {
     if (!realtime || !connected) return;

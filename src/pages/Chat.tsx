@@ -25,11 +25,17 @@ import StylePicker from '../components/StylePicker';
 import ExportMenu from '../components/ExportMenu';
 import AccentPicker from '../components/AccentPicker';
 import WallpaperPicker from '../components/WallpaperPicker';
+import SkinPicker from '../components/SkinPicker';
+import TentaclePanel from '../components/TentaclePanel';
+import BedroomDecor, { decorVariantForTheme } from '../components/BedroomDecor';
 import { WisteriaDecor, LeafButton } from '../components/WisteriaDecor';
 import LeafMenu from '../components/LeafMenu';
 import WisteriaMark from '../components/WisteriaMark';
 import { emitClawd } from '../lib/clawd/bus';
 import { beginChatStream, endChatStream } from '../lib/stream-activity';
+import { getBedroomTheme } from '../lib/bedroom-themes';
+import { setStatusBarColor, resetStatusBar } from '../lib/status-bar';
+import { afterkiss, useAfterKiss } from '../lib/afterkiss';
 import type { Attachment, Conversation, Message } from '../types';
 
 export default function ChatPage() {
@@ -597,17 +603,63 @@ export default function ChatPage() {
   // Leaf-icon function menu: pickers / accent / export all live behind
   // it. Defaults closed.
   const [leafOpen, setLeafOpen] = useState(false);
+  const [tentacleOpen, setTentacleOpen] = useState(false);
+  const toyState = useAfterKiss();
 
   const persona = selectedPersona();
   const wallpaper = settings?.chatWallpaper ?? null;
+  const skinId = conversation?.chatSkin ?? null;
+  const skin = skinId ? getBedroomTheme(skinId) : null;
+  const decorVariant = decorVariantForTheme(skinId ?? undefined);
+  const toyOn = !!settings?.toyControlEnabled;
+
+  useEffect(() => {
+    if (skin) {
+      void setStatusBarColor(skin.bg);
+      return () => {
+        void resetStatusBar();
+      };
+    }
+    void resetStatusBar();
+    return undefined;
+  }, [skin?.bg]);
 
   return (
-    <div className="wis-chat-page">
-      <WisteriaDecor />
+    <div
+      className={`wis-chat-page${skin ? ' has-skin' : ''}`}
+      style={
+        skin
+          ? {
+              background: skin.bg,
+              ['--skin-bg' as string]: skin.bg,
+              ['--skin-sl' as string]: skin.sl,
+              ['--skin-text' as string]: skin.text,
+              ['--skin-ac' as string]: skin.ac,
+              ['--skin-bd' as string]: skin.bd,
+              ['--skin-tm' as string]: skin.tm,
+            }
+          : undefined
+      }
+    >
+      {skin && decorVariant ? (
+        <BedroomDecor variant={decorVariant} />
+      ) : (
+        <WisteriaDecor />
+      )}
       <LeafButton onClick={() => setLeafOpen(true)} />
 
       <div className="wis-chat-frame">
-        <header className="wis-chat-header">
+        <header
+          className="wis-chat-header"
+          style={
+            skin
+              ? {
+                  background: `${skin.sl}cc`,
+                  borderBottom: `1px solid ${skin.bd}`,
+                }
+              : undefined
+          }
+        >
           {persona ? (
             <button
               type="button"
@@ -618,7 +670,7 @@ export default function ChatPage() {
                 cursor: 'pointer',
                 padding: 0,
                 fontSize: 15,
-                color: 'hsla(268, 30%, 32%, 0.85)',
+                color: skin ? skin.tu : 'hsla(268, 30%, 32%, 0.85)',
                 letterSpacing: '0.1em',
                 fontWeight: 400,
                 fontFamily: "'Noto Serif SC', Georgia, serif",
@@ -630,7 +682,7 @@ export default function ChatPage() {
             <span
               style={{
                 fontSize: 15,
-                color: 'hsla(268, 30%, 32%, 0.85)',
+                color: skin ? skin.tu : 'hsla(268, 30%, 32%, 0.85)',
                 letterSpacing: '0.1em',
                 fontFamily: "'Noto Serif SC', Georgia, serif",
               }}
@@ -642,7 +694,8 @@ export default function ChatPage() {
         </header>
 
         {/* Wallpaper applies only to this body (date sep + message stream).
-            Header and composer stay outside so their frosted chrome is unchanged. */}
+            Header and composer stay outside so their frosted chrome is unchanged.
+            Chat skin paints the page behind; wallpaper still overlays the body. */}
         <div
           className={`wis-chat-body${wallpaper ? ' has-wallpaper' : ''}`}
           style={
@@ -686,10 +739,23 @@ export default function ChatPage() {
                   m.role === 'assistant' &&
                   !busy &&
                   !branch.slice(idx + 1).some((mm) => mm.role === 'user');
+                // While streaming with 玩具 started, show live channel levels
+                // until the turn persists toyIntensity.
+                const msgForBubble =
+                  toyOn && m.id === streamingId
+                    ? {
+                        ...m,
+                        toyIntensity: {
+                          thrust: toyState.thrust,
+                          vibe: toyState.vibe,
+                          clit: toyState.clit,
+                        },
+                      }
+                    : m;
                 return (
                   <li key={m.id} data-mid={m.id}>
                     <MessageBubble
-                      message={m}
+                      message={msgForBubble}
                       accentColor={conversation?.accentColor ?? null}
                       streamingText={streamingOverride(m)}
                       streamingThinking={
@@ -767,6 +833,18 @@ export default function ChatPage() {
               }}
             />
           </MenuRow>
+          <MenuRow label="皮肤">
+            <SkinPicker
+              value={skinId}
+              onChange={async (next) => {
+                if (!conversation) return;
+                await db.conversations.update(conversation.id, {
+                  chatSkin: next ?? undefined,
+                  updatedAt: Date.now(),
+                });
+              }}
+            />
+          </MenuRow>
           <MenuRow label="壁纸">
             <WallpaperPicker
               value={wallpaper}
@@ -774,6 +852,89 @@ export default function ChatPage() {
                 await saveSettings({ chatWallpaper: next });
               }}
             />
+          </MenuRow>
+          <MenuRow label="玩具">
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              <button
+                type="button"
+                onClick={async () => {
+                  await saveSettings({ toyControlEnabled: !toyOn });
+                }}
+                style={{
+                  fontSize: 11,
+                  letterSpacing: '0.04em',
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  border: toyOn
+                    ? '1px solid hsla(340, 45%, 55%, 0.55)'
+                    : '1px solid hsla(270, 25%, 78%, 0.55)',
+                  background: toyOn
+                    ? 'hsla(340, 40%, 92%, 0.95)'
+                    : 'hsla(270, 30%, 96%, 0.9)',
+                  color: toyOn
+                    ? 'hsla(340, 40%, 38%, 0.95)'
+                    : 'hsla(268, 22%, 40%, 0.85)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-serif)',
+                }}
+                title={
+                  toyOn
+                    ? '已启动：模型可调力度，消息尾部显示示意'
+                    : '启动后模型可控制力度'
+                }
+              >
+                {toyOn ? '已启动' : '启动'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLeafOpen(false);
+                  setTentacleOpen(true);
+                }}
+                style={{
+                  fontSize: 11,
+                  letterSpacing: '0.04em',
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  border: '1px solid hsla(270, 25%, 78%, 0.55)',
+                  background: 'hsla(270, 30%, 96%, 0.9)',
+                  color: 'hsla(268, 22%, 40%, 0.85)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-serif)',
+                }}
+                title="手动控制面板"
+              >
+                控制
+                {toyState.connected ? ' · 已连' : ''}
+              </button>
+              {toyOn && toyState.connected && (
+                <button
+                  type="button"
+                  onClick={() => void afterkiss.emergencyStop()}
+                  style={{
+                    fontSize: 11,
+                    letterSpacing: '0.04em',
+                    padding: '4px 10px',
+                    borderRadius: 999,
+                    border: '1px solid hsla(0, 55%, 55%, 0.55)',
+                    background: 'hsla(0, 55%, 94%, 0.95)',
+                    color: 'hsla(0, 45%, 38%, 0.95)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-serif)',
+                  }}
+                  title="急停"
+                >
+                  急停
+                </button>
+              )}
+            </div>
           </MenuRow>
           <MenuRow label="导出">
             <ExportMenu
@@ -784,6 +945,13 @@ export default function ChatPage() {
           </MenuRow>
         </div>
       </LeafMenu>
+
+      {tentacleOpen && (
+        <TentaclePanel
+          theme={skin ?? getBedroomTheme('wisteria')}
+          onClose={() => setTentacleOpen(false)}
+        />
+      )}
 
       {showSecret && persona && (
         <PersonaSecret

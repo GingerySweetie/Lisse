@@ -16,11 +16,11 @@ export default function Layout() {
   const isConsult = location.pathname.startsWith('/consult');
 
   // Restore default lavender status bar whenever we land on any non-themed
-  // room route. Bedroom / consult manage their own colour and reset on unmount.
+  // room route. Consult / chat (skins) manage their own colour.
   useEffect(() => {
     if (
-      !location.pathname.startsWith('/bedroom') &&
-      !location.pathname.startsWith('/consult')
+      !location.pathname.startsWith('/consult') &&
+      !location.pathname.startsWith('/chat')
     ) {
       void resetStatusBar();
     }

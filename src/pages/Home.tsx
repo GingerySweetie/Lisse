@@ -279,7 +279,7 @@ const ico: Record<string, IconFn> = {
 };
 
 interface SpaceDef {
-  id: 'chat' | 'books' | 'bedroom' | 'consult' | 'body' | 'billing';
+  id: 'chat' | 'books' | 'consult' | 'body' | 'billing';
   top: string;
   left: string;
   lineW: string;
@@ -312,25 +312,14 @@ const spaces: SpaceDef[] = [
     delay: 0.06,
   },
   {
-    id: 'bedroom',
-    top: '57%',
-    left: '16%',
-    lineW: '24%',
-    label: '卧室',
-    icon: 'moon',
-    color: 'rgba(160,115,140,0.5)',
-    delay: 0.12,
-    dots: ['rgba(120,55,65,0.5)', 'rgba(50,55,110,0.5)'],
-  },
-  {
     id: 'consult',
-    top: '72%',
-    left: '18%',
+    top: '60%',
+    left: '16%',
     lineW: '24%',
     label: '咨询室',
     icon: 'consult',
     color: 'rgba(92,61,122,0.55)',
-    delay: 0.16,
+    delay: 0.12,
   },
   {
     id: 'body',
@@ -340,7 +329,7 @@ const spaces: SpaceDef[] = [
     label: '身体',
     icon: 'heart',
     color: 'rgba(90,140,128,0.45)',
-    delay: 0.2,
+    delay: 0.18,
   },
   {
     id: 'billing',
@@ -350,7 +339,7 @@ const spaces: SpaceDef[] = [
     label: '账单',
     icon: 'wallet',
     color: 'rgba(140,120,100,0.45)',
-    delay: 0.26,
+    delay: 0.24,
   },
 ];
 
@@ -482,13 +471,11 @@ export default function HomePage() {
     const target =
       sp.id === 'books'
         ? '/books'
-        : sp.id === 'bedroom'
-          ? '/bedroom'
-          : sp.id === 'consult'
-            ? '/consult'
-            : sp.id === 'body'
-              ? '/body'
-              : '/billing';
+        : sp.id === 'consult'
+          ? '/consult'
+          : sp.id === 'body'
+            ? '/body'
+            : '/billing';
     navigate(target);
   }
 
