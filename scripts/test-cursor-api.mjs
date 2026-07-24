@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   isLoopbackHost,
+  isStreamGoneMessage,
   isTerminalRunStatus,
   PROXY_BASE,
   resolveCursorApiBase,
@@ -47,4 +48,11 @@ test('isLoopbackHost recognizes localhost variants', () => {
 
 test('PROXY_BASE is the same-origin reverse-proxy path', () => {
   assert.equal(PROXY_BASE, '/proxy/cursor');
+});
+
+test('isStreamGoneMessage detects expired / unavailable streams', () => {
+  assert.equal(isStreamGoneMessage('Run stream is no longer available'), true);
+  assert.equal(isStreamGoneMessage('stream_expired'), true);
+  assert.equal(isStreamGoneMessage('410 Gone'), true);
+  assert.equal(isStreamGoneMessage('tool failed'), false);
 });
