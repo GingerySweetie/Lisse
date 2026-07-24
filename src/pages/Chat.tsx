@@ -614,15 +614,16 @@ export default function ChatPage() {
   const toyOn = !!settings?.toyControlEnabled;
 
   useEffect(() => {
-    if (skin) {
-      void setStatusBarColor(skin.bg);
-      return () => {
-        void resetStatusBar();
-      };
+    if (!skinId) {
+      void resetStatusBar();
+      return undefined;
     }
-    void resetStatusBar();
-    return undefined;
-  }, [skin?.bg]);
+    const t = getBedroomTheme(skinId);
+    void setStatusBarColor(t.bg);
+    return () => {
+      void resetStatusBar();
+    };
+  }, [skinId]);
 
   return (
     <div

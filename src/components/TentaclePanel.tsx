@@ -231,26 +231,28 @@ export default function TentaclePanel({ theme: t, onClose }: Props) {
 // ─── Control panel (3 sliders) ────────────────────────────────────────
 
 function ControlPanel({ theme: t, connected }: { theme: BedroomTheme; connected: boolean }) {
+  // Channel intensities live on the AfterKiss singleton so model tool calls
+  // and this panel stay in sync without a local mirror + effect.
   const ak = useAfterKiss();
-  const [thrust, setThrust] = useState(ak.thrust);
-  const [vibe, setVibe] = useState(ak.vibe);
-  const [clit, setClit] = useState(ak.clit);
   const [realtime, setRealtime] = useState(true);
   const lastSendRef = useRef(0);
+  const thrust = ak.thrust;
+  const vibe = ak.vibe;
+  const clit = ak.clit;
 
-  // Keep sliders in sync when the model (or another tab) changes channels.
-  useEffect(() => {
-    setThrust(ak.thrust);
-    setVibe(ak.vibe);
-    setClit(ak.clit);
-  }, [ak.thrust, ak.vibe, ak.clit]);
-
-  function maybeSendRealtime(t: number, v: number, c: number) {
+  function maybeSendRealtime(nextT: number, nextV: number, nextC: number) {
     if (!realtime || !connected) return;
     const now = Date.now();
     if (now - lastSendRef.current < SEND_INTERVAL) return;
     lastSendRef.current = now;
-    void afterkiss.setChannels(t, v, c);
+    void afterkiss.setChannels(nextT, nextV, nextC);
+  }
+
+  function applyChannels(nextT: number, nextV: number, nextC: number) {
+    // Always remember for UI + message indicators; BLE write is throttled
+    // in realtime mode or deferred until 「发送指令」.
+    afterkiss.rememberChannels(nextT, nextV, nextC);
+    maybeSendRealtime(nextT, nextV, nextC);
   }
 
   function commitSend() {
@@ -279,10 +281,7 @@ function ControlPanel({ theme: t, connected }: { theme: BedroomTheme; connected:
         label="抽插"
         color={CHANNEL_COLORS.thrust}
         value={thrust}
-        onChange={(v) => {
-          setThrust(v);
-          maybeSendRealtime(v, vibe, clit);
-        }}
+        onChange={(v) => applyChannels(v, vibe, clit)}
         onCommit={commitSend}
         theme={t}
       />
@@ -290,10 +289,7 @@ function ControlPanel({ theme: t, connected }: { theme: BedroomTheme; connected:
         label="棒身震动"
         color={CHANNEL_COLORS.vibe}
         value={vibe}
-        onChange={(v) => {
-          setVibe(v);
-          maybeSendRealtime(thrust, v, clit);
-        }}
+        onChange={(v) => applyChannels(thrust, v, clit)}
         onCommit={commitSend}
         theme={t}
       />
@@ -301,10 +297,7 @@ function ControlPanel({ theme: t, connected }: { theme: BedroomTheme; connected:
         label="阴蒂"
         color={CHANNEL_COLORS.clit}
         value={clit}
-        onChange={(v) => {
-          setClit(v);
-          maybeSendRealtime(thrust, vibe, v);
-        }}
+        onChange={(v) => applyChannels(thrust, vibe, v)}
         onCommit={commitSend}
         theme={t}
       />
@@ -733,7 +726,8 @@ function TestPanel({ theme: t }: { theme: BedroomTheme }) {
         <code style={{ background: t.bg, padding: '2px 6px', borderRadius: 3, color: t.ac }}>
           00 00 00 00
         </code>
-        　　全开：
+        {'  '}
+        全开：
         <code style={{ background: t.bg, padding: '2px 6px', borderRadius: 3, color: t.ac }}>
           00 64 64 64
         </code>

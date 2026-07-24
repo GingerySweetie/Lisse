@@ -9,7 +9,7 @@ import type { Tool, ToolContext } from './index';
  * Channels are 0–100: thrust (抽插), vibe (棒身震动), clit (阴蒂).
  */
 
-export async function toyTools(_ctx: ToolContext): Promise<Tool[]> {
+export async function toyTools(_: ToolContext): Promise<Tool[]> {
   const settings = await getSettings();
   if (!settings.toyControlEnabled) return [];
   return [controlToyTool()];
