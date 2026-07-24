@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, Plus, Save, Trash2 } from 'lucide-react';
+import StyleInjectPicker, {
+  type StyleUserInject,
+} from '../components/StyleInjectPicker';
 import { db, getSettings, saveSettings } from '../db';
 import type { WritingStyle } from '../types';
 import { newId } from '../lib/id';
@@ -113,8 +116,9 @@ export default function StylesPage() {
       <div className="flex-1 overflow-y-auto px-3 py-6 md:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
           <p className="text-sm text-ink-500">
-            Style 完整进系统提示（稳定前缀，走 prompt cache）；尾部只留极短固定提醒。
-            与人设语气冲突时以 Style 为准。为保 ≥97% 命中率，不会把全文塞进每轮用户消息。
+            Style 完整进系统提示（稳定前缀，走 prompt cache）。默认尾部只留极短固定提醒，
+            以保 ≥97% 命中率；需要更强服从时，可把全文注入到普通聊天的当前用户消息前/后
+            （会牺牲一部分 cache）。咨询室始终全文挂在消息后，不受此开关影响。
             <br />
             前端改完保存即生效，下一条消息就会带上新内容。
           </p>
@@ -137,6 +141,19 @@ export default function StylesPage() {
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-ink-500">
+                普通聊天 · 风格注入
+              </span>
+              <StyleInjectPicker
+                value={(settings?.styleUserInject ?? 'off') as StyleUserInject}
+                onChange={(next) => void saveSettings({ styleUserInject: next })}
+              />
+              <span className="text-[11px] font-light text-ink-500">
+                关 = 短提醒；消息前/后 = 每轮把完整 Content 塞进当前用户消息（不入库）。
+              </span>
             </label>
 
             {/* Title */}

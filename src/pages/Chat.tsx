@@ -22,6 +22,7 @@ import EndpointPicker from '../components/EndpointPicker';
 import PersonaPicker from '../components/PersonaPicker';
 import PersonaSecret from '../components/PersonaSecret';
 import StylePicker from '../components/StylePicker';
+import StyleInjectPicker from '../components/StyleInjectPicker';
 import ExportMenu from '../components/ExportMenu';
 import AccentPicker from '../components/AccentPicker';
 import WallpaperPicker from '../components/WallpaperPicker';
@@ -746,6 +747,13 @@ export default function ChatPage() {
                 // (Styles page UseStyle dropdown, every other chat tab).
                 await saveSettings({ defaultStyleId: id });
               }}
+            />
+          </MenuRow>
+          <MenuRow label="注入">
+            <StyleInjectPicker
+              compact
+              value={settings?.styleUserInject ?? 'off'}
+              onChange={(next) => void saveSettings({ styleUserInject: next })}
             />
           </MenuRow>
           <MenuRow label="模型">

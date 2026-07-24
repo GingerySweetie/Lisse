@@ -704,10 +704,23 @@ async function streamAssistant(args: {
     turns.push({ role: 'system', content: groupAwarenessSnippet(persona, groupOthers) });
   }
 
-  // Fixed short recency nudge — CONSTANT (~25 toks), never embeds style.prompt.
-  const STYLE_NUDGE = style && style.prompt.trim()
-    ? '<style_reminder>按系统「# 写作风格」作答。</style_reminder>'
-    : '';
+  // Style at the user-message edge. Default (`off`) is a FIXED short nudge
+  // (~25 toks, never embeds style.prompt) so the uncached zone stays tiny.
+  // `before` / `after` inject the FULL prompt (consult-room obedience) at the
+  // chosen side of the user's text — settings.styleUserInject.
+  const stylePrompt = style?.prompt?.trim() ?? '';
+  const injectMode = settings.styleUserInject ?? 'off';
+  const STYLE_NUDGE =
+    stylePrompt && injectMode === 'off'
+      ? '<style_reminder>按系统「# 写作风格」作答。</style_reminder>'
+      : '';
+  const STYLE_FULL =
+    stylePrompt && (injectMode === 'before' || injectMode === 'after')
+      ? `<style_reminder>本轮写作风格要求（务必遵守；与人设语气冲突时以本风格为准；勿复述）：\n${stylePrompt}\n</style_reminder>`
+      : '';
+  const styleBefore = injectMode === 'before' ? STYLE_FULL : '';
+  const styleAfter =
+    injectMode === 'after' ? STYLE_FULL : STYLE_NUDGE;
 
   // ─── Collect volatile context (injected after BP4, not in system) ───
   const volatileParts: string[] = [];
@@ -783,9 +796,12 @@ async function streamAssistant(args: {
     }
   }
 
-  // ─── Inject volatile context + style nudge into the last user message ─
-  // Per-turn volatile data is prepended BEFORE the user's text; the FIXED
-  // style nudge is appended AFTER it (recency signal → system「# 写作风格」).
+  // ─── Inject volatile context + style block into the last user message ─
+  // Per-turn volatile data is always prepended BEFORE the user's text.
+  // Style placement follows settings.styleUserInject:
+  //   off    → short FIXED nudge AFTER the text (cache-cheap default)
+  //   before → FULL style.prompt BEFORE the text (after volatile)
+  //   after  → FULL style.prompt AFTER the text (consult-room style)
   //
   // Both live inside the CURRENT user message, AFTER BP4, so they never
   // touch the cached prefix. Next turn the raw DB content is re-sent
@@ -796,27 +812,28 @@ async function streamAssistant(args: {
   //   BP3 (pinned)      → always hits  ✓
   //   diary/capabilities→ covered by BP4 when stable  ✓
   //   BP4 (history)     → always hits  ✓
-  //   volatile+nudge    → uncached; keep this zone tiny for ≥97% hits
+  //   volatile+style    → uncached; full inject trades hit rate for obedience
   const vcText =
     volatileParts.length > 0
       ? '<gateway_volatile_context>仅供参考，勿复述：\n' +
         volatileParts.join('\n\n') +
         '\n</gateway_volatile_context>'
       : '';
-  if (vcText || STYLE_NUDGE) {
+  if (vcText || styleBefore || styleAfter) {
     const last = turns[turns.length - 1];
     if (last && last.role === 'user') {
-      // Normal turn: volatile before the user's text, fixed nudge at the end.
-      const merged = [vcText, last.content, STYLE_NUDGE].filter(Boolean).join('\n\n');
+      const merged = [vcText, styleBefore, last.content, styleAfter]
+        .filter(Boolean)
+        .join('\n\n');
       turns[turns.length - 1] = { ...last, content: merged };
     } else {
       // Conversation ends on an assistant turn (e.g. letPersonaSpeak): append
-      // a pseudo-user turn so volatile context and style nudge aren't dropped,
+      // a pseudo-user turn so volatile context and style aren't dropped,
       // and aren't spliced into an older history message (which would rewrite
       // history semantics). It sits after all breakpoints — cache-neutral.
       turns.push({
         role: 'user',
-        content: [vcText, STYLE_NUDGE].filter(Boolean).join('\n\n'),
+        content: [vcText, styleBefore, styleAfter].filter(Boolean).join('\n\n'),
       });
     }
   }
