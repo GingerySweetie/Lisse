@@ -57,6 +57,8 @@ pnpm preview      # 本地起一个 dist 的预览
 
 之后每次 push 自动重新部署。手机打开拿到的 URL 就能"添加到主屏幕"。
 
+炼金工房 Cursor Cloud 需要同源反代 `/proxy/cursor`（仓库已带 `functions/proxy/cursor` + `worker/index.ts`）。Pages Git 部署会吃 `functions/`；若用 `wrangler deploy` 则走 Worker。
+
 ## 部署到 VPS（nginx）
 
 构建产物完全是静态文件，nginx 直接 serve 就行。
