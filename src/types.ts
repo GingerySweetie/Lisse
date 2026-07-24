@@ -224,6 +224,15 @@ export interface AppSettings {
   defaultPersonaId: string | null;
   /** Selected writing style used when creating new conversations. */
   defaultStyleId: string | null;
+  /**
+   * Regular-chat full style injection into the current user message.
+   * - `off` (default): keep only the short fixed `<style_reminder>` nudge;
+   *   full style stays in the cached system BP2 block (≥97% hit rate).
+   * - `before` / `after`: also inject the FULL `style.prompt` before or after
+   *   the user's text (consult-room style). Stronger obedience vs persona
+   *   voice; costs style tokens uncached every turn.
+   */
+  styleUserInject?: 'off' | 'before' | 'after';
   /** Theme preference, future: 'light' | 'dark' | 'auto'. */
   theme: 'light';
 

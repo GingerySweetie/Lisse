@@ -691,6 +691,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultModel: null,
   defaultPersonaId: null,
   defaultStyleId: null,
+  /** Cache-friendly default: short nudge only; full style stays in system. */
+  styleUserInject: 'off',
   theme: 'light',
   memoryEnabled: false,
   embeddingEndpointId: null,
