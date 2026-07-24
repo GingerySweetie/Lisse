@@ -46,6 +46,7 @@ import {
   getStoredCursorApiBase,
   getStoredCursorApiKey,
   listCursorModels,
+  PROXY_BASE,
   resolveCursorApiBase,
   setStoredCursorApiBase,
   setStoredCursorApiKey,
@@ -950,7 +951,11 @@ function CursorSetupCard({
 }) {
   const [showKey, setShowKey] = useState(false);
   const [collapsed, setCollapsed] = useState(!!me);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const needsProxyHint =
+    !!error &&
+    (error.includes('CORS') ||
+      error.includes('反代') ||
+      error.includes('无法连接 Cursor API'));
 
   return (
     <div className="workshop-card">
@@ -1024,38 +1029,49 @@ function CursorSetupCard({
                 />
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowAdvanced((s) => !s)}
-                className="text-[11px] text-ink-400 hover:text-ink-600"
-              >
-                {showAdvanced ? '收起高级选项' : '高级：API Base / 反代'}
-              </button>
-              {showAdvanced && (
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-ink-500">
-                    API Base（空 = 自动）
+              <div className={needsProxyHint ? 'rounded-lg ring-1 ring-amber-300 bg-amber-50/50 p-2.5' : ''}>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-medium text-ink-500">
+                    API Base / 反代（空 = 自动）
                   </label>
-                  <input
-                    type="text"
-                    value={apiBase}
-                    onChange={(e) => onApiBaseChange(e.target.value)}
-                    placeholder={resolvedBase}
-                    className="workshop-input w-full font-mono text-xs"
-                  />
-                  <p className="mt-1 text-[11px] text-ink-400">
-                    localhost 直连 api.cursor.com；自定义域名请反代到
-                    <code className="mx-1 rounded bg-ink-50 px-1">/proxy/cursor</code>
-                    （开发服已内置）。当前解析为{' '}
-                    <code className="rounded bg-ink-50 px-1">{resolvedBase}</code>
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onApiBaseChange(PROXY_BASE)}
+                    className="shrink-0 text-[11px] text-sky-700 underline decoration-sky-300 underline-offset-2"
+                  >
+                    填入 {PROXY_BASE}
+                  </button>
                 </div>
-              )}
+                <input
+                  type="text"
+                  value={apiBase}
+                  onChange={(e) => onApiBaseChange(e.target.value)}
+                  placeholder={resolvedBase}
+                  className="workshop-input w-full font-mono text-xs"
+                />
+                <p className="mt-1 text-[11px] text-ink-400">
+                  当前解析：
+                  <code className="mx-1 rounded bg-ink-50 px-1">{resolvedBase}</code>
+                  · 部署站 / 自定义域名请用同源反代
+                  <code className="mx-1 rounded bg-ink-50 px-1">{PROXY_BASE}</code>
+                </p>
+              </div>
 
               {error && (
                 <div className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 ring-1 ring-red-200">
                   <XCircle size={14} className="mt-0.5 shrink-0" />
-                  {error}
+                  <div className="min-w-0 space-y-1.5">
+                    <div>{error}</div>
+                    {needsProxyHint && apiBase.trim() !== PROXY_BASE && (
+                      <button
+                        type="button"
+                        onClick={() => onApiBaseChange(PROXY_BASE)}
+                        className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-sky-800 ring-1 ring-sky-200"
+                      >
+                        一键改用同源反代 {PROXY_BASE}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 

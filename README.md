@@ -163,9 +163,20 @@ location /proxy/aihubmix/ {
     add_header Access-Control-Allow-Methods "POST, OPTIONS" always;
     if ($request_method = OPTIONS) { return 204; }
 }
+
+# 炼金工房 Cursor Cloud（Cloudflare 部署已由 worker/index.ts 内置）
+location /proxy/cursor/ {
+    proxy_pass https://api.cursor.com/;
+    proxy_set_header Host api.cursor.com;
+    proxy_set_header Authorization $http_authorization;
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+}
 ```
 
-然后 endpoint 配 `https://lisse.rheomorpha.duckdns.org/proxy/aihubmix/v1`。
+然后 endpoint 配 `https://lisse.rheomorpha.duckdns.org/proxy/aihubmix/v1`；
+Cursor Cloud 的 API Base 填 `/proxy/cursor`。
 
 ## 项目结构
 

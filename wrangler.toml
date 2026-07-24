@@ -1,10 +1,12 @@
 name = "lisse"
 compatibility_date = "2026-01-01"
+main = "worker/index.ts"
 
-# Static-only SPA. No Worker code; Cloudflare serves dist/ directly with
-# SPA routing fallback. Works for both:
-#   - Workers + Static Assets (current default for new accounts)
-#   - Cloudflare Pages (legacy flow; also reads [assets].directory)
+# Static SPA + Worker (Cursor API same-origin reverse proxy).
+# Works for Workers + Static Assets; Pages can use the same wrangler deploy.
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
+# Ensure /proxy/cursor hits the Worker before SPA fallback serves index.html.
+run_worker_first = ["/proxy/cursor", "/proxy/cursor/*"]

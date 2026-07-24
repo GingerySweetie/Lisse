@@ -42,18 +42,31 @@ export function setStoredCursorApiBase(base: string): void {
   else localStorage.removeItem(CURSOR_API_BASE_LS);
 }
 
-/** Resolve API base: explicit override → localhost direct → same-origin proxy. */
+/** True when the page is served from a loopback host (incl. Capacitor WebView). */
+export function isLoopbackHost(hostname?: string): boolean {
+  const h =
+    hostname ??
+    (typeof window !== 'undefined' ? window.location.hostname : '');
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+}
+
+/**
+ * Resolve API base: explicit override → localhost direct → same-origin proxy.
+ *
+ * - Dev / Capacitor (`localhost`): direct `https://api.cursor.com`
+ *   (Capacitor needs CapacitorHttp enabled to bypass WebView CORS).
+ * - Deployed hosts: `/proxy/cursor` (Vite dev proxy + CF Worker in prod).
+ */
 export function resolveCursorApiBase(override?: string): string {
   const explicit = (override ?? getStoredCursorApiBase()).trim().replace(/\/$/, '');
   if (explicit) return explicit;
-  if (typeof window !== 'undefined') {
-    const h = window.location.hostname;
-    if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') {
-      return DIRECT_BASE;
-    }
+  if (typeof window !== 'undefined' && isLoopbackHost()) {
+    return DIRECT_BASE;
   }
   return PROXY_BASE;
 }
+
+export { DIRECT_BASE, PROXY_BASE };
 
 export interface CursorMe {
   apiKeyName: string;
@@ -223,10 +236,17 @@ async function readError(res: Response): Promise<CursorApiError> {
     if (body) message = `${message}: ${body.slice(0, 200)}`;
   }
   if (res.status === 0 || message.toLowerCase().includes('failed to fetch')) {
-    message =
-      '无法连接 Cursor API（多半是 CORS）。请在设置里把 API Base 改成同源反代，例如 /proxy/cursor';
+    message = corsHintMessage();
   }
   return new CursorApiError(message, res.status, code);
+}
+
+function corsHintMessage(): string {
+  return (
+    '无法连接 Cursor API（多半是 CORS）。请把下方 API Base 改成同源反代 /proxy/cursor' +
+    '（部署站已内置 Worker 反代；本地 pnpm dev 也已内置）。' +
+    '若在 Android App 内，请更新到开启 CapacitorHttp 的版本，或填你的站点反代完整地址。'
+  );
 }
 
 async function cursorJson<T>(
@@ -241,17 +261,26 @@ async function cursorJson<T>(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.toLowerCase().includes('failed to fetch') || msg.includes('NetworkError')) {
-      throw new CursorApiError(
-        '无法连接 Cursor API（多半是 CORS）。请在设置里把 API Base 改成同源反代，例如 /proxy/cursor',
-        0,
-        'network_error',
-      );
+      throw new CursorApiError(corsHintMessage(), 0, 'network_error');
     }
     throw e;
   }
   if (!res.ok) throw await readError(res);
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const text = await res.text();
+  if (!text) return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const looksLikeHtml = /^\s*</.test(text);
+    throw new CursorApiError(
+      looksLikeHtml
+        ? '反代未生效：/proxy/cursor 返回了网页而不是 API。请确认已部署带 Worker 的版本，或把 API Base 改成可用的反代地址。'
+        : `Cursor API 返回了非 JSON 响应：${text.slice(0, 160)}`,
+      res.status,
+      'invalid_json',
+    );
+  }
 }
 
 export async function verifyCursorApiKey(

@@ -21,6 +21,12 @@ const config: CapacitorConfig = {
     webContentsDebuggingEnabled: true,
   },
   plugins: {
+    // Patch window.fetch so WebView can call api.cursor.com without CORS
+    // (Cursor only allows localhost / cursor.com origins; Android scheme is
+    // https://localhost which still gets blocked without native HTTP).
+    CapacitorHttp: {
+      enabled: true,
+    },
     SplashScreen: {
       launchAutoHide: true,
       backgroundColor: '#F4ECF6',
