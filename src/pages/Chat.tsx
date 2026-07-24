@@ -662,15 +662,21 @@ export default function ChatPage() {
               ['--skin-bg' as string]: skin.bg,
               ['--skin-sl' as string]: skin.sl,
               ['--skin-text' as string]: skin.text,
-              ['--skin-ac' as string]: skin.ac,
-              ['--skin-bd' as string]: skin.bd,
+              ['--skin-tu' as string]: skin.tu,
               ['--skin-tm' as string]: skin.tm,
+              ['--skin-tmf' as string]: skin.tmf,
+              ['--skin-ac' as string]: skin.ac,
+              ['--skin-as' as string]: skin.as,
+              ['--skin-bd' as string]: skin.bd,
+              ['--skin-dv' as string]: skin.dv,
+              ['--skin-ub' as string]: skin.ub,
+              ['--skin-ur' as string]: skin.ur,
             }
           : undefined
       }
     >
-      {skin && decorVariant ? (
-        <BedroomDecor variant={decorVariant} />
+      {skin ? (
+        decorVariant ? <BedroomDecor variant={decorVariant} /> : null
       ) : (
         <WisteriaDecor />
       )}
