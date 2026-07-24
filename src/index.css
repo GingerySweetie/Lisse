@@ -1263,6 +1263,20 @@
   );
 }
 
+/* Chat skins (紫雾 / 石榴 / 千夜 / 苔青): page + header take the palette;
+   the message band keeps a light frosted wash so existing bubbles stay readable. */
+.wis-chat-page.has-skin .wis-chat-body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsla(270, 28%, 96%, 0.52);
+  pointer-events: none;
+  z-index: 0;
+}
+.wis-chat-page.has-skin .wis-chat-body.has-wallpaper::before {
+  background: hsla(270, 28%, 96%, 0.28);
+}
+
 .wis-chat-frame {
   --chat-column-max: 56rem;
   /* Left gutter clears the wisteria strand cluster (left decor lives

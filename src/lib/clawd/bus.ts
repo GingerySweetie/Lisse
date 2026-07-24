@@ -1,5 +1,5 @@
 /**
- * Lightweight event bus so Chat / BedroomChat can nudge the desk pet
+ * Lightweight event bus so Chat can nudge the desk pet
  * without importing the UI component.
  */
 

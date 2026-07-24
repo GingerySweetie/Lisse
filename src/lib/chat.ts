@@ -42,6 +42,7 @@ import {
 } from './workshop/handoff-protocol';
 import { formatYesterdayDiaryBlock } from './diary';
 import { assertChatMessageSize, formatStorageError } from './storage-guards';
+import { afterkiss } from './afterkiss';
 
 /**
  * Capability description injected as a stable system turn so the model
@@ -100,6 +101,18 @@ const HANDOFF_CAPABILITY = `# 输出能力：炼金工房任务派发（CLWD Han
 - 不要在标签里写密钥、账号或内部路径
 - 不是所有事都要外派；聊天、情感、轻量问答请自己完成
 - 结果不会自动回流；用户勾选后随下一条消息带回`;
+
+const TOY_CAPABILITY = `# 输出能力：玩具力度（AfterKiss）
+
+用户已启动玩具。你可以通过工具 control_toy 调节三路力度（各 0–100）：
+- thrust：抽插
+- vibe：棒身震动
+- clit：阴蒂
+
+规则：
+- 按对话氛围主动调节；有感觉变化时再用，不要每句都狂调
+- 省略的通道保持当前值；stop=true 急停归零
+- 不要向用户复述原始数值协议；用自然语言表达触感即可`;
 
 export interface SendOptions {
   conversation: Conversation;
@@ -700,6 +713,9 @@ async function streamAssistant(args: {
   if (settings.workshopHandoffEnabled) {
     turns.push({ role: 'system', content: HANDOFF_CAPABILITY });
   }
+  if (settings.toyControlEnabled) {
+    turns.push({ role: 'system', content: TOY_CAPABILITY });
+  }
   if (persona && groupOthers && groupOthers.length > 0) {
     turns.push({ role: 'system', content: groupAwarenessSnippet(persona, groupOthers) });
   }
@@ -841,8 +857,17 @@ async function streamAssistant(args: {
   const convId = branch[0]?.conversationId ?? '';
 
   let tools: Tool[] = [];
-  if (!economy && settings.toolsEnabled && convId) {
+  // Toy control is independent of the general tools master switch — starting
+  // 玩具 in chat settings is enough to expose control_toy.
+  if (
+    !economy &&
+    convId &&
+    (settings.toolsEnabled || settings.toyControlEnabled)
+  ) {
     tools = await availableTools({ persona, conversationId: convId });
+    if (!settings.toolsEnabled && settings.toyControlEnabled) {
+      tools = tools.filter((t) => t.def.name === 'control_toy');
+    }
     // Stable ordering: cache prefix must not be invalidated by tool-list shuffling
     tools.sort((a, b) => a.def.name.localeCompare(b.def.name));
   }
@@ -911,6 +936,10 @@ async function streamAssistant(args: {
     }
   }
 
+  const toyIntensity = settings.toyControlEnabled
+    ? afterkiss.getChannels()
+    : undefined;
+
   await db.messages.update(assistantMessageId, {
     content: cleanText,
     artifacts: artifacts.length > 0 ? artifacts : undefined,
@@ -920,6 +949,7 @@ async function streamAssistant(args: {
     errorMessage: result.errorMessage,
     usage: result.usage,
     toolCalls: result.toolCalls.length > 0 ? result.toolCalls : undefined,
+    toyIntensity,
   });
   if (convId) {
     await db.conversations.update(convId, { updatedAt: Date.now() });

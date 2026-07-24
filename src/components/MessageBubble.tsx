@@ -179,6 +179,9 @@ export default function MessageBubble({
               ) : isStreaming ? (
                 <span className="stream-cursor" />
               ) : null}
+              {message.toyIntensity && (
+                <ToyIntensityMark intensity={message.toyIntensity} />
+              )}
               {message.usage && message.status === 'done' && (
                 <div className="mt-2 flex flex-wrap gap-x-3 text-[10px] text-ink-500/70">
                   {message.usage.inputTokens !== undefined && (
@@ -623,6 +626,57 @@ function Attachments({
   );
 }
 
+/** Compact T/V/C intensity bars at the end of a model message when 玩具 is on. */
+function ToyIntensityMark({
+  intensity,
+}: {
+  intensity: { thrust: number; vibe: number; clit: number };
+}) {
+  const channels = [
+    { key: 'T', label: '抽插', value: intensity.thrust, color: '#82b4c4' },
+    { key: 'V', label: '棒身', value: intensity.vibe, color: '#c4a882' },
+    { key: 'C', label: '阴蒂', value: intensity.clit, color: '#c482a8' },
+  ] as const;
+  return (
+    <div
+      className="mt-2 flex flex-wrap items-center gap-2.5"
+      aria-label={`玩具力度 抽插${intensity.thrust} 棒身${intensity.vibe} 阴蒂${intensity.clit}`}
+      title="玩具力度"
+    >
+      {channels.map((ch) => (
+        <span
+          key={ch.key}
+          className="inline-flex items-center gap-1 text-[10px] text-ink-500/80"
+        >
+          <span style={{ color: ch.color, fontWeight: 600 }}>{ch.key}</span>
+          <span
+            style={{
+              display: 'inline-block',
+              width: 36,
+              height: 4,
+              borderRadius: 2,
+              background: 'hsla(268, 20%, 70%, 0.25)',
+              overflow: 'hidden',
+            }}
+          >
+            <span
+              style={{
+                display: 'block',
+                height: '100%',
+                width: `${Math.max(0, Math.min(100, ch.value))}%`,
+                background: ch.color,
+                borderRadius: 2,
+                transition: 'width 180ms ease',
+              }}
+            />
+          </span>
+          <span className="tabular-nums">{Math.round(ch.value)}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function ToolCallChips({ calls }: { calls: ToolCallRecord[] }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -640,6 +694,7 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
   const isUpdate = call.name === 'update_memory';
   const isForget = call.name === 'forget_memory';
   const isParseDoc = call.name === 'parse_document';
+  const isToy = call.name === 'control_toy';
   const icon = isRemember
     ? '📝'
     : isRecall
@@ -650,9 +705,24 @@ function ToolCallChip({ call }: { call: ToolCallRecord }) {
           ? '🗑'
           : isParseDoc
             ? '📄'
-            : '🛠';
+            : isToy
+              ? '🎛'
+              : '🛠';
   const label = (() => {
     if (call.error) return `${call.name} 出错`;
+    if (isToy) {
+      const stop = !!(call.input as { stop?: boolean } | undefined)?.stop;
+      if (stop) return '玩具 · 急停';
+      const r = (call.result ?? call.input) as {
+        thrust?: number;
+        vibe?: number;
+        clit?: number;
+      };
+      const t = Math.round(r.thrust ?? 0);
+      const v = Math.round(r.vibe ?? 0);
+      const c = Math.round(r.clit ?? 0);
+      return `玩具 · T${t} V${v} C${c}`;
+    }
     if (isRemember) {
       const text = (call.input as { text?: string })?.text;
       const updated = !!(call.result as { updated?: boolean } | undefined)?.updated;

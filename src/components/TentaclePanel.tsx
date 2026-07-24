@@ -9,13 +9,12 @@ import {
 import type { BedroomTheme } from '../lib/bedroom-themes';
 
 /**
- * Bedroom touch controller — slides up over the BedroomChat, drives the
- * AfterKiss device via Web Bluetooth. Three tabs: 控制 (sliders),
- * 八音盒 (paper-tape score player), 测试 (raw hex / log).
+ * Toy / 触手 controller — slides up over chat, drives the AfterKiss
+ * device via Web Bluetooth. Three tabs: 控制 (sliders), 八音盒
+ * (paper-tape score player), 测试 (raw hex / log).
  *
- * Theme palette is inherited from the room so the panel feels of-a-piece
- * with the wall color. Channel colors (cyan/gold/pink) stay fixed for
- * identification.
+ * Theme palette comes from the active chat skin (or a default dark
+ * palette). Channel colors (cyan/gold/pink) stay fixed for identification.
  */
 
 interface Props {
@@ -88,7 +87,7 @@ export default function TentaclePanel({ theme: t, onClose }: Props) {
               strokeLinejoin="round"
             />
           </svg>
-          回房间
+          返回
         </button>
         <div style={{ textAlign: 'center' }}>
           <div
@@ -232,18 +231,28 @@ export default function TentaclePanel({ theme: t, onClose }: Props) {
 // ─── Control panel (3 sliders) ────────────────────────────────────────
 
 function ControlPanel({ theme: t, connected }: { theme: BedroomTheme; connected: boolean }) {
-  const [thrust, setThrust] = useState(0);
-  const [vibe, setVibe] = useState(0);
-  const [clit, setClit] = useState(0);
+  // Channel intensities live on the AfterKiss singleton so model tool calls
+  // and this panel stay in sync without a local mirror + effect.
+  const ak = useAfterKiss();
   const [realtime, setRealtime] = useState(true);
   const lastSendRef = useRef(0);
+  const thrust = ak.thrust;
+  const vibe = ak.vibe;
+  const clit = ak.clit;
 
-  function maybeSendRealtime(t: number, v: number, c: number) {
+  function maybeSendRealtime(nextT: number, nextV: number, nextC: number) {
     if (!realtime || !connected) return;
     const now = Date.now();
     if (now - lastSendRef.current < SEND_INTERVAL) return;
     lastSendRef.current = now;
-    void afterkiss.setChannels(t, v, c);
+    void afterkiss.setChannels(nextT, nextV, nextC);
+  }
+
+  function applyChannels(nextT: number, nextV: number, nextC: number) {
+    // Always remember for UI + message indicators; BLE write is throttled
+    // in realtime mode or deferred until 「发送指令」.
+    afterkiss.rememberChannels(nextT, nextV, nextC);
+    maybeSendRealtime(nextT, nextV, nextC);
   }
 
   function commitSend() {
@@ -272,10 +281,7 @@ function ControlPanel({ theme: t, connected }: { theme: BedroomTheme; connected:
         label="抽插"
         color={CHANNEL_COLORS.thrust}
         value={thrust}
-        onChange={(v) => {
-          setThrust(v);
-          maybeSendRealtime(v, vibe, clit);
-        }}
+        onChange={(v) => applyChannels(v, vibe, clit)}
         onCommit={commitSend}
         theme={t}
       />
@@ -283,10 +289,7 @@ function ControlPanel({ theme: t, connected }: { theme: BedroomTheme; connected:
         label="棒身震动"
         color={CHANNEL_COLORS.vibe}
         value={vibe}
-        onChange={(v) => {
-          setVibe(v);
-          maybeSendRealtime(thrust, v, clit);
-        }}
+        onChange={(v) => applyChannels(thrust, v, clit)}
         onCommit={commitSend}
         theme={t}
       />
@@ -294,10 +297,7 @@ function ControlPanel({ theme: t, connected }: { theme: BedroomTheme; connected:
         label="阴蒂"
         color={CHANNEL_COLORS.clit}
         value={clit}
-        onChange={(v) => {
-          setClit(v);
-          maybeSendRealtime(thrust, vibe, v);
-        }}
+        onChange={(v) => applyChannels(thrust, vibe, v)}
         onCommit={commitSend}
         theme={t}
       />
@@ -726,7 +726,8 @@ function TestPanel({ theme: t }: { theme: BedroomTheme }) {
         <code style={{ background: t.bg, padding: '2px 6px', borderRadius: 3, color: t.ac }}>
           00 00 00 00
         </code>
-        　　全开：
+        {'  '}
+        全开：
         <code style={{ background: t.bg, padding: '2px 6px', borderRadius: 3, color: t.ac }}>
           00 64 64 64
         </code>

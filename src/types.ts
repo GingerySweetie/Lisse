@@ -170,6 +170,14 @@ export interface Message {
     cacheCreationTokens?: number;
     cacheReadTokens?: number;
   };
+  /** Snapshot of toy channel intensities (0–100) at the end of this
+   *  assistant turn, when 玩具 was started. Used for the per-message
+   *  intensity indicator. */
+  toyIntensity?: {
+    thrust: number;
+    vibe: number;
+    clit: number;
+  };
 }
 
 export interface Conversation {
@@ -205,10 +213,12 @@ export interface Conversation {
    *  picks it after choosing who to talk to. Used for the user's own bubble
    *  and small UI accents. Falls back to the default sky tone when unset. */
   accentColor?: string;
-  /** Bedroom theme id (see BEDROOM_THEMES). Only meaningful when
-   *  room='bedroom'. Decouples the room's color palette from the
-   *  persona so the user picks who first, color second. */
+  /** Legacy bedroom theme id. Kept for diary / old room rows; new UI
+   *  uses chatSkin on general chats. */
   bedroomTheme?: string;
+  /** Chat skin id (see BEDROOM_THEMES / SkinPicker). Null/undefined =
+   *  default wisteria chat look. Independent of persona. */
+  chatSkin?: string;
   /** Timestamp of the last memory backfill over this conversation's history.
    *  Used to gray out already-backfilled rows in the batch UI. */
   memoryBackfilledAt?: number;
@@ -255,6 +265,10 @@ export interface AppSettings {
    *  forget_memory) and other tool-calling surfaces to the chat model.
    *  Memory tools also need memoryEnabled + embedding endpoint. Default off. */
   toolsEnabled: boolean;
+  /** When true, the AfterKiss / 触手 toy is “started”: the model may call
+   *  control_toy, and each assistant message shows a channel-intensity
+   *  indicator. Manual control panel stays available either way. Default off. */
+  toyControlEnabled: boolean;
   /** When true, the chat coordinator may emit [clwd-task] blocks that are
    *  parsed into durable 炼金工房 jobs (CLWD Handoff Protocol). Default off. */
   workshopHandoffEnabled: boolean;

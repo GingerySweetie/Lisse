@@ -33,8 +33,6 @@ const BrowserPage = lazy(() => import('./pages/Browser'));
 const BrowserScriptsPage = lazy(() => import('./pages/BrowserScripts'));
 const BooksPage = lazy(() => import('./pages/Books'));
 const ReadPage = lazy(() => import('./pages/Read'));
-const BedroomPickerPage = lazy(() => import('./pages/Bedroom'));
-const BedroomChatPage = lazy(() => import('./pages/BedroomChat'));
 const ConsultPage = lazy(() => import('./pages/Consult'));
 const ConsultChatPage = lazy(() => import('./pages/ConsultChat'));
 const ArtifactCollectionsPage = lazy(() => import('./pages/ArtifactCollections'));
@@ -87,8 +85,11 @@ export default function App() {
           <Route element={<Layout />}>
             <Route index element={<Navigate to="/home" replace />} />
             <Route path="/home" element={<HomePage />} />
-            <Route path="/bedroom" element={<BedroomPickerPage />} />
-            <Route path="/bedroom/:personaId" element={<BedroomChatPage />} />
+            <Route path="/bedroom" element={<Navigate to="/chat" replace />} />
+            <Route
+              path="/bedroom/:personaId"
+              element={<Navigate to="/chat" replace />}
+            />
             <Route path="/consult" element={<ConsultPage />} />
             <Route path="/consult/session" element={<ConsultChatPage />} />
             <Route path="/consult/collections" element={<ArtifactCollectionsPage />} />

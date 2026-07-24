@@ -1,7 +1,7 @@
 /**
- * Bedroom palettes. Each is a self-contained dark theme — bg, text,
- * accent — independent of persona. The user picks which theme paints
- * each persona's bedroom (defaults to 紫雾 wisteria-deep).
+ * Chat skin / legacy bedroom palettes. Each is a self-contained dark
+ * theme — bg, text, accent — independent of persona. Selectable from
+ * the general chat LeafMenu as 皮肤 (also used by the toy control panel).
  */
 export interface BedroomTheme {
   id: string;
