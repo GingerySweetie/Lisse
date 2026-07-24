@@ -19,6 +19,7 @@ import ChatInput from '../components/ChatInput';
 import { getSelectedJobIds } from '../lib/workshop/handoff-store';
 import { stripClwdTaskTags } from '../lib/workshop/handoff-protocol';
 import EndpointPicker from '../components/EndpointPicker';
+import ModelSwitcher from '../components/ModelSwitcher';
 import PersonaPicker from '../components/PersonaPicker';
 import PersonaSecret from '../components/PersonaSecret';
 import StylePicker from '../components/StylePicker';
@@ -493,9 +494,34 @@ export default function ChatPage() {
     abortRef.current?.abort();
   }
 
-  function handlePicker(epId: string, m: string) {
+  async function handlePicker(epId: string, m: string) {
     setEndpointId(epId);
     setModel(m);
+    // Persist so the next effect pass / remount keeps the pick. Existing
+    // conversations previously pinned an old defaultModel and silently
+    // reverted mid-session switches.
+    await saveSettings({ defaultEndpointId: epId, defaultModel: m });
+    if (conversation) {
+      const patch: Partial<Conversation> = {
+        defaultEndpointId: epId,
+        defaultModel: m,
+        updatedAt: Date.now(),
+      };
+      // Group chats may pin a per-persona override — keep the switcher in
+      // sync so the active speaker actually uses the newly picked model.
+      if (personaId && conversation.personaModels?.[personaId]) {
+        patch.personaModels = {
+          ...conversation.personaModels,
+          [personaId]: { endpointId: epId, model: m },
+        };
+      }
+      await db.conversations.update(conversation.id, patch);
+    }
+  }
+
+  async function handleModelSwitch(nextModel: string) {
+    if (!endpointId) return;
+    await handlePicker(endpointId, nextModel);
   }
 
   async function handleEdit(message: Message, newText: string) {
@@ -823,11 +849,19 @@ export default function ChatPage() {
               onChange={(next) => void saveSettings({ styleUserInject: next })}
             />
           </MenuRow>
-          <MenuRow label="模型">
+          <MenuRow label="接口">
             <EndpointPicker
               endpointId={endpointId}
               model={model}
-              onChange={handlePicker}
+              showModel={false}
+              onChange={(epId, m) => void handlePicker(epId, m)}
+            />
+          </MenuRow>
+          <MenuRow label="模型">
+            <ModelSwitcher
+              endpointId={endpointId}
+              model={model}
+              onChange={(m) => void handleModelSwitch(m)}
             />
           </MenuRow>
           <MenuRow label="颜色">
