@@ -433,6 +433,17 @@ export function isTerminalRunStatus(status: string): boolean {
   return ['FINISHED', 'ERROR', 'CANCELLED', 'EXPIRED'].includes(status);
 }
 
+/** SSE ended / expired — callers should poll Get A Run instead of retrying stream. */
+export function isStreamGoneMessage(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes('no longer available') ||
+    m.includes('stream_expired') ||
+    m.includes('stream expired') ||
+    m.includes('410')
+  );
+}
+
 /**
  * Stream one run via SSE. Falls back gracefully if the stream endpoint
  * errors — callers should poll getCursorRun instead.
@@ -466,7 +477,17 @@ export async function* streamCursorRun(
       'stream_network_error',
     );
   }
-  if (!res.ok) throw await readError(res);
+  if (!res.ok) {
+    // Docs: after retention window, stream may return 410 stream_expired → poll instead.
+    if (res.status === 410) {
+      throw new CursorApiError(
+        'Run stream is no longer available',
+        410,
+        'stream_expired',
+      );
+    }
+    throw await readError(res);
+  }
   if (!res.body) throw new CursorApiError('No stream body', 0);
 
   for await (const frame of parseNamedSSE(res)) {

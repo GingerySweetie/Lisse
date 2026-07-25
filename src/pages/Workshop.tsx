@@ -43,8 +43,13 @@ import {
 import { requeueJob } from '../lib/workshop/handoff-store';
 import type { HandoffJob } from '../lib/workshop/handoff-protocol';
 import {
+  cancelCursorRun,
+  getCursorAgent,
+  getCursorRun,
   getStoredCursorApiBase,
   getStoredCursorApiKey,
+  isTerminalRunStatus,
+  listCursorAgents,
   listCursorModels,
   PROXY_BASE,
   resolveCursorApiBase,
@@ -56,8 +61,12 @@ import {
   type CursorGitBranch,
   type CursorMe,
   type CursorModel,
+  type CursorRun,
 } from '../lib/workshop/cursor-api';
-import { runCursorCloudAgent } from '../lib/workshop/run-cursor-agent';
+import {
+  runCursorCloudAgent,
+  watchCursorCloudRun,
+} from '../lib/workshop/run-cursor-agent';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -138,6 +147,11 @@ export default function WorkshopPage() {
   const [cursorAgent, setCursorAgent] = useState<CursorAgent | null>(null);
   const [cursorBranches, setCursorBranches] = useState<CursorGitBranch[]>([]);
   const [followUpText, setFollowUpText] = useState('');
+  const [cursorAgentList, setCursorAgentList] = useState<CursorAgent[]>([]);
+  const [cursorAgentsLoading, setCursorAgentsLoading] = useState(false);
+  const [cursorRunByAgent, setCursorRunByAgent] = useState<
+    Record<string, CursorRun | undefined>
+  >({});
 
   // 任务
   const [taskText, setTaskText] = useState('');
@@ -206,6 +220,46 @@ export default function WorkshopPage() {
 
   // ── Cursor API 连接 ────────────────────────────────────────────────
 
+  const refreshCursorAgents = useCallback(async () => {
+    if (!cursorKey.trim()) return;
+    setCursorAgentsLoading(true);
+    try {
+      const items = await listCursorAgents(cursorKey.trim(), {
+        limit: 20,
+        includeArchived: false,
+        baseUrl: cursorBase.trim() || undefined,
+      });
+      setCursorAgentList(items);
+      // Best-effort: hydrate latest run status for the first few (active) agents
+      const slice = items.slice(0, 8);
+      const entries = await Promise.all(
+        slice.map(async (a) => {
+          if (!a.latestRunId) return [a.id, undefined] as const;
+          try {
+            const run = await getCursorRun(
+              cursorKey.trim(),
+              a.id,
+              a.latestRunId,
+              cursorBase.trim() || undefined,
+            );
+            return [a.id, run] as const;
+          } catch {
+            return [a.id, undefined] as const;
+          }
+        }),
+      );
+      setCursorRunByAgent((prev) => {
+        const next = { ...prev };
+        for (const [id, run] of entries) next[id] = run;
+        return next;
+      });
+    } catch {
+      // list is best-effort; don't surface as connect error
+    } finally {
+      setCursorAgentsLoading(false);
+    }
+  }, [cursorKey, cursorBase]);
+
   async function handleCursorConnect() {
     setCursorError('');
     setCursorConnecting(true);
@@ -222,6 +276,7 @@ export default function WorkshopPage() {
         setCursorModelId(def.id);
       }
       localStorage.setItem(GH_REPO_KEY, repoInput);
+      void refreshCursorAgents();
     } catch (e) {
       setCursorMe(null);
       setCursorError(e instanceof Error ? e.message : String(e));
@@ -231,11 +286,24 @@ export default function WorkshopPage() {
   }
 
   function handleCursorDisconnect() {
+    abortRef.current?.abort();
     setCursorMe(null);
     setCursorModels([]);
     setCursorAgent(null);
     setCursorBranches([]);
+    setCursorAgentList([]);
+    setCursorRunByAgent({});
   }
+
+  // Periodically refresh agent list while Cursor Cloud is connected
+  useEffect(() => {
+    if (engine !== 'cursor' || !cursorMe) return;
+    void refreshCursorAgents();
+    const t = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshCursorAgents();
+    }, 8000);
+    return () => window.clearInterval(t);
+  }, [engine, cursorMe, refreshCursorAgents]);
 
   // ── GitHub 连接 ────────────────────────────────────────────────────
 
@@ -349,6 +417,12 @@ export default function WorkshopPage() {
     if (!cursorMe || !cursorKey.trim() || !cursorRepoUrl || !prompt) return;
     if (followUp && !cursorAgent) return;
 
+    // Detach previous local watch first — cloud agents keep running.
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+
     setRunState('running');
     if (!followUp) {
       setLogs([]);
@@ -358,7 +432,7 @@ export default function WorkshopPage() {
       setBeautyReport(null);
       setCommitDone(null);
       setCursorBranches([]);
-      setCursorAgent(null);
+      // Keep prior agents in the list; just clear the focused result until launch.
     }
     setActiveTab('changes');
     localStorage.setItem(GH_REPO_KEY, repoInput);
@@ -386,14 +460,27 @@ export default function WorkshopPage() {
         mode: agentMode,
         agentId: followUp ? cursorAgent?.id : undefined,
         signal: ctrl.signal,
+        cancelOnAbort: false,
         onLog: addLog,
-        onAgent: (agent) => setCursorAgent(agent),
+        onAgent: (agent, run) => {
+          setCursorAgent(agent);
+          setCursorRunByAgent((prev) => ({ ...prev, [agent.id]: run }));
+          setCursorAgentList((prev) => {
+            const rest = prev.filter((a) => a.id !== agent.id);
+            return [agent, ...rest];
+          });
+          if (!followUp) setTaskText('');
+        },
       });
+
+      if (abortRef.current !== ctrl) return;
 
       setCursorAgent(result.agent);
       setCursorBranches(result.branches);
       setAgentSummary(result.summary);
       setFollowUpText('');
+      setCursorRunByAgent((prev) => ({ ...prev, [result.agent.id]: result.run }));
+      void refreshCursorAgents();
 
       if (result.usage) {
         setUsage({
@@ -411,13 +498,105 @@ export default function WorkshopPage() {
         setRunState('done');
       }
     } catch (e) {
+      if (abortRef.current !== ctrl) return;
       if ((e as { name?: string }).name !== 'AbortError') {
         addLog(`发生错误: ${e instanceof Error ? e.message : String(e)}`, 'error');
         setRunState('error');
       } else {
-        addLog('已停止 / 已请求取消', 'info');
         setRunState('idle');
       }
+    } finally {
+      if (abortRef.current === ctrl) abortRef.current = null;
+    }
+  }
+
+  async function handleWatchCursorAgent(agent: CursorAgent) {
+    if (!cursorKey.trim()) return;
+    const runId = agent.latestRunId ?? cursorRunByAgent[agent.id]?.id;
+    if (!runId) {
+      addLog('这个 Agent 还没有可盯梢的 run', 'info');
+      return;
+    }
+
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+
+    setCursorAgent(agent);
+    setRunState('running');
+    setLogs([]);
+    setAgentSummary('');
+    setCursorBranches([]);
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    addLog(`盯梢已有 Agent：${agent.name || agent.id}`, 'system');
+
+    try {
+      const detailed = await getCursorAgent(
+        cursorKey.trim(),
+        agent.id,
+        cursorBase.trim() || undefined,
+      ).catch(() => agent);
+
+      const result = await watchCursorCloudRun({
+        apiKey: cursorKey.trim(),
+        baseUrl: cursorBase.trim() || undefined,
+        agent: detailed,
+        runId,
+        signal: ctrl.signal,
+        cancelOnAbort: false,
+        onLog: addLog,
+      });
+
+      if (abortRef.current !== ctrl) return;
+
+      setCursorAgent(result.agent);
+      setCursorBranches(result.branches);
+      setAgentSummary(result.summary);
+      setCursorRunByAgent((prev) => ({ ...prev, [result.agent.id]: result.run }));
+      void refreshCursorAgents();
+
+      if (result.usage) {
+        setUsage({
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          cost: 0,
+        });
+      }
+
+      if (result.errored && result.errorMessage === 'cancelled') setRunState('idle');
+      else if (result.errored) setRunState('error');
+      else setRunState('done');
+    } catch (e) {
+      if (abortRef.current !== ctrl) return;
+      if ((e as { name?: string }).name !== 'AbortError') {
+        addLog(`发生错误: ${e instanceof Error ? e.message : String(e)}`, 'error');
+        setRunState('error');
+      } else {
+        setRunState('idle');
+      }
+    } finally {
+      if (abortRef.current === ctrl) abortRef.current = null;
+    }
+  }
+
+  async function handleCancelCursorAgent(agent: CursorAgent) {
+    const run = cursorRunByAgent[agent.id];
+    const runId = run?.id ?? agent.latestRunId;
+    if (!runId || !cursorKey.trim()) return;
+    try {
+      await cancelCursorRun(
+        cursorKey.trim(),
+        agent.id,
+        runId,
+        cursorBase.trim() || undefined,
+      );
+      addLog(`已请求取消云端 run：${runId.slice(0, 12)}…`, 'info');
+      void refreshCursorAgents();
+    } catch (e) {
+      addLog(`取消失败: ${e instanceof Error ? e.message : String(e)}`, 'error');
     }
   }
 
@@ -435,7 +614,13 @@ export default function WorkshopPage() {
   }
 
   function handleStop() {
+    // Local engine: aborts the in-browser agent.
+    // Cursor Cloud: only detaches the watcher — cloud keeps running unless
+    // the user explicitly cancels from the agent list.
     abortRef.current?.abort();
+    if (engine === 'cursor') {
+      setRunState('idle');
+    }
   }
 
   // ── 提交到 GitHub ──────────────────────────────────────────────────
@@ -501,12 +686,12 @@ export default function WorkshopPage() {
 
   const isConnected = !!ghConfig && !!repoInfo;
   const cursorReady = !!cursorMe && !!cursorRepoUrl;
+  // Cursor Cloud: allow dispatching another agent while one is being watched.
   const canRun =
-    runState !== 'running' &&
     !!taskText.trim() &&
     (engine === 'cursor'
       ? cursorReady
-      : isConnected && !!activeEndpoint);
+      : runState !== 'running' && isConnected && !!activeEndpoint);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden">
@@ -581,6 +766,26 @@ export default function WorkshopPage() {
             />
           )}
 
+          {/* Cursor Cloud Agents 列表（可多开，云端后台跑） */}
+          {engine === 'cursor' && cursorMe && (
+            <CursorAgentsCard
+              agents={cursorAgentList}
+              runs={cursorRunByAgent}
+              loading={cursorAgentsLoading}
+              selectedId={cursorAgent?.id}
+              watching={runState === 'running'}
+              onRefresh={() => void refreshCursorAgents()}
+              onSelect={(a) => {
+                setCursorAgent(a);
+                const run = cursorRunByAgent[a.id];
+                if (run?.git?.branches) setCursorBranches(run.git.branches);
+                if (run?.result) setAgentSummary(run.result);
+              }}
+              onWatch={(a) => void handleWatchCursorAgent(a)}
+              onCancel={(a) => void handleCancelCursorAgent(a)}
+            />
+          )}
+
           {/* 任务输入卡片 */}
           {((engine === 'local' && isConnected) || (engine === 'cursor' && cursorReady)) && (
             <TaskCard
@@ -619,7 +824,7 @@ export default function WorkshopPage() {
           )}
 
           {/* Cursor 结果 */}
-          {engine === 'cursor' && (runState === 'done' || runState === 'error') && cursorAgent && (
+          {engine === 'cursor' && cursorAgent && runState !== 'running' && (
             <CursorResultCard
               agent={cursorAgent}
               summary={agentSummary}
@@ -1123,6 +1328,141 @@ function CursorSetupCard({
   );
 }
 
+function CursorAgentsCard({
+  agents,
+  runs,
+  loading,
+  selectedId,
+  watching,
+  onRefresh,
+  onSelect,
+  onWatch,
+  onCancel,
+}: {
+  agents: CursorAgent[];
+  runs: Record<string, CursorRun | undefined>;
+  loading: boolean;
+  selectedId?: string;
+  watching: boolean;
+  onRefresh: () => void;
+  onSelect: (a: CursorAgent) => void;
+  onWatch: (a: CursorAgent) => void;
+  onCancel: (a: CursorAgent) => void;
+}) {
+  return (
+    <div className="workshop-card space-y-3">
+      <div className="flex items-center gap-2">
+        <Cloud size={15} className="text-sky-600" />
+        <span className="font-medium text-ink-700">我的 Agents</span>
+        <span className="text-[11px] text-ink-400">云端后台 · 可多开</span>
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="rounded-lg border border-lavender-100 px-2 py-1 text-[11px] text-ink-500 hover:bg-lavender-50 disabled:opacity-50"
+        >
+          {loading ? '刷新中…' : '刷新'}
+        </button>
+      </div>
+
+      {agents.length === 0 ? (
+        <p className="text-[12px] text-ink-400">
+          还没有 Agent。下面写任务点「派给 Cursor」，会在云端自己跑完。
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {agents.map((a) => {
+            const run = runs[a.id];
+            const runStatus = run?.status ?? (a.latestRunId ? '…' : '—');
+            const active =
+              !!run && !isTerminalRunStatus(run.status);
+            const selected = a.id === selectedId;
+            return (
+              <li
+                key={a.id}
+                className={`rounded-xl px-3 py-2.5 ring-1 ${
+                  selected
+                    ? 'bg-sky-50/80 ring-sky-200'
+                    : 'bg-ink-50/40 ring-lavender-100'
+                }`}
+              >
+                <button
+                  type="button"
+                  className="w-full text-left"
+                  onClick={() => onSelect(a)}
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-ink-700">
+                        {a.name || a.id}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-400">
+                        <span
+                          className={
+                            active
+                              ? 'font-medium text-amber-700'
+                              : runStatus === 'FINISHED'
+                                ? 'text-emerald-700'
+                                : ''
+                          }
+                        >
+                          {String(runStatus)}
+                        </span>
+                        <span className="opacity-50">·</span>
+                        <span className="font-mono">{a.id.slice(0, 14)}…</span>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <a
+                    href={a.url || `https://cursor.com/agents/${a.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[11px] text-sky-700 ring-1 ring-sky-200"
+                  >
+                    <ExternalLink size={11} />
+                    Cursor
+                  </a>
+                  {active && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onWatch(a)}
+                        disabled={watching && selected}
+                        className="rounded-lg bg-amber-50 px-2 py-1 text-[11px] text-amber-800 ring-1 ring-amber-200 disabled:opacity-50"
+                      >
+                        盯梢日志
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onCancel(a)}
+                        className="rounded-lg bg-red-50 px-2 py-1 text-[11px] text-red-700 ring-1 ring-red-200"
+                      >
+                        取消云端
+                      </button>
+                    </>
+                  )}
+                  {!active && runStatus === 'FINISHED' && (
+                    <button
+                      type="button"
+                      onClick={() => onSelect(a)}
+                      className="rounded-lg bg-white px-2 py-1 text-[11px] text-ink-600 ring-1 ring-lavender-100"
+                    >
+                      选中跟进
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function CursorResultCard({
   agent,
   summary,
@@ -1291,7 +1631,7 @@ function TaskCard({
         placeholder="用一句话描述要做什么…&#10;例：给所有按钮添加 loading 状态&#10;例：把 fetch 调用统一改成 axios&#10;例：给项目添加深色模式支持"
         rows={4}
         className="workshop-input w-full resize-none"
-        disabled={runState === 'running'}
+        disabled={engine === 'local' && runState === 'running'}
       />
 
       {engine === 'local' ? (
@@ -1358,7 +1698,34 @@ function TaskCard({
         </div>
       )}
 
-      {runState !== 'running' ? (
+      {engine === 'cursor' ? (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={onRun}
+            disabled={!canRun}
+            className="workshop-btn-primary w-full"
+          >
+            <Play size={14} />
+            {runState === 'running' ? '再派一个 Agent' : '派给 Cursor'}
+          </button>
+          {runState === 'running' && (
+            <button
+              type="button"
+              onClick={onStop}
+              className="w-full rounded-xl border border-sky-200 bg-sky-50 py-2.5 text-sm font-medium text-sky-800 transition hover:bg-sky-100"
+            >
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 size={14} className="animate-spin" />
+                停止盯梢（云端继续跑）
+              </div>
+            </button>
+          )}
+          <p className="text-[11px] text-ink-400">
+            派发后由 Cursor 云端后台施工，可关页面；可同时开多个 Agent。
+          </p>
+        </div>
+      ) : runState !== 'running' ? (
         <button
           type="button"
           onClick={onRun}
@@ -1366,7 +1733,7 @@ function TaskCard({
           className="workshop-btn-primary w-full"
         >
           <Play size={14} />
-          {engine === 'cursor' ? '派给 Cursor' : '开始炼制'}
+          开始炼制
         </button>
       ) : (
         <button
