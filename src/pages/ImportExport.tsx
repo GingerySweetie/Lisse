@@ -1284,7 +1284,16 @@ export default function ImportExportPage() {
               已经导入过的同一对话会自动跳过（按原始 conversation id 判重）。
               <br />
               ChatGPT / Claude 大导出（几百 MB 也可以）会边读边写入，不会整文件塞进内存。
-              Claude 会只保留当前分支（重新生成过的旧回复不会混进同一条对话）。
+              Claude 解析对齐官方导出格式（与
+              <a
+                className="underline decoration-lavender-300 underline-offset-2 hover:text-ink-700"
+                href="https://sssssssynqa.github.io/claude-conversation-viewer/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Claude Conversation Viewer
+              </a>
+              一致：chat_messages / content 六种块、thinking 用 thinking 字段、tool 配对）。
               <br />
               Wisteria JSON 导入支持单条（<code className="rounded bg-lavender-100 px-1">__lisse: "conversation"</code>）
               或多条（<code className="rounded bg-lavender-100 px-1">__lisse: "conversations"</code>）对话导出文件。
