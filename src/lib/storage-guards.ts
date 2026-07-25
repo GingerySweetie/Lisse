@@ -79,7 +79,7 @@ export function assertImportFileSize(file: File, label = '导入文件'): void {
   }
 }
 
-/** Size guard for streaming full-backup import (not whole-file JSON.parse). */
+/** Size guard for streaming full-backup / vendor-export import. */
 export function assertBackupImportFileSize(
   size: number,
   label = '备份文件',
@@ -87,7 +87,7 @@ export function assertBackupImportFileSize(
   if (size > MAX_BACKUP_STREAM_IMPORT_BYTES) {
     throw new StorageLimitError(
       `${label}太大了（${formatBytes(size)}），流式导入上限 ${formatBytes(MAX_BACKUP_STREAM_IMPORT_BYTES)}。` +
-        `请先在电脑上拆成多份更小的备份，或删减对话后再导出。`,
+        `请先在电脑上拆成多份更小的文件，或删减对话后再导出。`,
     );
   }
 }

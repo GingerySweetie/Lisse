@@ -1,58 +1,46 @@
 import { db } from '../../db';
-import type { Conversation, Message, Role } from '../../types';
+import type { Conversation, Message } from '../../types';
 import { newId } from '../id';
+import { fileTextChunks } from '../file-text-chunks';
+import {
+  parseJsonArrayStream,
+  parseJsonObjectStream,
+  peekJsonRootKind,
+  stringChunks,
+} from '../stream-json-object';
+import { beginActiveWork, endActiveWork } from '../stream-activity';
+import { yieldToUi } from '../export-progress';
+import { assertBackupImportFileSize } from '../storage-guards';
 import type { ImportOptions, ImportResult } from './chatgpt';
+import {
+  extractClaudeConversations,
+  parseClaudeConversationMessages,
+  parseClaudeTime,
+  titleForClaudeConversation,
+  type ClaudeConversation,
+} from './claude-parse';
 
-interface ClaudeContentBlock {
-  type?: string;
-  text?: string;
-  /** Claude extended-thinking block content (type === 'thinking'). */
-  thinking?: string;
-  /** Newer Claude.ai export: tool use blocks. */
-  toolName?: string;
-  toolInput?: unknown;
-  toolMessage?: string;
-  result?: unknown;
-}
+export type { ClaudeConversation } from './claude-parse';
+export {
+  extractClaudeConversations,
+  extractClaudeTextContent,
+  extractClaudeThinking,
+  flattenClaudeBranch,
+  parseClaudeConversationMessages,
+  titleForClaudeConversation,
+} from './claude-parse';
 
-interface ClaudeMessage {
-  uuid?: string;
-  text?: string;
-  /** Old format: content blocks or plain string. */
-  content?: ClaudeContentBlock[] | string;
-  /** New Claude.ai export format (2026+): replaces `content`. */
-  contentBlocks?: ClaudeContentBlock[];
-  sender?: string;
-  /** Old format: snake_case timestamps. */
-  created_at?: string;
-  /** New Claude.ai export format: camelCase timestamps. */
-  createdAt?: string;
-  /** New format: attached filenames. */
-  files?: string[];
-  /** New format: plain-text search index (not used for import). */
-  searchText?: string;
-}
+export type ClaudeImportSource =
+  | { kind: 'file'; file: File }
+  | { kind: 'text'; text: string };
 
-interface ClaudeConversation {
-  uuid?: string;
-  name?: string;
-  /** Old format: snake_case timestamps. */
-  created_at?: string;
-  updated_at?: string;
-  /** New Claude.ai export format: camelCase timestamps. */
-  createdAt?: string;
-  updatedAt?: string;
-  /** Old format. */
-  chat_messages?: ClaudeMessage[];
-  /** New Claude.ai export format (2026+): replaces `chat_messages`. */
-  messages?: ClaudeMessage[];
-  /** New format: summary text (ignored on import). */
-  summary?: string;
+export interface ClaudeStreamImportOptions extends ImportOptions {
+  onProgress?: (label: string) => void;
 }
 
 /**
  * Parse and import a Claude `conversations.json` export.
- * Claude exports do not expose branch tree; messages are linearized.
+ * Prefer {@link importClaudeStream} for large files (avoids whole-file parse).
  */
 export async function importClaude(
   fileText: string,
@@ -66,7 +54,20 @@ export async function importClaude(
       `不是合法的 JSON：${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  const list = extractConversations(raw);
+  const list = extractClaudeConversations(raw);
+  return importClaudeList(list, opts);
+}
+
+/**
+ * Stream-import Claude conversations without holding the whole export in
+ * memory. Accepts top-level `[...]` or `{ conversations: [...] }` / single
+ * conversation object. Size cap matches full-backup streaming (1GB).
+ */
+export async function importClaudeStream(
+  source: ClaudeImportSource,
+  opts: ClaudeStreamImportOptions = {},
+): Promise<ImportResult> {
+  beginActiveWork();
   const result: ImportResult = {
     importedCount: 0,
     skippedCount: 0,
@@ -74,39 +75,123 @@ export async function importClaude(
     errors: [],
   };
 
-  for (const conv of list) {
-    try {
-      const id = await importOneClaude(conv, opts);
-      if (id) {
-        result.importedCount++;
-        result.conversationIds.push(id);
-      } else {
-        result.skippedCount++;
+  try {
+    const size =
+      source.kind === 'file' ? source.file.size : source.text.length * 2;
+    assertBackupImportFileSize(size, 'Claude 导出');
+
+    const chunks =
+      source.kind === 'file'
+        ? fileTextChunks(source.file)
+        : stringChunks(source.text, 256 * 1024);
+
+    const { kind, rest } = await peekJsonRootKind(chunks);
+    opts.onProgress?.('正在解析 Claude 导出…');
+
+    if (kind === 'array') {
+      let seen = 0;
+      for await (const ev of parseJsonArrayStream(rest, {
+        arrayBatchSize: 1,
+      })) {
+        if (ev.type !== 'items') continue;
+        for (const item of ev.items) {
+          seen++;
+          await ingestOne(item as ClaudeConversation, opts, result);
+          if (seen % 5 === 0) {
+            opts.onProgress?.(`已处理 ${seen} 条对话…`);
+            await yieldToUi();
+          }
+        }
       }
-    } catch (err) {
-      result.errors.push(
-        `${conv.name ?? conv.uuid ?? '(无标题)'}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      return result;
     }
+
+    if (kind === 'object') {
+      // Wrapped { conversations: [...] } or a single conversation object.
+      let single: ClaudeConversation | null = null;
+      let sawConversationsArray = false;
+
+      for await (const ev of parseJsonObjectStream(rest, {
+        arrayBatchSize: 1,
+      })) {
+        if (ev.type === 'array-items' && ev.key === 'conversations') {
+          sawConversationsArray = true;
+          for (const item of ev.items) {
+            await ingestOne(item as ClaudeConversation, opts, result);
+            if (result.importedCount % 5 === 0) {
+              opts.onProgress?.(
+                `已导入 ${result.importedCount} 条（跳过 ${result.skippedCount}）…`,
+              );
+              await yieldToUi();
+            }
+          }
+        } else if (ev.type === 'value') {
+          if (!single) single = {} as ClaudeConversation;
+          (single as unknown as Record<string, unknown>)[ev.key] = ev.value;
+        } else if (
+          ev.type === 'array-items' &&
+          (ev.key === 'chat_messages' || ev.key === 'messages')
+        ) {
+          if (!single) single = {} as ClaudeConversation;
+          const key = ev.key === 'messages' ? 'messages' : 'chat_messages';
+          const prev = single[key] ?? [];
+          single[key] = [
+            ...prev,
+            ...(ev.items as NonNullable<ClaudeConversation['messages']>),
+          ];
+        }
+      }
+
+      if (!sawConversationsArray && single) {
+        await ingestOne(single, opts, result);
+      }
+      return result;
+    }
+
+    throw new Error(
+      '文件结构不像 Claude 导出（顶层既不是数组也不是对象）',
+    );
+  } finally {
+    endActiveWork();
   }
-  return result;
 }
 
-function extractConversations(raw: unknown): ClaudeConversation[] {
-  if (Array.isArray(raw)) return raw as ClaudeConversation[];
-  if (raw && typeof raw === 'object') {
-    const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.conversations)) {
-      return obj.conversations as ClaudeConversation[];
+async function ingestOne(
+  conv: ClaudeConversation,
+  opts: ImportOptions,
+  result: ImportResult,
+): Promise<void> {
+  try {
+    const id = await importOneClaude(conv, opts);
+    if (id) {
+      result.importedCount++;
+      result.conversationIds.push(id);
+    } else {
+      result.skippedCount++;
     }
-    // Single conversation — both old format (chat_messages) and new format (messages).
-    if ('chat_messages' in obj || 'messages' in obj) {
-      return [raw as ClaudeConversation];
-    }
+  } catch (err) {
+    result.errors.push(
+      `${conv.name ?? conv.uuid ?? '(无标题)'}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
   }
-  throw new Error('文件结构不像 Claude 导出（找不到 conversations、chat_messages 或 messages）');
+}
+
+async function importClaudeList(
+  list: ClaudeConversation[],
+  opts: ImportOptions,
+): Promise<ImportResult> {
+  const result: ImportResult = {
+    importedCount: 0,
+    skippedCount: 0,
+    conversationIds: [],
+    errors: [],
+  };
+  for (const conv of list) {
+    await ingestOne(conv, opts, result);
+  }
+  return result;
 }
 
 async function importOneClaude(
@@ -122,29 +207,24 @@ async function importOneClaude(
     if (existing) return null;
   }
 
-  // Support both old format (chat_messages / created_at) and new format (messages / createdAt).
-  const chats = conv.messages ?? conv.chat_messages ?? [];
-  if (chats.length === 0) return null;
+  const parsed = parseClaudeConversationMessages(conv);
+  if (parsed.length === 0) return null;
 
   const conversationId = newId();
   const messages: Message[] = [];
   let parentId: string | null = null;
 
-  for (const m of chats) {
-    const role = normalizeSender(m.sender);
-    if (!role) continue;
-    const text = extractTextContent(m);
-    const thinking = extractThinking(m);
+  for (const m of parsed) {
     const id = newId();
     messages.push({
       id,
       conversationId,
       parentId,
-      role,
-      content: text,
-      ...(thinking ? { thinking } : {}),
+      role: m.role,
+      content: m.content,
+      ...(m.thinking ? { thinking: m.thinking } : {}),
       status: 'done',
-      createdAt: parseTime(m.createdAt ?? m.created_at) ?? Date.now(),
+      createdAt: m.createdAt,
     });
     if (parentId) {
       const parent = messages.find((mm) => mm.id === parentId);
@@ -153,20 +233,18 @@ async function importOneClaude(
     parentId = id;
   }
 
-  if (messages.length === 0) return null;
-
   const now = Date.now();
   const conversation: Conversation = {
     id: conversationId,
-    title: (conv.name?.trim() || '从 Claude 导入').slice(0, 80),
+    title: titleForClaudeConversation(conv, parsed),
     currentLeafId: messages[messages.length - 1].id,
     personaId: opts.personaId,
     defaultEndpointId: opts.defaultEndpointId,
     defaultModel: opts.defaultModel,
     sourceId,
     source: 'claude',
-    createdAt: parseTime(conv.createdAt ?? conv.created_at) ?? now,
-    updatedAt: parseTime(conv.updatedAt ?? conv.updated_at) ?? now,
+    createdAt: parseClaudeTime(conv.createdAt ?? conv.created_at) ?? now,
+    updatedAt: parseClaudeTime(conv.updatedAt ?? conv.updated_at) ?? now,
   };
 
   await db.transaction('rw', db.conversations, db.messages, async () => {
@@ -175,84 +253,4 @@ async function importOneClaude(
   });
 
   return conversationId;
-}
-
-function normalizeSender(sender: string | undefined): Role | null {
-  if (!sender) return null;
-  if (sender === 'human' || sender === 'user') return 'user';
-  if (sender === 'assistant' || sender === 'claude') return 'assistant';
-  if (sender === 'system') return 'system';
-  return null;
-}
-
-/**
- * Resolve the content block array from a Claude message.
- * Supports both old format (`content`) and new Claude.ai export format
- * (`contentBlocks`).  Returns the string value of `content` when the
- * old format stored it as a plain string.
- */
-function resolveBlocks(
-  m: ClaudeMessage,
-): ClaudeContentBlock[] | string | undefined {
-  if (Array.isArray(m.contentBlocks) && m.contentBlocks.length > 0)
-    return m.contentBlocks;
-  return m.content;
-}
-
-/**
- * Extract the main text content from a Claude message.
- * When the message has a structured content array (modern format), only
- * `type === 'text'` blocks are included so that thinking blocks are NOT
- * merged into the visible text.  Falls back to the top-level `m.text`
- * string for older export formats that don't use typed blocks.
- */
-function extractTextContent(m: ClaudeMessage): string {
-  const c = resolveBlocks(m);
-  if (Array.isArray(c)) {
-    // Pick only explicit text blocks.
-    const fromTextBlocks = c
-      .filter((b) => b.type === 'text' && typeof b.text === 'string')
-      .map((b) => b.text as string)
-      .filter(Boolean)
-      .join('\n')
-      .trim();
-    if (fromTextBlocks) return fromTextBlocks;
-
-    // Fallback: blocks without a type field — treat their .text as content.
-    const untyped = c
-      .filter((b) => !b.type && typeof b.text === 'string')
-      .map((b) => b.text as string)
-      .filter(Boolean)
-      .join('\n')
-      .trim();
-    if (untyped) return untyped;
-  }
-  if (typeof c === 'string') return c;
-  // Old-format messages only have a top-level text field.
-  if (typeof m.text === 'string') return m.text;
-  return '';
-}
-
-/**
- * Extract extended-thinking content from a Claude message.
- * Returns the concatenated text of all `type === 'thinking'` blocks,
- * or undefined when the message has no thinking blocks.
- * Supports both `content` (old format) and `contentBlocks` (new format).
- */
-function extractThinking(m: ClaudeMessage): string | undefined {
-  const c = resolveBlocks(m);
-  if (!Array.isArray(c)) return undefined;
-  const thinking = c
-    .filter((b) => b.type === 'thinking' && typeof b.thinking === 'string')
-    .map((b) => b.thinking as string)
-    .filter(Boolean)
-    .join('\n')
-    .trim();
-  return thinking || undefined;
-}
-
-function parseTime(s: string | undefined): number | null {
-  if (!s) return null;
-  const parsed = Date.parse(s);
-  return Number.isNaN(parsed) ? null : parsed;
 }

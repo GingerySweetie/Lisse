@@ -7,6 +7,8 @@ import test from 'node:test';
 import {
   findJsonValueEnd,
   parseJsonObjectStream,
+  parseJsonArrayStream,
+  peekJsonRootKind,
   stringChunks,
 } from '../src/lib/stream-json-object.ts';
 
@@ -93,4 +95,36 @@ test('parseJsonObjectStream rejects truncated input', async () => {
       // drain
     }
   }, /不完整|格式不对/);
+});
+
+test('parseJsonArrayStream yields Claude-shaped conversation batches', async () => {
+  const json = JSON.stringify([
+    { uuid: 'c1', name: 'A', chat_messages: [{ sender: 'human', text: 'hi' }] },
+    { uuid: 'c2', name: 'B', chat_messages: [] },
+  ]);
+  const events = [];
+  for await (const ev of parseJsonArrayStream(stringChunks(json, 5), {
+    arrayBatchSize: 1,
+  })) {
+    events.push(ev);
+  }
+  assert.equal(events[0].type, 'start');
+  const items = events
+    .filter((e) => e.type === 'items')
+    .flatMap((e) => e.items);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].uuid, 'c1');
+  assert.equal(events.at(-1).type, 'end');
+  assert.equal(events.at(-1).count, 2);
+});
+
+test('peekJsonRootKind distinguishes array vs object without losing bytes', async () => {
+  const json = '  [{"uuid":"x"}]';
+  const { kind, rest } = await peekJsonRootKind(stringChunks(json, 3));
+  assert.equal(kind, 'array');
+  let rebuilt = '';
+  for await (const chunk of rest) rebuilt += chunk;
+  assert.equal(rebuilt, json);
+  const parsed = JSON.parse(rebuilt);
+  assert.equal(parsed[0].uuid, 'x');
 });

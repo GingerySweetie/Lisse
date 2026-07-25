@@ -36,8 +36,8 @@ import {
 } from '../lib/backup-location';
 import { formatExportSaveLabel } from '../lib/export-save-result';
 import {
-  importChatGPT,
-  importClaude,
+  importChatGPTStream,
+  importClaudeStream,
   importLisseConversation,
   type ImportResult,
 } from '../lib/import';
@@ -373,12 +373,17 @@ export default function ImportExportPage() {
   async function handleChatGPT(file: File) {
     setChatgptStatus({ kind: 'busy', label: '解析中…' });
     try {
-      const text = await readFile(file, 'ChatGPT 导出');
-      const result = await importChatGPT(text, {
-        personaId: importPersonaId || undefined,
-        defaultEndpointId: importEndpointId || undefined,
-        defaultModel: importModel || undefined,
-      });
+      assertBackupImportFileSize(file.size, 'ChatGPT 导出');
+      const result = await importChatGPTStream(
+        { kind: 'file', file },
+        {
+          personaId: importPersonaId || undefined,
+          defaultEndpointId: importEndpointId || undefined,
+          defaultModel: importModel || undefined,
+          onProgress: (label) =>
+            setChatgptStatus({ kind: 'busy', label }),
+        },
+      );
       setChatgptStatus({ kind: 'ok', label: summarizeImport(result) });
     } catch (err) {
       setChatgptStatus({
@@ -391,12 +396,17 @@ export default function ImportExportPage() {
   async function handleClaude(file: File) {
     setClaudeStatus({ kind: 'busy', label: '解析中…' });
     try {
-      const text = await readFile(file, 'Claude 导出');
-      const result = await importClaude(text, {
-        personaId: importPersonaId || undefined,
-        defaultEndpointId: importEndpointId || undefined,
-        defaultModel: importModel || undefined,
-      });
+      assertBackupImportFileSize(file.size, 'Claude 导出');
+      const result = await importClaudeStream(
+        { kind: 'file', file },
+        {
+          personaId: importPersonaId || undefined,
+          defaultEndpointId: importEndpointId || undefined,
+          defaultModel: importModel || undefined,
+          onProgress: (label) =>
+            setClaudeStatus({ kind: 'busy', label }),
+        },
+      );
       setClaudeStatus({ kind: 'ok', label: summarizeImport(result) });
     } catch (err) {
       setClaudeStatus({
@@ -1272,6 +1282,9 @@ export default function ImportExportPage() {
               先选好这次导入要绑定哪个人格、哪个 endpoint，下面再选文件。
               <br />
               已经导入过的同一对话会自动跳过（按原始 conversation id 判重）。
+              <br />
+              ChatGPT / Claude 大导出（几百 MB 也可以）会边读边写入，不会整文件塞进内存。
+              Claude 会只保留当前分支（重新生成过的旧回复不会混进同一条对话）。
               <br />
               Wisteria JSON 导入支持单条（<code className="rounded bg-lavender-100 px-1">__lisse: "conversation"</code>）
               或多条（<code className="rounded bg-lavender-100 px-1">__lisse: "conversations"</code>）对话导出文件。
