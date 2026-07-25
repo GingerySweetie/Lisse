@@ -5,7 +5,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  isLoopbackHost,
   isTerminalRunStatus,
+  PROXY_BASE,
   resolveCursorApiBase,
   toGithubRepoUrl,
 } from '../src/lib/workshop/cursor-api.ts';
@@ -32,4 +34,17 @@ test('resolveCursorApiBase honors explicit override', () => {
     resolveCursorApiBase('https://example.com/proxy/'),
     'https://example.com/proxy',
   );
+  assert.equal(resolveCursorApiBase(PROXY_BASE), PROXY_BASE);
+});
+
+test('isLoopbackHost recognizes localhost variants', () => {
+  assert.equal(isLoopbackHost('localhost'), true);
+  assert.equal(isLoopbackHost('127.0.0.1'), true);
+  assert.equal(isLoopbackHost('[::1]'), true);
+  assert.equal(isLoopbackHost('lisse.example.com'), false);
+  assert.equal(isLoopbackHost(''), false);
+});
+
+test('PROXY_BASE is the same-origin reverse-proxy path', () => {
+  assert.equal(PROXY_BASE, '/proxy/cursor');
 });
