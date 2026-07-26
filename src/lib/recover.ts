@@ -13,7 +13,11 @@ import type { ImportBackupResult } from './backup';
 import { importBackupStream } from './backup-stream-import';
 import { getBackupFolder, getValidBackupFolder } from './backup-location';
 import { importConfigBundle, type ImportConfigResult } from './config-export';
-import { importChatGPT, importClaude, importLisseConversation } from './import';
+import {
+  importChatGPTStream,
+  importClaudeStream,
+  importLisseConversation,
+} from './import';
 import type { ImportResult } from './import';
 import FileSaver, { type RecoverableFileMeta } from './native/file-saver';
 import {
@@ -212,9 +216,16 @@ export async function importRecoverableItem(
 ): Promise<{ detected: RecoverKind; outcome: RecoverImportOutcome }> {
   const mode = opts.mode ?? 'merge';
 
-  // Full backups use the streaming path — peek kind, then never load the
-  // whole JSON string into JS heap.
+  // Full backups + ChatGPT/Claude exports use streaming — peek kind, then
+  // never load the whole JSON string into JS heap when possible.
   const peeked = await peekRecoverKind(item);
+  const vendorGuess =
+    peeked === 'chatgpt' || peeked === 'claude'
+      ? peeked
+      : item.kindGuess === 'chatgpt' || item.kindGuess === 'claude'
+        ? item.kindGuess
+        : null;
+
   if (peeked === 'backup') {
     assertBackupImportFileSize(item.size || item.file?.size || 0, item.name);
     if (!item.file && !item.uri) {
@@ -227,6 +238,67 @@ export async function importRecoverableItem(
       { mode, onProgress: opts.onProgress },
     );
     return { detected: 'backup', outcome: { kind: 'backup', result } };
+  }
+
+  if (vendorGuess === 'chatgpt' || vendorGuess === 'claude') {
+    assertBackupImportFileSize(
+      item.size || item.file?.size || 0,
+      vendorGuess === 'claude' ? 'Claude 导出' : 'ChatGPT 导出',
+    );
+    if (!item.file) {
+      // URI-only recover: load text then stream from string chunks.
+      // Still avoids FileReader on the ImportExport path; recover URI path
+      // already reads via native chunking into a string.
+      const text = item.uri
+        ? await readRecoverableText(item.uri)
+        : (() => {
+            throw new Error('没有可读取的文件内容');
+          })();
+      if (vendorGuess === 'chatgpt') {
+        const result = await importChatGPTStream(
+          { kind: 'text', text },
+          {
+            personaId: opts.personaId,
+            defaultEndpointId: opts.defaultEndpointId,
+            defaultModel: opts.defaultModel,
+            onProgress: opts.onProgress,
+          },
+        );
+        return { detected: 'chatgpt', outcome: { kind: 'chatgpt', result } };
+      }
+      const result = await importClaudeStream(
+        { kind: 'text', text },
+        {
+          personaId: opts.personaId,
+          defaultEndpointId: opts.defaultEndpointId,
+          defaultModel: opts.defaultModel,
+          onProgress: opts.onProgress,
+        },
+      );
+      return { detected: 'claude', outcome: { kind: 'claude', result } };
+    }
+    if (vendorGuess === 'chatgpt') {
+      const result = await importChatGPTStream(
+        { kind: 'file', file: item.file },
+        {
+          personaId: opts.personaId,
+          defaultEndpointId: opts.defaultEndpointId,
+          defaultModel: opts.defaultModel,
+          onProgress: opts.onProgress,
+        },
+      );
+      return { detected: 'chatgpt', outcome: { kind: 'chatgpt', result } };
+    }
+    const result = await importClaudeStream(
+      { kind: 'file', file: item.file },
+      {
+        personaId: opts.personaId,
+        defaultEndpointId: opts.defaultEndpointId,
+        defaultModel: opts.defaultModel,
+        onProgress: opts.onProgress,
+      },
+    );
+    return { detected: 'claude', outcome: { kind: 'claude', result } };
   }
 
   if (item.file) {
@@ -271,19 +343,27 @@ export async function importRecoverableItem(
       return { detected, outcome: { kind: 'config', result } };
     }
     case 'chatgpt': {
-      const result = await importChatGPT(text, {
-        personaId: opts.personaId,
-        defaultEndpointId: opts.defaultEndpointId,
-        defaultModel: opts.defaultModel,
-      });
+      const result = await importChatGPTStream(
+        { kind: 'text', text },
+        {
+          personaId: opts.personaId,
+          defaultEndpointId: opts.defaultEndpointId,
+          defaultModel: opts.defaultModel,
+          onProgress: opts.onProgress,
+        },
+      );
       return { detected, outcome: { kind: 'chatgpt', result } };
     }
     case 'claude': {
-      const result = await importClaude(text, {
-        personaId: opts.personaId,
-        defaultEndpointId: opts.defaultEndpointId,
-        defaultModel: opts.defaultModel,
-      });
+      const result = await importClaudeStream(
+        { kind: 'text', text },
+        {
+          personaId: opts.personaId,
+          defaultEndpointId: opts.defaultEndpointId,
+          defaultModel: opts.defaultModel,
+          onProgress: opts.onProgress,
+        },
+      );
       return { detected, outcome: { kind: 'claude', result } };
     }
     default:

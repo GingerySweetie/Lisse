@@ -272,6 +272,146 @@ export async function* parseJsonObjectStream(
   }
 }
 
+export type JsonArrayStreamEvent =
+  | { type: 'start' }
+  | { type: 'items'; items: unknown[] }
+  | { type: 'end'; count: number };
+
+/**
+ * Walk a top-level JSON array from async text chunks.
+ * Used for ChatGPT / Claude `conversations.json` exports (flat `[...]`).
+ * Never materializes the full array — emits batched items as bytes arrive.
+ */
+export async function* parseJsonArrayStream(
+  chunks: AsyncIterable<string>,
+  opts: ParseJsonObjectStreamOptions = {},
+): AsyncGenerator<JsonArrayStreamEvent> {
+  const batchSize = Math.max(1, opts.arrayBatchSize ?? 50);
+  let buf = '';
+  let pos = 0;
+  let eof = false;
+
+  const compact = () => {
+    if (pos > 64 * 1024) {
+      buf = buf.slice(pos);
+      pos = 0;
+    }
+  };
+
+  const pull = chunks[Symbol.asyncIterator]();
+
+  const fill = async (): Promise<boolean> => {
+    if (eof) return false;
+    const next = await pull.next();
+    if (next.done) {
+      eof = true;
+      return false;
+    }
+    buf += next.value;
+    return true;
+  };
+
+  const peekNonWs = async (): Promise<number> => {
+    for (;;) {
+      pos = skipWs(buf, pos);
+      if (pos < buf.length) return buf.charCodeAt(pos);
+      if (!(await fill())) return -1;
+    }
+  };
+
+  const expectChar = async (code: number, label: string): Promise<void> => {
+    const ch = await peekNonWs();
+    if (ch !== code) {
+      throw new Error(`导出 JSON 格式不对：期望 ${label}`);
+    }
+    pos++;
+  };
+
+  const readValue = async (): Promise<unknown> => {
+    for (;;) {
+      pos = skipWs(buf, pos);
+      const end = findJsonValueEnd(buf, pos);
+      if (end >= 0) {
+        const raw = buf.slice(pos, end);
+        pos = end;
+        compact();
+        return JSON.parse(raw) as unknown;
+      }
+      if (!(await fill())) {
+        throw new Error('导出 JSON 不完整：值未结束');
+      }
+    }
+  };
+
+  await expectChar(91, '[');
+  yield { type: 'start' };
+
+  let count = 0;
+  let batch: unknown[] = [];
+  let first = true;
+
+  for (;;) {
+    const ch = await peekNonWs();
+    if (ch === 93 /* ] */) {
+      pos++;
+      if (batch.length) {
+        yield { type: 'items', items: batch };
+        batch = [];
+      }
+      yield { type: 'end', count };
+      return;
+    }
+    if (ch < 0) {
+      throw new Error('导出 JSON 不完整：数组未结束');
+    }
+    if (!first) {
+      await expectChar(44, ',');
+    }
+    first = false;
+    const item = await readValue();
+    batch.push(item);
+    count++;
+    if (batch.length >= batchSize) {
+      yield { type: 'items', items: batch };
+      batch = [];
+      compact();
+    }
+  }
+}
+
+/** Peek the first non-whitespace char of a chunk stream (consumes that char). */
+export async function peekJsonRootKind(
+  chunks: AsyncIterable<string>,
+): Promise<{
+  kind: 'array' | 'object' | 'other';
+  rest: AsyncIterable<string>;
+}> {
+  const pull = chunks[Symbol.asyncIterator]();
+  let prefix = '';
+  for (;;) {
+    const next = await pull.next();
+    if (next.done) break;
+    prefix += next.value;
+    const trimmed = prefix.trimStart();
+    if (!trimmed) continue;
+    const ch = trimmed.charCodeAt(0);
+    const kind: 'array' | 'object' | 'other' =
+      ch === 91 ? 'array' : ch === 123 ? 'object' : 'other';
+    // Rebuild a stream that starts with the leftover prefix (including
+    // leading whitespace) so the real parser can re-read the root char.
+    async function* rest(): AsyncGenerator<string> {
+      if (prefix) yield prefix;
+      for (;;) {
+        const n = await pull.next();
+        if (n.done) return;
+        yield n.value;
+      }
+    }
+    return { kind, rest: rest() };
+  }
+  return { kind: 'other', rest: (async function* () {})() };
+}
+
 /** Turn a string into an async iterable of chunks (for tests / in-memory). */
 export async function* stringChunks(
   text: string,

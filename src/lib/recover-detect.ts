@@ -42,13 +42,19 @@ export function detectRecoverKind(text: string): RecoverKind {
     ) {
       return 'chatgpt';
     }
-    if (head.includes('"chat_messages"') || head.includes('"sender"')) {
+    if (
+      head.includes('"chat_messages"') ||
+      head.includes('"contentBlocks"') ||
+      head.includes('"sender"')
+    ) {
       return 'claude';
     }
   }
   if (
     trimmed.startsWith('{') &&
-    (head.includes('"chat_messages"') || head.includes('"name"')) &&
+    (head.includes('"chat_messages"') ||
+      head.includes('"contentBlocks"') ||
+      (head.includes('"messages"') && head.includes('"sender"'))) &&
     head.includes('"uuid"')
   ) {
     return 'claude';

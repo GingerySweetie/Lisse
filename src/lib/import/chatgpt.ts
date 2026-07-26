@@ -1,6 +1,16 @@
 import { db } from '../../db';
 import type { Conversation, Message, Role } from '../../types';
 import { newId } from '../id';
+import { fileTextChunks } from '../file-text-chunks';
+import {
+  parseJsonArrayStream,
+  parseJsonObjectStream,
+  peekJsonRootKind,
+  stringChunks,
+} from '../stream-json-object';
+import { beginActiveWork, endActiveWork } from '../stream-activity';
+import { yieldToUi } from '../export-progress';
+import { assertBackupImportFileSize } from '../storage-guards';
 
 // Subset of the ChatGPT export format we use.
 interface ChatGPTNode {
@@ -49,9 +59,18 @@ export interface ImportOptions {
   defaultModel?: string;
 }
 
+export type ChatGPTImportSource =
+  | { kind: 'file'; file: File }
+  | { kind: 'text'; text: string };
+
+export interface ChatGPTStreamImportOptions extends ImportOptions {
+  onProgress?: (label: string) => void;
+}
+
 /**
  * Parse and import a ChatGPT `conversations.json` file.
  * Accepts the array form and the wrapped { conversations: [...] } form.
+ * Prefer {@link importChatGPTStream} for large files.
  */
 export async function importChatGPT(
   fileText: string,
@@ -67,6 +86,18 @@ export async function importChatGPT(
   }
 
   const list = extractConversations(raw);
+  return importChatGPTList(list, opts);
+}
+
+/**
+ * Stream-import ChatGPT conversations without holding the whole export in
+ * memory. Size cap matches full-backup streaming (1GB).
+ */
+export async function importChatGPTStream(
+  source: ChatGPTImportSource,
+  opts: ChatGPTStreamImportOptions = {},
+): Promise<ImportResult> {
+  beginActiveWork();
   const result: ImportResult = {
     importedCount: 0,
     skippedCount: 0,
@@ -74,24 +105,108 @@ export async function importChatGPT(
     errors: [],
   };
 
-  for (const conv of list) {
-    try {
-      const id = await importOneChatGPT(conv, opts);
-      if (id) {
-        result.importedCount++;
-        result.conversationIds.push(id);
-      } else {
-        result.skippedCount++;
-      }
-    } catch (err) {
-      result.errors.push(
-        `${conv.title ?? conv.conversation_id ?? '(无标题)'}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-  }
+  try {
+    const size =
+      source.kind === 'file' ? source.file.size : source.text.length * 2;
+    assertBackupImportFileSize(size, 'ChatGPT 导出');
 
+    const chunks =
+      source.kind === 'file'
+        ? fileTextChunks(source.file)
+        : stringChunks(source.text, 256 * 1024);
+
+    const { kind, rest } = await peekJsonRootKind(chunks);
+    opts.onProgress?.('正在解析 ChatGPT 导出…');
+
+    if (kind === 'array') {
+      let seen = 0;
+      for await (const ev of parseJsonArrayStream(rest, {
+        arrayBatchSize: 1,
+      })) {
+        if (ev.type !== 'items') continue;
+        for (const item of ev.items) {
+          seen++;
+          await ingestOne(item as ChatGPTConversation, opts, result);
+          if (seen % 5 === 0) {
+            opts.onProgress?.(`已处理 ${seen} 条对话…`);
+            await yieldToUi();
+          }
+        }
+      }
+      return result;
+    }
+
+    if (kind === 'object') {
+      let single: ChatGPTConversation | null = null;
+      let sawConversationsArray = false;
+
+      for await (const ev of parseJsonObjectStream(rest, {
+        arrayBatchSize: 1,
+      })) {
+        if (ev.type === 'array-items' && ev.key === 'conversations') {
+          sawConversationsArray = true;
+          for (const item of ev.items) {
+            await ingestOne(item as ChatGPTConversation, opts, result);
+            if (result.importedCount % 5 === 0) {
+              opts.onProgress?.(
+                `已导入 ${result.importedCount} 条（跳过 ${result.skippedCount}）…`,
+              );
+              await yieldToUi();
+            }
+          }
+        } else if (ev.type === 'value') {
+          if (!single) single = { mapping: {} };
+          (single as unknown as Record<string, unknown>)[ev.key] = ev.value;
+        }
+      }
+
+      if (!sawConversationsArray && single) {
+        await ingestOne(single, opts, result);
+      }
+      return result;
+    }
+
+    throw new Error('文件结构不像 ChatGPT 导出（顶层既不是数组也不是对象）');
+  } finally {
+    endActiveWork();
+  }
+}
+
+async function ingestOne(
+  conv: ChatGPTConversation,
+  opts: ImportOptions,
+  result: ImportResult,
+): Promise<void> {
+  try {
+    const id = await importOneChatGPT(conv, opts);
+    if (id) {
+      result.importedCount++;
+      result.conversationIds.push(id);
+    } else {
+      result.skippedCount++;
+    }
+  } catch (err) {
+    result.errors.push(
+      `${conv.title ?? conv.conversation_id ?? '(无标题)'}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function importChatGPTList(
+  list: ChatGPTConversation[],
+  opts: ImportOptions,
+): Promise<ImportResult> {
+  const result: ImportResult = {
+    importedCount: 0,
+    skippedCount: 0,
+    conversationIds: [],
+    errors: [],
+  };
+  for (const conv of list) {
+    await ingestOne(conv, opts, result);
+  }
   return result;
 }
 
@@ -138,8 +253,8 @@ async function importOneChatGPT(
     const role = normalizeRole(n.message.author?.role);
     if (!role) continue;
     const text = extractText(n.message);
-    // Even empty messages (tool outputs etc.) get an id so children can chain;
-    // but skip true ghost nodes with no role.
+    // Skip empty ghost nodes (no visible text) — parent walks skip them.
+    if (!text.trim() && role !== 'system') continue;
     idMap.set(n.id, newId());
     messages.push({
       id: idMap.get(n.id)!,
@@ -194,13 +309,11 @@ async function importOneChatGPT(
     while (cursor && !idMap.has(cursor)) {
       const node = conv.mapping[cursor];
       if (!node) break;
-      // Try first child? actually walk parent until we find a kept node.
       cursor = node.parent ?? '';
     }
     currentLeafNew = idMap.get(cursor) ?? null;
   }
   if (!currentLeafNew) {
-    // Walk from root taking last child each step.
     const roots = childrenByParent.get(null) ?? [];
     let cursor = roots[roots.length - 1];
     while (cursor) {
@@ -225,9 +338,22 @@ async function importOneChatGPT(
   }
 
   const now = Date.now();
+  const titleRaw = conv.title?.trim();
+  let title: string;
+  if (titleRaw && !/^new chat$/i.test(titleRaw)) {
+    title = titleRaw.slice(0, 80);
+  } else {
+    const firstUser = messages.find((m) => m.role === 'user' && m.content.trim());
+    const snippet = (firstUser?.content ?? titleRaw ?? '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, 40);
+    title = snippet || '从 ChatGPT 导入';
+  }
+
   const conversation: Conversation = {
     id: conversationId,
-    title: (conv.title?.trim() || '从 ChatGPT 导入').slice(0, 80),
+    title,
     currentLeafId: currentLeafNew,
     personaId: opts.personaId,
     defaultEndpointId: opts.defaultEndpointId,
