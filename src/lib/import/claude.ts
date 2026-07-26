@@ -223,6 +223,7 @@ async function importOneClaude(
       role: m.role,
       content: m.content,
       ...(m.thinking ? { thinking: m.thinking } : {}),
+      ...(m.toolCalls?.length ? { toolCalls: m.toolCalls } : {}),
       status: 'done',
       createdAt: m.createdAt,
     });
