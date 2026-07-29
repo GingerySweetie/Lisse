@@ -1284,6 +1284,18 @@ export default function ImportExportPage() {
               已经导入过的同一对话会自动跳过（按原始 conversation id 判重）。
               <br />
               ChatGPT / Claude 大导出（几百 MB 也可以）会边读边写入，不会整文件塞进内存。
+              <br />
+              ChatGPT 解析对齐
+              <a
+                className="underline decoration-lavender-300 underline-offset-2 hover:text-ink-700"
+                href="https://fedor22515.github.io/chat_viewer_manager/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Chat Viewer Manager
+              </a>
+              （遍历 mapping 全部节点 + flattenParts，线性化对话，避免长对话只剩一条短分支）。
+              <br />
               Claude 解析对齐官方导出格式（与
               <a
                 className="underline decoration-lavender-300 underline-offset-2 hover:text-ink-700"
