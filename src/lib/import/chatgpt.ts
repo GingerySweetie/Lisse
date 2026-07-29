@@ -1,5 +1,5 @@
 import { db } from '../../db';
-import type { Conversation, Message, Role } from '../../types';
+import type { Conversation, Message } from '../../types';
 import { newId } from '../id';
 import { fileTextChunks } from '../file-text-chunks';
 import {
@@ -11,38 +11,22 @@ import {
 import { beginActiveWork, endActiveWork } from '../stream-activity';
 import { yieldToUi } from '../export-progress';
 import { assertBackupImportFileSize } from '../storage-guards';
+import {
+  extractChatGPTConversations,
+  parseChatGPTConversationMessages,
+  timestampMs,
+  titleForChatGPTConversation,
+  type ChatGPTConversation,
+} from './chatgpt-parse';
 
-// Subset of the ChatGPT export format we use.
-interface ChatGPTNode {
-  id: string;
-  message: ChatGPTMessage | null;
-  parent: string | null;
-  children: string[];
-}
-
-interface ChatGPTMessage {
-  id?: string;
-  author?: { role: string; name?: string | null };
-  create_time?: number | null;
-  content?:
-    | {
-        content_type?: string;
-        parts?: unknown[];
-        text?: string;
-      }
-    | undefined;
-  metadata?: Record<string, unknown>;
-}
-
-interface ChatGPTConversation {
-  title?: string | null;
-  create_time?: number | null;
-  update_time?: number | null;
-  mapping: Record<string, ChatGPTNode>;
-  current_node?: string | null;
-  conversation_id?: string;
-  id?: string;
-}
+export type { ChatGPTConversation } from './chatgpt-parse';
+export {
+  extractChatGPTConversations,
+  flattenChatGPTParts,
+  normalizeChatGPTMessage,
+  parseChatGPTConversationMessages,
+  titleForChatGPTConversation,
+} from './chatgpt-parse';
 
 export interface ImportResult {
   importedCount: number;
@@ -85,7 +69,7 @@ export async function importChatGPT(
     );
   }
 
-  const list = extractConversations(raw);
+  const list = extractChatGPTConversations(raw);
   return importChatGPTList(list, opts);
 }
 
@@ -155,8 +139,16 @@ export async function importChatGPTStream(
             }
           }
         } else if (ev.type === 'value') {
-          if (!single) single = { mapping: {} };
+          if (!single) single = {};
           (single as unknown as Record<string, unknown>)[ev.key] = ev.value;
+        } else if (ev.type === 'array-items' && ev.key === 'messages') {
+          // Simple { messages: [...] } shape (viewer also accepts this).
+          if (!single) single = {};
+          const prev = single.messages ?? [];
+          single.messages = [
+            ...prev,
+            ...(ev.items as NonNullable<ChatGPTConversation['messages']>),
+          ];
         }
       }
 
@@ -210,29 +202,17 @@ async function importChatGPTList(
   return result;
 }
 
-function extractConversations(raw: unknown): ChatGPTConversation[] {
-  if (Array.isArray(raw)) return raw as ChatGPTConversation[];
-  if (raw && typeof raw === 'object') {
-    const obj = raw as Record<string, unknown>;
-    if (Array.isArray(obj.conversations)) {
-      return obj.conversations as ChatGPTConversation[];
-    }
-    // Single conversation object
-    if ('mapping' in obj && typeof obj.mapping === 'object') {
-      return [raw as ChatGPTConversation];
-    }
-  }
-  throw new Error('文件结构不像 ChatGPT 导出（找不到 conversations 数组）');
-}
-
+/**
+ * Import one ChatGPT conversation using chat_viewer_manager rules:
+ * every mapping node with dialogue content, linearized (not a short leaf path).
+ */
 async function importOneChatGPT(
   conv: ChatGPTConversation,
   opts: ImportOptions,
 ): Promise<string | null> {
-  if (!conv.mapping) return null;
+  if (!conv.mapping && !Array.isArray(conv.messages)) return null;
 
   const sourceId = conv.conversation_id ?? conv.id;
-  // Skip if already imported.
   if (sourceId) {
     const existing = await db.conversations
       .where({ source: 'chatgpt' })
@@ -241,120 +221,37 @@ async function importOneChatGPT(
     if (existing) return null;
   }
 
-  const messages: Message[] = [];
-  const idMap = new Map<string, string>();
+  const parsed = parseChatGPTConversationMessages(conv, { mode: 'dialogue' });
+  if (parsed.length === 0) return null;
+
   const conversationId = newId();
+  const messages: Message[] = [];
+  let parentId: string | null = null;
 
-  const nodes = Object.values(conv.mapping);
-
-  // First pass: assign new ids to every node that has a message we want to keep.
-  for (const n of nodes) {
-    if (!n.message) continue;
-    const role = normalizeRole(n.message.author?.role);
-    if (!role) continue;
-    const text = extractText(n.message);
-    // Skip empty ghost nodes (no visible text) — parent walks skip them.
-    if (!text.trim() && role !== 'system') continue;
-    idMap.set(n.id, newId());
+  for (const m of parsed) {
+    const id = newId();
     messages.push({
-      id: idMap.get(n.id)!,
+      id,
       conversationId,
-      parentId: null, // resolved in pass 2
-      role,
-      content: text,
+      parentId,
+      role: m.role,
+      content: m.content,
       status: 'done',
-      createdAt: timestampMs(n.message.create_time) ?? Date.now(),
+      createdAt: m.createdAt,
+      ...(m.model ? { model: m.model } : {}),
     });
-  }
-
-  if (messages.length === 0) return null;
-
-  // Second pass: resolve parent ids by walking up the source mapping until we
-  // find a node we kept (skipping any ghost/system nodes we dropped).
-  for (const n of nodes) {
-    const newId_ = idMap.get(n.id);
-    if (!newId_) continue;
-    let parentSrc = n.parent;
-    let resolvedParentNew: string | null = null;
-    while (parentSrc) {
-      const mapped = idMap.get(parentSrc);
-      if (mapped) {
-        resolvedParentNew = mapped;
-        break;
-      }
-      const parentNode = conv.mapping[parentSrc];
-      parentSrc = parentNode?.parent ?? null;
+    if (parentId) {
+      const parent = messages.find((mm) => mm.id === parentId);
+      if (parent) parent.activeChildId = id;
     }
-    const msg = messages.find((m) => m.id === newId_);
-    if (msg) msg.parentId = resolvedParentNew;
-  }
-
-  // Build child-by-parent index for activeChildId derivation.
-  const childrenByParent = new Map<string | null, Message[]>();
-  for (const m of messages) {
-    const arr = childrenByParent.get(m.parentId) ?? [];
-    arr.push(m);
-    childrenByParent.set(m.parentId, arr);
-  }
-  // Sort siblings by createdAt for stable order.
-  for (const arr of childrenByParent.values()) {
-    arr.sort((a, b) => a.createdAt - b.createdAt);
-  }
-
-  // Compute currentLeafId: prefer the new id of conv.current_node; else
-  // fall back to deepest descendant by walking last-child down from root.
-  let currentLeafNew: string | null = null;
-  if (conv.current_node) {
-    let cursor = conv.current_node;
-    while (cursor && !idMap.has(cursor)) {
-      const node = conv.mapping[cursor];
-      if (!node) break;
-      cursor = node.parent ?? '';
-    }
-    currentLeafNew = idMap.get(cursor) ?? null;
-  }
-  if (!currentLeafNew) {
-    const roots = childrenByParent.get(null) ?? [];
-    let cursor = roots[roots.length - 1];
-    while (cursor) {
-      const kids = childrenByParent.get(cursor.id) ?? [];
-      if (kids.length === 0) break;
-      cursor = kids[kids.length - 1];
-    }
-    currentLeafNew = cursor?.id ?? null;
-  }
-
-  // Set activeChildId by walking from currentLeafNew up; each parent points
-  // to whichever of its children leads to the leaf.
-  if (currentLeafNew) {
-    let cursorId: string | null = currentLeafNew;
-    while (cursorId) {
-      const cur = messages.find((m) => m.id === cursorId);
-      if (!cur || !cur.parentId) break;
-      const parent = messages.find((m) => m.id === cur.parentId);
-      if (parent) parent.activeChildId = cur.id;
-      cursorId = cur.parentId;
-    }
+    parentId = id;
   }
 
   const now = Date.now();
-  const titleRaw = conv.title?.trim();
-  let title: string;
-  if (titleRaw && !/^new chat$/i.test(titleRaw)) {
-    title = titleRaw.slice(0, 80);
-  } else {
-    const firstUser = messages.find((m) => m.role === 'user' && m.content.trim());
-    const snippet = (firstUser?.content ?? titleRaw ?? '')
-      .trim()
-      .replace(/\s+/g, ' ')
-      .slice(0, 40);
-    title = snippet || '从 ChatGPT 导入';
-  }
-
   const conversation: Conversation = {
     id: conversationId,
-    title,
-    currentLeafId: currentLeafNew,
+    title: titleForChatGPTConversation(conv, parsed),
+    currentLeafId: messages[messages.length - 1].id,
     personaId: opts.personaId,
     defaultEndpointId: opts.defaultEndpointId,
     defaultModel: opts.defaultModel,
@@ -370,47 +267,4 @@ async function importOneChatGPT(
   });
 
   return conversationId;
-}
-
-function normalizeRole(role: string | undefined): Role | null {
-  if (!role) return null;
-  if (role === 'user' || role === 'assistant' || role === 'system') return role;
-  if (role === 'tool' || role === 'function') return 'assistant';
-  return null;
-}
-
-function extractText(msg: ChatGPTMessage): string {
-  const c = msg.content;
-  if (!c) return '';
-  if (typeof c === 'string') return c;
-  if (typeof c.text === 'string') return c.text;
-  if (Array.isArray(c.parts)) {
-    return c.parts
-      .map((p) => {
-        if (typeof p === 'string') return p;
-        if (p && typeof p === 'object') {
-          const obj = p as Record<string, unknown>;
-          if (typeof obj.text === 'string') return obj.text;
-          // image_asset_pointer / multimodal: leave a marker
-          if (typeof obj.content_type === 'string') {
-            return `\`[${obj.content_type}]\``;
-          }
-        }
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n')
-      .trim();
-  }
-  return '';
-}
-
-function timestampMs(t: number | string | null | undefined): number | null {
-  if (t === null || t === undefined) return null;
-  if (typeof t === 'number') {
-    // Could be seconds (ChatGPT) or ms.
-    return t < 1e12 ? Math.floor(t * 1000) : Math.floor(t);
-  }
-  const parsed = Date.parse(t);
-  return Number.isNaN(parsed) ? null : parsed;
 }
