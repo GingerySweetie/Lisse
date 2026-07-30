@@ -6,6 +6,7 @@ import {
   type ExportSaveResult,
 } from './backup-location';
 import { getActiveBranch } from './branch';
+import { sanitizeExportedConversation } from './backup-integrity';
 import {
   makeProgress,
   throwIfAborted,
@@ -25,7 +26,7 @@ const CATEGORY_LABEL: Record<MemoryFact['category'], string> = {
 export type ConversationFormat = 'markdown' | 'text' | 'json';
 
 export interface ConversationExportOptions {
-  /** Active branch (default) vs full tree (includes alternate branches). */
+  /** Full tree (default) vs active branch only. */
   scope?: 'branch' | 'tree';
   format: ConversationFormat;
   /** Persona to render in headings if conversation has one. */
@@ -44,19 +45,24 @@ export async function exportConversation(
   conversation: Conversation,
   opts: ConversationExportOptions,
 ): Promise<ExportedConversation> {
+  const scope = opts.scope ?? 'tree';
   const messages =
-    opts.scope === 'tree'
+    scope === 'tree'
       ? await db.messages
           .where({ conversationId: conversation.id })
           .sortBy('createdAt')
       : await getActiveBranch(conversation);
+  const convOut =
+    opts.format === 'json'
+      ? sanitizeExportedConversation(conversation, messages)
+      : conversation;
 
   const safeTitle = sanitizeFilename(conversation.title || '对话');
   const dateTag = formatDateTag(conversation.updatedAt);
 
   switch (opts.format) {
     case 'markdown': {
-      const content = renderMarkdown(conversation, messages, opts);
+      const content = renderMarkdown(convOut, messages, opts);
       return {
         filename: `${safeTitle}-${dateTag}.md`,
         mime: 'text/markdown;charset=utf-8',
@@ -64,7 +70,7 @@ export async function exportConversation(
       };
     }
     case 'text': {
-      const content = renderText(conversation, messages, opts);
+      const content = renderText(convOut, messages, opts);
       return {
         filename: `${safeTitle}-${dateTag}.txt`,
         mime: 'text/plain;charset=utf-8',
@@ -76,7 +82,7 @@ export async function exportConversation(
         {
           __lisse: 'conversation',
           version: 1,
-          conversation,
+          conversation: convOut,
           messages,
         },
         null,
@@ -210,7 +216,7 @@ export async function exportConversationsJson(opts?: {
   signal?: AbortSignal;
   onProgress?: ExportProgressCallback;
 }): Promise<ExportedConversation & { count: number }> {
-  const scope = opts?.scope ?? 'branch';
+  const scope = opts?.scope ?? 'tree';
   const conversations = await resolveConversationsForExport(opts);
   if (conversations.length === 0) {
     throw new Error('没有可导出的对话');
@@ -231,7 +237,8 @@ export async function exportConversationsJson(opts?: {
             .where({ conversationId: conversation.id })
             .sortBy('createdAt')
         : await getActiveBranch(conversation);
-    items.push({ conversation, messages });
+    const sanitized = sanitizeExportedConversation(conversation, messages);
+    items.push({ conversation: sanitized, messages });
     opts?.onProgress?.(
       makeProgress(
         i + 1,
@@ -292,7 +299,7 @@ export async function exportAllConversationsZip(opts?: {
   onProgress?: ExportProgressCallback;
 }): Promise<{ blob: Blob; filename: string; count: number }> {
   const format = opts?.format ?? 'markdown';
-  const scope = opts?.scope ?? 'branch';
+  const scope = opts?.scope ?? 'tree';
 
   const [conversations, personas] = await Promise.all([
     resolveConversationsForExport({

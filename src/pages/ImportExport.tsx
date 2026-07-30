@@ -339,8 +339,8 @@ export default function ImportExportPage() {
   }
 
   const [bulkFormat, setBulkFormat] = useState<ConversationFormat>('markdown');
-  const [bulkScope, setBulkScope] = useState<'branch' | 'tree'>('branch');
-  const [selectScope, setSelectScope] = useState<'branch' | 'tree'>('branch');
+  const [bulkScope, setBulkScope] = useState<'branch' | 'tree'>('tree');
+  const [selectScope, setSelectScope] = useState<'branch' | 'tree'>('tree');
   const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -1281,7 +1281,8 @@ export default function ImportExportPage() {
             <p className="mt-1 text-sm text-ink-500">
               先选好这次导入要绑定哪个人格、哪个 endpoint，下面再选文件。
               <br />
-              已经导入过的同一对话会自动跳过（按原始 conversation id 判重）。
+              已经导入过的同一 ChatGPT / Claude 对话会自动跳过（按原始 conversation id 判重）。
+              Wisteria JSON 会按对话 id 覆盖写入（可用来修好之前残缺的导入）。
               <br />
               ChatGPT / Claude 大导出（几百 MB 也可以）会边读边写入，不会整文件塞进内存。
               <br />
@@ -1470,8 +1471,8 @@ export default function ImportExportPage() {
                   }
                   className="rounded-lg border border-lavender-200 bg-white px-3 py-2 focus:border-lavender-300"
                 >
+                  <option value="tree">完整树（含所有分支，推荐）</option>
                   <option value="branch">当前显示的分支</option>
-                  <option value="tree">完整树（含所有分支）</option>
                 </select>
               </label>
             </div>
@@ -1540,8 +1541,8 @@ export default function ImportExportPage() {
                   }
                   className="rounded-lg border border-lavender-200 bg-white px-2 py-1 text-xs focus:border-lavender-300"
                 >
-                  <option value="branch">当前分支</option>
                   <option value="tree">完整树</option>
+                  <option value="branch">当前分支</option>
                 </select>
               </label>
             </div>
@@ -1763,6 +1764,7 @@ export default function ImportExportPage() {
               把所有对话、人格、写作风格、记忆、账单、健康、朋友圈、endpoints（含 API key）和设置
               打包成一个 JSON；导入后会自动写回对应位置。
               大备份（超过原先 80MB 内存上限的也可以）会边读边写入，避免整文件把页面打死。
+              导入时会先写完消息再提交对话元数据，并自动修复悬空的 currentLeaf，避免恢复后出现空白/残缺对话。
               <strong>API key 也会在文件里</strong>，请妥善保管喵。
             </p>
 

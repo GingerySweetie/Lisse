@@ -18,6 +18,7 @@
     "test:stream-json": "node --experimental-strip-types --test scripts/test-stream-json-object.mjs",
     "test:claude-import": "node --experimental-strip-types --test scripts/test-claude-import.mjs",
     "test:chatgpt-import": "node --experimental-strip-types --test scripts/test-chatgpt-import.mjs",
+    "test:backup-integrity": "node --experimental-strip-types --test scripts/test-backup-integrity.mjs",
     "test:export-save-label": "node --experimental-strip-types --test scripts/test-export-save-label.mjs",
     "test:parse-document": "node --experimental-strip-types --test scripts/test-parse-document.mjs",
     "test:fold-long-text": "node --experimental-strip-types --test scripts/test-fold-long-text.mjs",

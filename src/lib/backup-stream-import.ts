@@ -18,6 +18,11 @@ import { yieldToUi } from './export-progress';
 import type { ImportBackupOptions, ImportBackupResult } from './backup';
 import { beginActiveWork, endActiveWork } from './stream-activity';
 import { touchDataSentinel } from './data-sentinel';
+import {
+  DEFER_UNTIL_MESSAGES,
+  assertReplaceKeepSafe,
+} from './backup-integrity';
+import { repairConversationLeaves } from './backup-repair';
 
 export { fileTextChunks } from './file-text-chunks';
 
@@ -244,9 +249,29 @@ export async function importBackupStream(
   let settings: AppSettings | null = null;
   const seenTables = new Set<BackupTableKey>();
   const keepIds = new Map<BackupTableKey, Set<string>>();
+  /** Buffer conversations until messages finish (handles old backups too). */
+  const deferredConversations: unknown[] = [];
+  let messagesArrayEnded = false;
+  let sawMessagesArray = false;
 
   const report = (label: string) => {
     opts.onProgress?.(label);
+  };
+
+  const flushDeferredConversations = async () => {
+    if (!deferredConversations.length) return;
+    report('写入对话元数据…');
+    const keep =
+      keepIds.get('conversations') ?? new Set<string>();
+    keepIds.set('conversations', keep);
+    for (const row of deferredConversations) {
+      const id = rowId(row);
+      if (id) keep.add(id);
+    }
+    const n = await upsertRows('conversations', deferredConversations);
+    result.conversationsAdded += n;
+    deferredConversations.length = 0;
+    await yieldToUi();
   };
 
   try {
@@ -279,6 +304,7 @@ export async function importBackupStream(
           const name = ev.key as BackupTableKey;
           seenTables.add(name);
           if (!keepIds.has(name)) keepIds.set(name, new Set());
+          if (name === 'messages') sawMessagesArray = true;
           report(`导入 ${name}…`);
           continue;
         }
@@ -286,6 +312,23 @@ export async function importBackupStream(
         if (ev.type === 'array-items') {
           if (!TABLE_KEY_SET.has(ev.key)) continue;
           const name = ev.key as BackupTableKey;
+
+          // Defer conversations until messages are fully written — even when
+          // an older backup file lists conversations first.
+          if (DEFER_UNTIL_MESSAGES.has(name) && !messagesArrayEnded) {
+            deferredConversations.push(...ev.items);
+            const keep = keepIds.get(name) ?? new Set<string>();
+            keepIds.set(name, keep);
+            for (const row of ev.items) {
+              const id = rowId(row);
+              if (id) keep.add(id);
+            }
+            report(
+              `缓存对话元数据…已缓冲 ${deferredConversations.length} 条（等消息写完）`,
+            );
+            continue;
+          }
+
           const keep = keepIds.get(name) ?? new Set<string>();
           keepIds.set(name, keep);
           for (const row of ev.items) {
@@ -301,6 +344,22 @@ export async function importBackupStream(
           await yieldToUi();
           continue;
         }
+
+        if (ev.type === 'array-end') {
+          if (ev.key === 'messages') {
+            messagesArrayEnded = true;
+            await flushDeferredConversations();
+          }
+          continue;
+        }
+      }
+
+      // Backup had no messages array at all — still flush buffered conversations.
+      if (!sawMessagesArray) {
+        messagesArrayEnded = true;
+        await flushDeferredConversations();
+      } else if (deferredConversations.length) {
+        await flushDeferredConversations();
       }
 
       if (marker !== 'backup') {
@@ -312,11 +371,11 @@ export async function importBackupStream(
 
       if (opts.mode === 'replace') {
         report('清理备份未保留的旧行…');
-        // Only touch tables the backup actually contained. Clearing unseen
-        // tables (travel / diary / circle / …) on an older backup was wiping
-        // live data the file never claimed to replace.
+        const conversationKeep = keepIds.get('conversations')?.size ?? 0;
         for (const name of seenTables) {
           const keep = keepIds.get(name);
+          const keepSize = keep?.size ?? 0;
+          assertReplaceKeepSafe(name, keepSize, conversationKeep);
           if (!keep || keep.size === 0) {
             await asTable(name).clear();
           } else {
@@ -325,9 +384,6 @@ export async function importBackupStream(
           await yieldToUi();
         }
 
-        // Never wipe kv when the backup has no settings — that used to erase
-        // defaultEndpointId / wallpaper / diary / backup-folder pointer even on
-        // a "successful" replace of conversations alone.
         if (settings) {
           await saveSettings(settings);
           result.settingsApplied = true;
@@ -336,6 +392,10 @@ export async function importBackupStream(
         await saveSettings(settings);
         result.settingsApplied = true;
       }
+
+      // Heal orphan currentLeafId / activeChildId after upsert+prune.
+      report('校验对话完整性…');
+      await repairConversationLeaves();
     } catch (err) {
       // Preserve SAF grant if anything above disturbed kv (legacy path / races).
       if (preservedFolder) {
