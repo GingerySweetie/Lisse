@@ -41,6 +41,7 @@ import {
   type HandoffJob,
 } from './workshop/handoff-protocol';
 import { formatYesterdayDiaryBlock } from './diary';
+import { trimHistoryForContext } from './history-window';
 import { assertChatMessageSize, formatStorageError } from './storage-guards';
 import { afterkiss } from './afterkiss';
 
@@ -771,24 +772,22 @@ async function streamAssistant(args: {
     }
   }
 
-  // Apply short-memory window: keep only recent messages so the API doesn't
-  // replay the entire conversation each turn. Null = unlimited.
+  // History window (wallet):
+  //   1. historyTodayOnly (default on) — at local midnight drop yesterday's
+  //      messages. Continuity is persona + memory + yesterday's diary +
+  //      optional style inject — not a re-bill of the full multi-day novel.
+  //   2. maxHistoryTurns — within today, keep only recent pairs.
   //
   // Cache note: a naive sliding window (slice(-keep)) shifts the window start
   // by 2 messages EVERY turn — the first history message changes each request,
   // which invalidates the cached prefix right after the system blocks and
-  // makes BP4 useless. Instead we drop the oldest messages in CHUNKS of half
-  // the window: the window start then stays byte-identical for keep/2 turns
-  // between rebuilds, so the rolling cache keeps hitting in between.
-  let trimmed: Message[] = branch;
-  if (settings.maxHistoryTurns && settings.maxHistoryTurns > 0) {
-    const keep = settings.maxHistoryTurns * 2;
-    if (branch.length > keep) {
-      const chunk = Math.max(2, Math.floor(keep / 2));
-      const drop = Math.ceil((branch.length - keep) / chunk) * chunk;
-      trimmed = branch.slice(drop);
-    }
-  }
+  // makes BP4 useless. trimHistoryForContext drops oldest in CHUNKS of half
+  // the window so the start stays byte-identical for keep/2 turns between
+  // rebuilds. Midnight day-boundary is an intentional one-time cache miss.
+  const trimmed = trimHistoryForContext(branch, {
+    historyTodayOnly: settings.historyTodayOnly,
+    maxHistoryTurns: settings.maxHistoryTurns,
+  });
 
   if (persona && groupOthers && groupOthers.length > 0) {
     // Group mode: relabel other personas' messages so the responder

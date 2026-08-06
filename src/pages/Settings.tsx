@@ -650,7 +650,9 @@ function DiarySettings() {
       </h3>
       <p className="mt-1 text-sm text-ink-500">
         每天约设定时刻，各角色用平时聊天的模型写一篇私密日记（聊了什么 + 自己的心声）。
-        第二天聊天时会自动读到昨天的日记。需要 App 在后台保持打开或之后再打开以补写。
+        第二天聊天时会自动读到昨天的日记。配合「每日零点截断历史」后，昨天的原文消息不再
+        塞进上下文——连续感靠人格、记忆和这篇日记（以及可选风格）承接，省 token。
+        需要 App 在后台保持打开或之后再打开以补写。
       </p>
 
       <label className="mt-4 flex items-center gap-2">
@@ -1094,6 +1096,22 @@ function MemorySettings() {
           <span className="text-[11px] font-light text-ink-500">
             默认 50 轮。隔五小时再聊时 1h 缓存已冷，上限能挡住「整本小说重买单」。
             清空或填 0 = 不限。
+          </span>
+        </label>
+
+        <label className="flex items-start gap-2 text-sm md:col-span-2">
+          <input
+            type="checkbox"
+            checked={s.historyTodayOnly !== false}
+            onChange={(e) => update({ historyTodayOnly: e.target.checked })}
+            className="mt-0.5 h-4 w-4 accent-lavender-400"
+          />
+          <span>
+            <span className="text-ink-900">每日零点截断历史</span>
+            <span className="mt-0.5 block text-[11px] font-light text-ink-500">
+              开启后，昨天及更早的消息不再注入上下文；跨日连续靠人格 + 记忆 + 昨日日记
+              （以及可选的风格注入）。长对话时能大幅省 token。默认开启。
+            </span>
           </span>
         </label>
       </div>
