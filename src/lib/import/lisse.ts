@@ -1,5 +1,6 @@
 import { db } from '../../db';
 import type { Conversation, Message } from '../../types';
+import { repairConversationLeaves } from '../backup-repair';
 import type { ImportResult } from './chatgpt';
 
 interface LisseConversationBundle {
@@ -20,7 +21,9 @@ interface LisseConversationsBundle {
  * Accepts:
  * - single: `__lisse: "conversation"` (from chat export menu)
  * - multi:  `__lisse: "conversations"` (from selective / recent-month export)
- * Skips conversations whose id already exists.
+ *
+ * Upserts by conversation.id: replaces the conversation row and that
+ * conversation's messages so a fuller re-export can heal a thin/broken import.
  */
 export async function importLisseConversation(
   fileText: string,
@@ -87,20 +90,32 @@ async function importItems(
   };
 
   for (const { conversation, messages } of items) {
-    const existing = await db.conversations.get(conversation.id);
-    if (existing) {
-      result.skippedCount += 1;
-      continue;
-    }
     try {
       await db.transaction('rw', db.conversations, db.messages, async () => {
-        await db.conversations.add(conversation);
-        if (messages.length) await db.messages.bulkAdd(messages);
+        const existing = await db.conversations.get(conversation.id);
+        // Replace this conversation's messages entirely so a complete tree
+        // export can overwrite a previously truncated branch import.
+        if (existing) {
+          const oldKeys = await db.messages
+            .where({ conversationId: conversation.id })
+            .primaryKeys();
+          if (oldKeys.length) await db.messages.bulkDelete(oldKeys);
+        }
+        await db.conversations.put(conversation);
+        if (messages.length) await db.messages.bulkPut(messages);
       });
       result.importedCount += 1;
       result.conversationIds.push(conversation.id);
     } catch (err) {
       result.errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (result.importedCount > 0) {
+    try {
+      await repairConversationLeaves();
+    } catch {
+      // non-fatal
     }
   }
 

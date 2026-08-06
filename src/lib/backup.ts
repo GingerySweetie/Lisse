@@ -47,6 +47,8 @@ import {
 import { formatStorageError } from './storage-guards';
 import { beginActiveWork, endActiveWork } from './stream-activity';
 import { noteBackupOnSentinel, touchDataSentinel } from './data-sentinel';
+import { orderBackupTablesForIntegrity } from './backup-integrity';
+import { repairConversationLeaves } from './backup-repair';
 
 const LAST_BACKUP_AT_KEY = 'last_backup_at';
 
@@ -122,7 +124,7 @@ type BackupTableName =
   | 'travelHeldPushes'
   | 'diaryEntries';
 
-const BACKUP_TABLES: BackupTableName[] = [
+const BACKUP_TABLES_RAW: BackupTableName[] = [
   'endpoints',
   'personas',
   'conversations',
@@ -150,8 +152,28 @@ const BACKUP_TABLES: BackupTableName[] = [
   'diaryEntries',
 ];
 
+/** messages before conversations — safer for stream import crashes. */
+const BACKUP_TABLES: BackupTableName[] = orderBackupTablesForIntegrity(
+  BACKUP_TABLES_RAW,
+);
+
 function tableRef(name: BackupTableName) {
   return db[name];
+}
+
+/** Keyset pagination — avoids skipping rows when the table mutates mid-export. */
+async function readTablePage(
+  name: BackupTableName,
+  afterId: string | null,
+): Promise<{ rows: Array<{ id: string }>; nextId: string | null }> {
+  const table = tableRef(name);
+  const rows = (
+    afterId == null
+      ? await table.orderBy('id').limit(TABLE_PAGE).toArray()
+      : await table.where('id').above(afterId).limit(TABLE_PAGE).toArray()
+  ) as Array<{ id: string }>;
+  const nextId = rows.length ? rows[rows.length - 1]!.id : null;
+  return { rows, nextId };
 }
 
 export async function exportBackup(): Promise<BackupBundle> {
@@ -227,8 +249,9 @@ export async function exportBackup(): Promise<BackupBundle> {
     settings,
     endpoints,
     personas,
-    conversations,
+    // messages before conversations (same integrity rule as streamed export)
     messages,
+    conversations,
     memoryFacts,
     writingStyles,
     books,
@@ -404,11 +427,13 @@ export async function importBackup(
       // timing out row-by-row.
       result.endpointsAdded = await replaceTable(db.endpoints, bundle.endpoints);
       result.personasAdded = await replaceTable(db.personas, bundle.personas);
+      // Messages before conversations so leaves never point at unwritten rows
+      // if this transaction is somehow interrupted mid-flight.
+      result.messagesAdded = await replaceTable(db.messages, bundle.messages);
       result.conversationsAdded = await replaceTable(
         db.conversations,
         bundle.conversations,
       );
-      result.messagesAdded = await replaceTable(db.messages, bundle.messages);
       result.memoryFactsAdded = await replaceTable(
         db.memoryFacts,
         bundle.memoryFacts,
@@ -491,6 +516,12 @@ export async function importBackup(
     });
   } catch (err) {
     throw new Error(formatStorageError(err), { cause: err });
+  }
+
+  try {
+    await repairConversationLeaves();
+  } catch {
+    // non-fatal
   }
 
   if (preservedFolder) {
@@ -638,17 +669,17 @@ async function streamBackupToNative(
       throwIfAborted(opts?.signal);
       await out.write(`,"${name}":[`);
       let first = true;
-      let offset = 0;
+      let afterId: string | null = null;
       for (;;) {
         throwIfAborted(opts?.signal);
-        const batch = await tableRef(name).offset(offset).limit(TABLE_PAGE).toArray();
-        if (batch.length === 0) break;
-        for (const row of batch) {
+        const { rows, nextId } = await readTablePage(name, afterId);
+        if (rows.length === 0) break;
+        for (const row of rows) {
           await out.write((first ? '' : ',') + JSON.stringify(row));
           first = false;
         }
-        offset += batch.length;
-        done += batch.length;
+        afterId = nextId;
+        done += rows.length;
         opts?.onProgress?.(
           makeProgress(done, total, `导出 ${name}…`, name),
         );
@@ -696,17 +727,17 @@ async function buildBackupBlob(opts?: BackupExportOptions): Promise<Blob> {
     throwIfAborted(opts?.signal);
     parts.push(`,"${name}":[`);
     let first = true;
-    let offset = 0;
+    let afterId: string | null = null;
     for (;;) {
       throwIfAborted(opts?.signal);
-      const batch = await tableRef(name).offset(offset).limit(TABLE_PAGE).toArray();
-      if (batch.length === 0) break;
-      for (const row of batch) {
+      const { rows, nextId } = await readTablePage(name, afterId);
+      if (rows.length === 0) break;
+      for (const row of rows) {
         parts.push((first ? '' : ',') + JSON.stringify(row));
         first = false;
       }
-      offset += batch.length;
-      done += batch.length;
+      afterId = nextId;
+      done += rows.length;
       opts?.onProgress?.(
         makeProgress(done, total, `导出 ${name}…`, name),
       );
