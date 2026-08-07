@@ -703,6 +703,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   retrievalThreshold: 0.5,
   /** Cap history so 5h+ cold starts (past 1h cache TTL) don't re-bill a novel. */
   maxHistoryTurns: 50,
+  /** Drop pre-midnight messages; continuity via persona + memory + diary. */
+  historyTodayOnly: true,
   toolsEnabled: false,
   toyControlEnabled: false,
   workshopHandoffEnabled: false,

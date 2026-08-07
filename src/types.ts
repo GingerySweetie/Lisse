@@ -261,6 +261,11 @@ export interface AppSettings {
   /** Maximum recent message pairs to send each turn (null = unlimited).
    *  Default 50 — keeps 5h+ cold starts (past Anthropic's 1h cache TTL) affordable. */
   maxHistoryTurns: number | null;
+  /** When true (default), only today's local-calendar messages ride the
+   *  history window. At midnight yesterday's transcript is dropped; continuity
+   *  is persona + memory + yesterday's diary + optional style inject.
+   *  Long multi-day chats otherwise re-bill the whole novel every cold start. */
+  historyTodayOnly?: boolean;
   /** When true, expose memory tools (remember / recall / update_memory /
    *  forget_memory) and other tool-calling surfaces to the chat model.
    *  Memory tools also need memoryEnabled + embedding endpoint. Default off. */

@@ -6,6 +6,10 @@
  * closed at 23:00, catch-up runs on the next open (for recent days).
  *
  * Next-day chats inject yesterday's diary via formatYesterdayDiaryBlock().
+ * Paired with historyTodayOnly (default on): at local midnight the raw
+ * message history is dropped from the prompt; continuity is
+ * persona + memory + yesterday's diary + optional style — not a full
+ * multi-day transcript re-bill.
  */
 
 import { getSettings } from '../../db';
