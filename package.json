@@ -13,6 +13,7 @@
     "test:diary": "node --experimental-strip-types --test scripts/test-diary.mjs",
     "test:weekly-diary": "node --experimental-strip-types --test scripts/test-weekly-diary.mjs",
     "test:history-window": "node --experimental-strip-types --test scripts/test-history-window.mjs",
+    "test:claude-memory-import": "node --experimental-strip-types --test scripts/test-claude-memory-import.mjs",
     "test:thinking-policy": "node --experimental-strip-types --test scripts/test-thinking-policy.mjs",
     "test:cursor-api": "node --experimental-strip-types --test scripts/test-cursor-api.mjs",
     "test:recover": "node --experimental-strip-types --test scripts/test-recover.mjs",

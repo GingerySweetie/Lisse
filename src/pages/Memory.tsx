@@ -14,6 +14,7 @@ import {
   Sparkles,
   Square,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react';
 import { db, getSettings, saveSettings } from '../db';
@@ -22,6 +23,10 @@ import {
   backfillConversations,
   type BackfillProgress,
 } from '../lib/memory/backfill';
+import {
+  importClaudeMemories,
+  type ImportClaudeMemoriesResult,
+} from '../lib/memory/import-claude';
 import type { Conversation, FactCategory, MemoryFact, Persona } from '../types';
 import { newId } from '../lib/id';
 import { relativeTime } from '../lib/format';
@@ -68,6 +73,7 @@ export default function MemoryPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
+  const [importingClaude, setImportingClaude] = useState(false);
 
   // ── Multi-select / edit mode ──────────────────────────────────────────────
   const [editMode, setEditMode] = useState(false);
@@ -223,6 +229,15 @@ export default function MemoryPage() {
                 >
                   <Sparkles size={12} />
                   从对话回填
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportingClaude(true)}
+                  disabled={!personaId}
+                  className="btn-ghost flex items-center gap-1 !px-2 !py-1 !text-xs"
+                >
+                  <Upload size={12} />
+                  导入 Claude 记忆
                 </button>
                 <button
                   type="button"
@@ -392,6 +407,15 @@ export default function MemoryPage() {
               onClose={() => setBackfilling(false)}
             />
           )}
+          {importingClaude && personaId && personas && (
+            <ClaudeMemoryImportDialog
+              targetPersona={
+                personas.find((p) => p.id === personaId) ?? personas[0]
+              }
+              allPersonas={personas}
+              onClose={() => setImportingClaude(false)}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -407,8 +431,8 @@ function EmptyMemory({ hasAny }: { hasAny: boolean }) {
         <>
           这个人格还没有积累记忆喵。
           <br />
-          在「Endpoints」页里配置好 embedding 和 extractor，开启记忆开关，
-          后续每轮对话结束都会自动抽取事实。
+          在「Endpoints」页开启记忆并配置嵌入模型后，模型可主动写入记忆；
+          也可「导入 Claude 记忆」或从历史对话回填。
         </>
       )}
     </div>
@@ -829,6 +853,204 @@ function BackfillDialog({ targetPersona, allPersonas, onClose }: {
               )}
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ClaudeMemoryImportDialog({
+  targetPersona,
+  allPersonas,
+  onClose,
+}: {
+  targetPersona: Persona;
+  allPersonas: Persona[];
+  onClose: () => void;
+}) {
+  const [personaId, setPersonaId] = useState(targetPersona.id);
+  const [fileName, setFileName] = useState('');
+  const [raw, setRaw] = useState<unknown>(null);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<{
+    phase: string;
+    done: number;
+    total: number;
+  } | null>(null);
+  const [result, setResult] = useState<ImportClaudeMemoriesResult | null>(null);
+  const [err, setErr] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  async function onPickFile(file: File | null) {
+    setErr('');
+    setResult(null);
+    setRaw(null);
+    setFileName('');
+    if (!file) return;
+    setFileName(file.name);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as unknown;
+      setRaw(parsed);
+    } catch (e) {
+      setErr(
+        `无法解析 JSON：${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  async function start() {
+    if (raw == null) return;
+    setRunning(true);
+    setErr('');
+    setResult(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const r = await importClaudeMemories({
+        personaId,
+        raw,
+        signal: controller.signal,
+        onProgress: setProgress,
+      });
+      setResult(r);
+      const settings = await getSettings();
+      if (!settings.defaultPersonaId) {
+        await saveSettings({ defaultPersonaId: personaId });
+      }
+    } catch (e) {
+      if ((e as { name?: string })?.name === 'AbortError') {
+        setErr('已取消');
+      } else {
+        setErr(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      setRunning(false);
+      abortRef.current = null;
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink-900/30 backdrop-blur-sm md:items-center"
+      onClick={running ? undefined : onClose}
+    >
+      <div
+        className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl md:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-lavender-100 px-5 py-4">
+          <div>
+            <h3 className="flex items-center gap-1.5 text-lg font-semibold text-ink-900">
+              <Upload size={16} className="text-lavender-600" />
+              导入 Claude 记忆
+            </h3>
+            <p className="mt-1 text-xs text-ink-500">
+              选择 Claude 导出的 memories JSON（含 conversations_memory /
+              project_memories）。会拆成独立事实写入当前人格；Other instructions
+              与个人背景默认置顶。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={running}
+            className="rounded-full p-1 text-ink-500 transition hover:bg-lavender-50 disabled:opacity-40"
+            aria-label="关闭"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3 px-5 py-4 text-sm">
+          <label className="flex items-center gap-2">
+            <span className="text-xs text-ink-500">归到</span>
+            <select
+              value={personaId}
+              onChange={(e) => setPersonaId(e.target.value)}
+              disabled={running}
+              className="rounded-lg border border-lavender-200 bg-white px-2 py-1 text-sm"
+            >
+              {allPersonas.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.avatar} {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <input
+            ref={inputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => void onPickFile(e.target.files?.[0] ?? null)}
+          />
+          <button
+            type="button"
+            disabled={running}
+            onClick={() => inputRef.current?.click()}
+            className="rounded-lg border border-dashed border-lavender-300 bg-lavender-50/50 px-3 py-6 text-center text-sm text-ink-700 transition hover:bg-lavender-50 disabled:opacity-50"
+          >
+            {fileName ? `已选：${fileName}` : '点此选择 memories_*.json'}
+          </button>
+
+          {err && <p className="text-xs text-rose-500">{err}</p>}
+          {result && !running && (
+            <p className="text-xs text-sky-500">
+              解析 {result.parsed} 条 → 写入 {result.added} 条
+              {result.skippedDupes
+                ? `（跳过重复 ${result.skippedDupes}）`
+                : ''}
+              {result.embedded
+                ? `，已嵌入 ${result.embedded}`
+                : '（未嵌入：请配置嵌入模型后可再手工触发检索）'}
+              {result.projectCount
+                ? `；含 ${result.projectCount} 个 project`
+                : ''}
+              。
+            </p>
+          )}
+          {running && progress && (
+            <p className="text-xs text-ink-500">
+              {progress.phase === 'parse' && '解析中…'}
+              {progress.phase === 'embed' &&
+                `嵌入 ${progress.done}/${progress.total}`}
+              {progress.phase === 'write' &&
+                `写入 ${progress.done}/${progress.total}`}
+            </p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-lavender-100 px-5 py-3">
+          {running ? (
+            <button
+              type="button"
+              onClick={() => abortRef.current?.abort()}
+              className="flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-500 transition hover:bg-rose-100"
+            >
+              <Square size={12} fill="currentColor" /> 停止
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-lavender-200 px-4 py-2 text-sm text-ink-700 transition hover:bg-lavender-50"
+              >
+                关闭
+              </button>
+              <button
+                type="button"
+                onClick={() => void start()}
+                disabled={raw == null}
+                className="rounded-lg bg-lavender-200 px-4 py-2 text-sm font-medium text-ink-900 transition hover:bg-lavender-300 disabled:opacity-50"
+              >
+                开始导入
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

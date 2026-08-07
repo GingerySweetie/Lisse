@@ -266,9 +266,10 @@ export interface AppSettings {
    *  is persona + memory + yesterday's diary + optional style inject.
    *  Long multi-day chats otherwise re-bill the whole novel every cold start. */
   historyTodayOnly?: boolean;
-  /** When true, expose memory tools (remember / recall / update_memory /
-   *  forget_memory) and other tool-calling surfaces to the chat model.
-   *  Memory tools also need memoryEnabled + embedding endpoint. Default off. */
+  /** When true, expose MCP / document / music tool-calling surfaces to the
+   *  chat model. Memory tools (remember / recall / …) only need
+   *  memoryEnabled + embedding endpoint — they no longer require this switch.
+   *  Default off. */
   toolsEnabled: boolean;
   /** When true, the AfterKiss / 触手 toy is “started”: the model may call
    *  control_toy, and each assistant message shows a channel-intensity
