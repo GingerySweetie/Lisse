@@ -440,17 +440,18 @@ const CSS = `
   /* narrow phone-like vault; legs fade mid-way (stroke gradient) */
   left: 50%;
   transform: translateX(-50%);
-  top: 0;
+  /* clear status bar — crown sits a bit lower */
+  top: max(56px, calc(env(safe-area-inset-top, 0px) + 40px));
   bottom: 0;
   width: min(100%, 360px);
-  height: 100%;
+  height: auto;
   z-index: 3;
   pointer-events: none;
 }
 
 .cf-apex {
   position: absolute;
-  top: max(10px, 1.4%);
+  top: max(58px, calc(env(safe-area-inset-top, 0px) + 42px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
@@ -468,7 +469,7 @@ const CSS = `
   left: 50%;
   transform: translateX(-50%);
   width: min(72%, 260px);
-  top: 6.5%;
+  top: max(88px, calc(env(safe-area-inset-top, 0px) + 72px));
   bottom: 0;
   z-index: 2;
   overflow: hidden;
