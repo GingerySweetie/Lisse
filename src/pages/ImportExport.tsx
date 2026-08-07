@@ -1983,6 +1983,7 @@ function summarizeBackup(r: ImportBackupResult): string {
   if (r.circlePostsAdded) parts.push(`朋友圈 ${r.circlePostsAdded}`);
   if (r.travelTripsAdded) parts.push(`出行 ${r.travelTripsAdded}`);
   if (r.diaryEntriesAdded) parts.push(`日记 ${r.diaryEntriesAdded}`);
+  if (r.weeklyDiaryEntriesAdded) parts.push(`周记 ${r.weeklyDiaryEntriesAdded}`);
   if (r.periodEntriesAdded || r.weightEntriesAdded || r.healthDailyAdded)
     parts.push('健康数据 ✓');
   if (r.settingsApplied) parts.push('设置已填入');

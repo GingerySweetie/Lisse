@@ -351,6 +351,12 @@ export interface AppSettings {
    *  that day's chats (using their usual chat model). Next-day chats
    *  auto-inject yesterday's diary into volatile context. */
   diary?: DiarySettings;
+
+  // ─── Weekly Diary (周记) ───
+  /** On readWeekday (default Friday), write last week's concise 周记 and
+   *  inject it into chat until the next readWeekday. Personal facts from
+   *  the 周记 (健康 / 体检 / 具体事件) go into memory when configured. */
+  weeklyDiary?: WeeklyDiarySettings;
 }
 
 /** Settings for the nightly persona diary writer. */
@@ -360,6 +366,20 @@ export interface DiarySettings {
   /** Local hour (0–23) around which diaries are written. Default 23. */
   writeHour: number;
   /** Persona ids that write diaries. Empty = all non-default personas. */
+  personaIds: string[];
+}
+
+/** Settings for the weekly persona 周记 writer. */
+export interface WeeklyDiarySettings {
+  /** Master switch. Default on. */
+  enabled: boolean;
+  /** Local weekday (0=Sun … 6=Sat) when last week's 周记 starts being
+   *  injected and a new week begins. Default 5 (Friday). */
+  readWeekday: number;
+  /** Local hour on/after readWeekday when the just-ended week is written.
+   *  Default 9. */
+  writeHour: number;
+  /** Persona ids that write 周记. Empty = all non-default personas. */
   personaIds: string[];
 }
 
@@ -885,6 +905,28 @@ export interface DiaryEntry {
   endpointId: string;
   /** Conversations whose transcripts fed this diary. */
   conversationIds: string[];
+  status: 'pending' | 'done' | 'error' | 'skipped';
+  errorMessage?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** One week's concise 周记 written by a persona. */
+export interface WeeklyDiaryEntry {
+  /** Composite key: `${weekStart}|${personaId}`. */
+  id: string;
+  /** Local week-start date YYYY-MM-DD (the readWeekday that opened the week). */
+  weekStart: string;
+  /** Local week-end date YYYY-MM-DD (inclusive, 6 days after weekStart). */
+  weekEnd: string;
+  personaId: string;
+  /** First-person weekly diary body (干练记事). */
+  content: string;
+  model: string;
+  endpointId: string;
+  conversationIds: string[];
+  /** Daily diary entry ids that fed this 周记 (when available). */
+  diaryEntryIds: string[];
   status: 'pending' | 'done' | 'error' | 'skipped';
   errorMessage?: string;
   createdAt: number;

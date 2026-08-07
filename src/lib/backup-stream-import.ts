@@ -55,6 +55,7 @@ const BACKUP_TABLE_KEYS = [
   'travelEvents',
   'travelHeldPushes',
   'diaryEntries',
+  'weeklyDiaryEntries',
 ] as const;
 
 type BackupTableKey = (typeof BACKUP_TABLE_KEYS)[number];
@@ -87,6 +88,7 @@ const RESULT_FIELD: Record<BackupTableKey, keyof ImportBackupResult> = {
   travelEvents: 'travelEventsAdded',
   travelHeldPushes: 'travelHeldPushesAdded',
   diaryEntries: 'diaryEntriesAdded',
+  weeklyDiaryEntries: 'weeklyDiaryEntriesAdded',
 };
 
 function emptyResult(): ImportBackupResult {
@@ -116,6 +118,7 @@ function emptyResult(): ImportBackupResult {
     travelEventsAdded: 0,
     travelHeldPushesAdded: 0,
     diaryEntriesAdded: 0,
+    weeklyDiaryEntriesAdded: 0,
     settingsApplied: false,
   };
 }
