@@ -357,16 +357,16 @@ function ArchSvg({ lit }: { lit: boolean }) {
             <stop offset="0.58" stopColor="#fff" stopOpacity="0" />
           </linearGradient>
         </defs>
-        {/* outer — control points tucked in a bit for a slightly sharper crown */}
+        {/* outer — slightly pointed gothic crown (not a round dome) */}
         <path
-          d="M26 640 V220 Q48 30 150 4 Q252 30 274 220 V640"
+          d="M26 640 V225 Q70 55 150 2 Q230 55 274 225 V640"
           fill="none"
           stroke="url(#cfArchOuter)"
           strokeWidth="1.5"
         />
         {/* inner */}
         <path
-          d="M40 640 V222 Q60 50 150 22 Q240 50 260 222 V640"
+          d="M40 640 V227 Q80 68 150 20 Q220 68 260 227 V640"
           fill="none"
           stroke="url(#cfArchInner)"
           strokeWidth="1"
