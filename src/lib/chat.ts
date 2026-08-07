@@ -41,6 +41,7 @@ import {
   type HandoffJob,
 } from './workshop/handoff-protocol';
 import { formatYesterdayDiaryBlock } from './diary';
+import { formatLastWeekDiaryBlock } from './weekly-diary';
 import { trimHistoryForContext } from './history-window';
 import { assertChatMessageSize, formatStorageError } from './storage-guards';
 import { afterkiss } from './afterkiss';
@@ -699,12 +700,17 @@ async function streamAssistant(args: {
 
   // Untagged stable layers (after BP3) — still in the cached prefix via BP4.
   // Yesterday's diary is byte-stable for the whole local day; only rewrites
-  // once at midnight. Keeping it HERE (not volatile) is the main 97%+ lever.
+  // once at midnight. Last week's 周记 is stable until the next readWeekday.
+  // Keeping them HERE (not volatile) is the main 97%+ lever.
   if (persona) {
     try {
       const diaryBlock = await formatYesterdayDiaryBlock(persona.id);
       if (diaryBlock) turns.push({ role: 'system', content: diaryBlock });
     } catch { /* diary missing — skip silently */ }
+    try {
+      const weeklyBlock = await formatLastWeekDiaryBlock(persona.id);
+      if (weeklyBlock) turns.push({ role: 'system', content: weeklyBlock });
+    } catch { /* weekly diary missing — skip silently */ }
   }
   // Capability blurbs only when the surface can use them — pure companion
   // chat was paying ~400–600 cached toks on every cold start for nothing.

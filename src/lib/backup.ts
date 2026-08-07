@@ -35,6 +35,7 @@ import type {
   TravelHeldPush,
   TravelTrip,
   WeightEntry,
+  WeeklyDiaryEntry,
   WritingStyle,
 } from '../types';
 import type { HandoffJob } from './workshop/handoff-protocol';
@@ -95,6 +96,7 @@ export interface BackupBundle {
   travelEvents?: TravelEvent[];
   travelHeldPushes?: TravelHeldPush[];
   diaryEntries?: DiaryEntry[];
+  weeklyDiaryEntries?: WeeklyDiaryEntry[];
 }
 
 type BackupTableName =
@@ -122,7 +124,8 @@ type BackupTableName =
   | 'travelTrips'
   | 'travelEvents'
   | 'travelHeldPushes'
-  | 'diaryEntries';
+  | 'diaryEntries'
+  | 'weeklyDiaryEntries';
 
 const BACKUP_TABLES_RAW: BackupTableName[] = [
   'endpoints',
@@ -150,6 +153,7 @@ const BACKUP_TABLES_RAW: BackupTableName[] = [
   'travelEvents',
   'travelHeldPushes',
   'diaryEntries',
+  'weeklyDiaryEntries',
 ];
 
 /** messages before conversations — safer for stream import crashes. */
@@ -204,6 +208,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     travelEvents,
     travelHeldPushes,
     diaryEntries,
+    weeklyDiaryEntries,
   ] = await Promise.all([
     getSettings(),
     db.endpoints.toArray(),
@@ -231,6 +236,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     db.travelEvents.toArray(),
     db.travelHeldPushes.toArray(),
     db.diaryEntries.toArray(),
+    db.weeklyDiaryEntries.toArray(),
   ]);
 
   const now = Date.now();
@@ -273,6 +279,7 @@ export async function exportBackup(): Promise<BackupBundle> {
     travelEvents,
     travelHeldPushes,
     diaryEntries,
+    weeklyDiaryEntries,
   };
 }
 
@@ -313,6 +320,7 @@ export interface ImportBackupResult {
   travelEventsAdded: number;
   travelHeldPushesAdded: number;
   diaryEntriesAdded: number;
+  weeklyDiaryEntriesAdded: number;
   settingsApplied: boolean;
 }
 
@@ -342,6 +350,7 @@ const IMPORT_TABLES = [
   db.travelEvents,
   db.travelHeldPushes,
   db.diaryEntries,
+  db.weeklyDiaryEntries,
   db.kv,
 ] as const;
 
@@ -400,6 +409,7 @@ export async function importBackup(
     travelEventsAdded: 0,
     travelHeldPushesAdded: 0,
     diaryEntriesAdded: 0,
+    weeklyDiaryEntriesAdded: 0,
     settingsApplied: false,
   };
 
@@ -505,6 +515,10 @@ export async function importBackup(
       result.diaryEntriesAdded = await replaceTable(
         db.diaryEntries,
         bundle.diaryEntries,
+      );
+      result.weeklyDiaryEntriesAdded = await replaceTable(
+        db.weeklyDiaryEntries,
+        bundle.weeklyDiaryEntries,
       );
 
       // Apply settings inside the same transaction. Do NOT kv.clear() when
