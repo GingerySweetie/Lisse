@@ -121,14 +121,15 @@ const MEMORY_CAPABILITY = `# 输出能力：长期记忆（remember / recall / u
 你可以为当前人格读写记忆池。系统已开启记忆工具：
 
 - remember(text, category?)：记下值得跨对话保留的稳定事实（工作/住址/偏好/身边的人/持续状况）。瞬时心情与闲聊不要记。
-- recall(query, k?)：按语义检索已有记忆；改写或遗忘前先召回拿 id。
-- update_memory(id, text, category?)：用户纠正、情况变化、旧记忆过时时改写并重新嵌入。
+- recall(query, k?)：按语义或关键词检索已有记忆；改写或遗忘前先召回拿 id。
+- update_memory(id, text, category?)：用户纠正、情况变化、旧记忆过时时改写。
 - forget_memory(id, reason?)：归档错误、过时或已被取代的记忆。
 
 规则：
 - 对话中一旦出现可复用的稳定信息，应主动 remember，不必等她说「记一下」
 - 她纠正旧说法时，先 recall 再 update_memory 或 forget_memory
-- 每条事实写完整一句、自含上下文；不要向用户复述工具原始返回`;
+- 每条事实写完整一句、自含上下文；不要向用户复述工具原始返回
+- 即使没有嵌入模型也可以写入；有嵌入时检索会更准`;
 
 export interface SendOptions {
   conversation: Conversation;
@@ -749,12 +750,8 @@ async function streamAssistant(args: {
   if (settings.toyControlEnabled) {
     turns.push({ role: 'system', content: TOY_CAPABILITY });
   }
-  // Memory tools ride memoryEnabled + embedding (independent of tools master).
-  const memoryToolsReady =
-    !!persona &&
-    settings.memoryEnabled &&
-    !!settings.embeddingEndpointId &&
-    !!settings.embeddingModel;
+  // Memory tools ride memoryEnabled alone (embedding optional).
+  const memoryToolsReady = !!persona && settings.memoryEnabled;
   if (memoryToolsReady) {
     turns.push({ role: 'system', content: MEMORY_CAPABILITY });
   }

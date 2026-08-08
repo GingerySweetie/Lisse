@@ -431,8 +431,8 @@ function EmptyMemory({ hasAny }: { hasAny: boolean }) {
         <>
           这个人格还没有积累记忆喵。
           <br />
-          在「Endpoints」页开启记忆并配置嵌入模型后，模型可主动写入记忆；
-          也可「导入 Claude 记忆」或从历史对话回填。
+          在「Endpoints」页开启记忆后，聊天模型可自己 remember / 改写；
+          也可「导入 Claude 记忆」或从历史对话回填。嵌入模型可选，配了检索更准。
         </>
       )}
     </div>

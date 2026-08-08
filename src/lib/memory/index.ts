@@ -7,6 +7,7 @@ export {
   type RetrievedFact,
   type RetrieveOptions,
 } from './retrieve';
+export { keywordMemoryScore, tokenizeForMemory } from './keyword';
 export { extractAndStoreFacts } from './extract';
 export {
   parseClaudeMemoriesExport,
