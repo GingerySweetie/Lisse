@@ -1,21 +1,22 @@
+/**
+ * Memory tools exposed to the chat model when memory is on.
+ *
+ * Embedding is OPTIONAL: remember / update / forget work without it (facts
+ * store with an empty vector). Semantic merge + recall get better once an
+ * embedding endpoint is configured; without it we fall back to text match.
+ *
+ * remember(text, category?) — write a lasting fact (or refresh a near-duplicate).
+ * recall(query, k?) — semantic or keyword search; returns ids for edit/forget.
+ * update_memory(id, text, category?) — rewrite an existing fact (re-embed if able).
+ * forget_memory(id) — archive a fact that is wrong / outdated / superseded.
+ */
+
 import { db, getSettings } from '../../db';
 import { embed } from '../../api/embedding';
 import { newId } from '../id';
 import { retrieveFacts } from '../memory/retrieve';
 import type { FactCategory, MemoryFact } from '../../types';
 import type { Tool, ToolContext } from './index';
-
-/**
- * Memory tools exposed to the chat model when memory + embeddings are on.
- *
- * remember(text, category?) — write a lasting fact (or refresh a near-duplicate).
- * recall(query, k?) — semantic search; returns ids so the model can edit/forget.
- * update_memory(id, text, category?) — rewrite an existing fact and re-embed.
- * forget_memory(id) — archive a fact that is wrong / outdated / superseded.
- *
- * The model is expected to call these proactively mid-conversation when the
- * user reveals lasting information or corrects something previously stored.
- */
 
 const VALID: FactCategory[] = [
   'user_fact',
@@ -34,7 +35,6 @@ export async function memoryTools(ctx: ToolContext): Promise<Tool[]> {
   if (!ctx.persona) return [];
   const settings = await getSettings();
   if (!settings.memoryEnabled) return [];
-  if (!settings.embeddingEndpointId || !settings.embeddingModel) return [];
   return [
     rememberTool(),
     recallTool(),
@@ -48,7 +48,7 @@ function rememberTool(): Tool {
     def: {
       name: 'remember',
       description:
-        '主动把一条值得跨对话保留的事实写入这个人格的记忆池。对话中一旦出现稳定、可复用的信息（工作/住址/偏好/身边的人/持续状况等），应立刻调用，不必等用户说「记一下」。瞬时心情、当下天气、刚才的闲聊不要记。每条事实自含上下文（「她在苏州一家会员店做零售岗，14:00–22:45 排班」而不是「她有班」）。若池里已有高度相似的旧事实，会自动更新那条而不是重复插入。',
+        '主动把一条值得跨对话保留的事实写入这个人格的记忆池。对话中一旦出现稳定、可复用的信息（工作/住址/偏好/身边的人/持续状况等），应立刻调用，不必等用户说「记一下」。瞬时心情、当下天气、刚才的闲聊不要记。每条事实自含上下文（「她在苏州一家会员店做零售岗，14:00–22:45 排班」而不是「她有班」）。若池里已有高度相似的旧事实，会自动更新那条而不是重复插入。不需要嵌入模型也能写入。',
       parameters: {
         type: 'object',
         properties: {
@@ -74,33 +74,52 @@ function rememberTool(): Tool {
       if (!ctx.persona) return { added: false, error: 'no persona' };
 
       const emb = await embedText(text);
-      if (!emb) return { added: false, error: 'embedding not configured' };
 
       // Near-duplicate → refresh in place so the pool stays clean.
-      // Score locally (don't use retrieveFacts): pinned facts there always
-      // report score=1 and would falsely trigger merges.
-      const closest = await findClosestFact(
-        ctx.persona.id,
-        emb.vector,
-        emb.model,
-      );
-      if (closest && closest.score >= REMEMBER_MERGE_THRESHOLD) {
-        const now = Date.now();
-        await db.memoryFacts.update(closest.fact.id, {
-          text,
-          category,
-          embedding: emb.vector,
-          embeddingModel: emb.model,
-          conversationId: ctx.conversationId,
-          updatedAt: now,
-        });
-        return {
-          added: false,
-          updated: true,
-          id: closest.fact.id,
-          category,
-          previousText: closest.fact.text,
-        };
+      if (emb) {
+        const closest = await findClosestFact(
+          ctx.persona.id,
+          emb.vector,
+          emb.model,
+        );
+        if (closest && closest.score >= REMEMBER_MERGE_THRESHOLD) {
+          const now = Date.now();
+          await db.memoryFacts.update(closest.fact.id, {
+            text,
+            category,
+            embedding: emb.vector,
+            embeddingModel: emb.model,
+            conversationId: ctx.conversationId,
+            updatedAt: now,
+          });
+          return {
+            added: false,
+            updated: true,
+            id: closest.fact.id,
+            category,
+            previousText: closest.fact.text,
+            embedded: true,
+          };
+        }
+      } else {
+        const dup = await findExactTextFact(ctx.persona.id, text);
+        if (dup) {
+          const now = Date.now();
+          await db.memoryFacts.update(dup.id, {
+            text,
+            category,
+            conversationId: ctx.conversationId,
+            updatedAt: now,
+          });
+          return {
+            added: false,
+            updated: true,
+            id: dup.id,
+            category,
+            previousText: dup.text,
+            embedded: false,
+          };
+        }
       }
 
       const now = Date.now();
@@ -111,13 +130,18 @@ function rememberTool(): Tool {
         messageId: '',
         text,
         category,
-        embedding: emb.vector,
-        embeddingModel: emb.model,
+        embedding: emb?.vector ?? [],
+        embeddingModel: emb?.model ?? '',
         createdAt: now,
         updatedAt: now,
       };
       await db.memoryFacts.add(row);
-      return { added: true, id: row.id, category };
+      return {
+        added: true,
+        id: row.id,
+        category,
+        embedded: !!emb,
+      };
     },
   };
 }
@@ -127,7 +151,7 @@ function recallTool(): Tool {
     def: {
       name: 'recall',
       description:
-        '从这个人格的记忆池里按语义搜索过去记下的事实。想确认/对照/参考某件之前的事，或准备 update_memory / forget_memory 前需要先拿到 id 时调用。query 用自然语言描述你想找什么。',
+        '从这个人格的记忆池里按语义（有嵌入时）或关键词搜索过去记下的事实。想确认/对照/参考某件之前的事，或准备 update_memory / forget_memory 前需要先拿到 id 时调用。query 用自然语言描述你想找什么。',
       parameters: {
         type: 'object',
         properties: {
@@ -174,7 +198,7 @@ function updateMemoryTool(): Tool {
     def: {
       name: 'update_memory',
       description:
-        '改写记忆池里已有的一条事实。当用户纠正旧信息、情况发生变化、或你发现旧记忆过时/不准确时主动调用。先用 recall 拿到 id，再传入完整的新文本（自含上下文）。会重新嵌入；置顶状态保留。',
+        '改写记忆池里已有的一条事实。当用户纠正旧信息、情况发生变化、或你发现旧记忆过时/不准确时主动调用。先用 recall 拿到 id，再传入完整的新文本（自含上下文）。有嵌入时会重新嵌入；置顶状态保留。不需要嵌入模型也能改写。',
       parameters: {
         type: 'object',
         properties: {
@@ -206,8 +230,6 @@ function updateMemoryTool(): Tool {
       if (!fact) return { updated: false, error: 'fact not found' };
 
       const emb = await embedText(text);
-      if (!emb) return { updated: false, error: 'embedding not configured' };
-
       const category =
         args.category !== undefined && args.category !== ''
           ? parseCategory(args.category)
@@ -216,8 +238,9 @@ function updateMemoryTool(): Tool {
       await db.memoryFacts.update(id, {
         text,
         category,
-        embedding: emb.vector,
-        embeddingModel: emb.model,
+        ...(emb
+          ? { embedding: emb.vector, embeddingModel: emb.model }
+          : {}),
         conversationId: ctx.conversationId,
         updatedAt: Date.now(),
       });
@@ -227,6 +250,7 @@ function updateMemoryTool(): Tool {
         category,
         previousText,
         text,
+        embedded: !!emb,
       };
     },
   };
@@ -299,12 +323,18 @@ async function embedText(
     ? await db.endpoints.get(settings.embeddingEndpointId)
     : undefined;
   if (!ep || !settings.embeddingModel) return null;
-  const { vectors } = await embed({
-    endpoint: ep,
-    model: settings.embeddingModel,
-    inputs: [text],
-  });
-  return { vector: vectors[0], model: settings.embeddingModel };
+  try {
+    const { vectors } = await embed({
+      endpoint: ep,
+      model: settings.embeddingModel,
+      inputs: [text],
+    });
+    const vector = vectors[0];
+    if (!vector?.length) return null;
+    return { vector, model: settings.embeddingModel };
+  } catch {
+    return null;
+  }
 }
 
 /** Best cosine match among active facts that share the embedding model. */
@@ -325,9 +355,22 @@ async function findClosestFact(
   return best;
 }
 
+async function findExactTextFact(
+  personaId: string,
+  text: string,
+): Promise<MemoryFact | null> {
+  const norm = text.trim().toLowerCase();
+  if (!norm) return null;
+  const facts = await db.memoryFacts
+    .where({ personaId })
+    .filter((f) => !f.archived)
+    .toArray();
+  return facts.find((f) => f.text.trim().toLowerCase() === norm) ?? null;
+}
+
 function cosine(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return -1;
   let s = 0;
-  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+  for (let i = 0; i < a.length; i++) s += a[i]! * b[i]!;
   return s;
 }

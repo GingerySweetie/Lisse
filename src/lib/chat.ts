@@ -116,6 +116,21 @@ const TOY_CAPABILITY = `# 输出能力：玩具力度（AfterKiss）
 - 省略的通道保持当前值；stop=true 急停归零
 - 不要向用户复述原始数值协议；用自然语言表达触感即可`;
 
+const MEMORY_CAPABILITY = `# 输出能力：长期记忆（remember / recall / update_memory / forget_memory）
+
+你可以为当前人格读写记忆池。系统已开启记忆工具：
+
+- remember(text, category?)：记下值得跨对话保留的稳定事实（工作/住址/偏好/身边的人/持续状况）。瞬时心情与闲聊不要记。
+- recall(query, k?)：按语义或关键词检索已有记忆；改写或遗忘前先召回拿 id。
+- update_memory(id, text, category?)：用户纠正、情况变化、旧记忆过时时改写。
+- forget_memory(id, reason?)：归档错误、过时或已被取代的记忆。
+
+规则：
+- 对话中一旦出现可复用的稳定信息，应主动 remember，不必等她说「记一下」
+- 她纠正旧说法时，先 recall 再 update_memory 或 forget_memory
+- 每条事实写完整一句、自含上下文；不要向用户复述工具原始返回
+- 即使没有嵌入模型也可以写入；有嵌入时检索会更准`;
+
 export interface SendOptions {
   conversation: Conversation;
   endpoint: Endpoint;
@@ -272,9 +287,21 @@ const MEMORY_WRITE_TOOLS = new Set([
   'forget_memory',
 ]);
 
+/** True only when a memory write tool actually succeeded this turn.
+ *  Failed/errored calls must NOT suppress auto-extract — otherwise neither
+ *  path writes and lasting facts are lost. */
+function memoryWriteSucceeded(call: ToolCallRecord): boolean {
+  if (!MEMORY_WRITE_TOOLS.has(call.name)) return false;
+  if (call.error) return false;
+  const r = call.result;
+  if (!r || typeof r !== 'object') return false;
+  const obj = r as Record<string, unknown>;
+  if (typeof obj.error === 'string' && obj.error) return false;
+  return !!(obj.added || obj.updated || obj.forgotten);
+}
+
 /** Fire-and-forget extraction; never throws into the chat path. Skipped
- *  when the model used a memory write/edit tool this turn — it already
- *  decided what to keep, so the auto-extractor would double up. */
+ *  when the model successfully used a memory write/edit tool this turn. */
 function scheduleFactExtraction(args: {
   persona?: Persona;
   conversationId: string;
@@ -284,8 +311,8 @@ function scheduleFactExtraction(args: {
   if (!args.persona) return;
   if (args.assistantMessage.status !== 'done') return;
   if (!args.assistantMessage.content.trim()) return;
-  const usedMemoryWrite = (args.assistantMessage.toolCalls ?? []).some((c) =>
-    MEMORY_WRITE_TOOLS.has(c.name),
+  const usedMemoryWrite = (args.assistantMessage.toolCalls ?? []).some(
+    memoryWriteSucceeded,
   );
   if (usedMemoryWrite) return;
   void extractAndStoreFacts({
@@ -723,6 +750,11 @@ async function streamAssistant(args: {
   if (settings.toyControlEnabled) {
     turns.push({ role: 'system', content: TOY_CAPABILITY });
   }
+  // Memory tools ride memoryEnabled alone (embedding optional).
+  const memoryToolsReady = !!persona && settings.memoryEnabled;
+  if (memoryToolsReady) {
+    turns.push({ role: 'system', content: MEMORY_CAPABILITY });
+  }
   if (persona && groupOthers && groupOthers.length > 0) {
     turns.push({ role: 'system', content: groupAwarenessSnippet(persona, groupOthers) });
   }
@@ -862,16 +894,25 @@ async function streamAssistant(args: {
   const convId = branch[0]?.conversationId ?? '';
 
   let tools: Tool[] = [];
-  // Toy control is independent of the general tools master switch — starting
-  // 玩具 in chat settings is enough to expose control_toy.
+  // Toy control and memory tools are independent of the general tools master
+  // switch — enabling 记忆 / 玩具 is enough to expose their tools. MCP /
+  // documents / music still require toolsEnabled.
   if (
     !economy &&
     convId &&
-    (settings.toolsEnabled || settings.toyControlEnabled)
+    (settings.toolsEnabled || settings.toyControlEnabled || memoryToolsReady)
   ) {
     tools = await availableTools({ persona, conversationId: convId });
-    if (!settings.toolsEnabled && settings.toyControlEnabled) {
-      tools = tools.filter((t) => t.def.name === 'control_toy');
+    if (!settings.toolsEnabled) {
+      const allow = new Set<string>();
+      if (settings.toyControlEnabled) allow.add('control_toy');
+      if (memoryToolsReady) {
+        allow.add('remember');
+        allow.add('recall');
+        allow.add('update_memory');
+        allow.add('forget_memory');
+      }
+      tools = tools.filter((t) => allow.has(t.def.name));
     }
     // Stable ordering: cache prefix must not be invalidated by tool-list shuffling
     tools.sort((a, b) => a.def.name.localeCompare(b.def.name));

@@ -1,6 +1,7 @@
 import { db, getSettings } from '../../db';
 import type { Endpoint, MemoryFact } from '../../types';
 import { embed } from '../../api/embedding';
+import { keywordMemoryScore } from './keyword';
 
 export interface RetrievedFact {
   fact: MemoryFact;
@@ -12,13 +13,16 @@ export interface RetrievedFact {
 export interface RetrieveOptions {
   /** Max non-pinned facts to return; pinned facts are always included on top. */
   topK?: number;
-  /** Minimum cosine similarity (0..1); below this is dropped. */
+  /** Minimum cosine similarity (0..1); below this is dropped.
+   *  Keyword fallback uses a lower effective floor (0.25) when embeddings
+   *  aren't available. */
   threshold?: number;
 }
 
 /**
  * Retrieve relevant facts for the given query, scoped to a persona.
- * If embeddings aren't configured, returns only pinned facts.
+ * Prefers embeddings; without them (or on embed failure) falls back to
+ * keyword match so model-written facts still surface.
  */
 export async function retrieveFacts(
   personaId: string,
@@ -45,42 +49,85 @@ export async function retrieveFacts(
     pinned: true,
   }));
 
-  // If we don't have an embedding endpoint configured, return only pinned.
+  if (candidates.length === 0) return scored;
+
   const ep = settings.embeddingEndpointId
     ? await db.endpoints.get(settings.embeddingEndpointId)
     : undefined;
   const model = settings.embeddingModel;
-  if (!ep || !model || candidates.length === 0) return scored;
 
-  // Embed the query.
-  let queryVec: number[];
-  try {
-    const result = await embed({ endpoint: ep, model, inputs: [query] });
-    queryVec = result.vectors[0];
-  } catch {
-    // Embedding failed: degrade gracefully to pinned-only.
-    return scored;
+  if (ep && model) {
+    try {
+      const result = await embed({ endpoint: ep, model, inputs: [query] });
+      const queryVec = result.vectors[0];
+      if (queryVec?.length) {
+        const withVec = candidates.filter(
+          (f) =>
+            f.embeddingModel === model &&
+            Array.isArray(f.embedding) &&
+            f.embedding.length > 0,
+        );
+        const withoutVec = candidates.filter(
+          (f) =>
+            !(
+              f.embeddingModel === model &&
+              Array.isArray(f.embedding) &&
+              f.embedding.length > 0
+            ),
+        );
+
+        const ranked = withVec
+          .map((f) => ({
+            fact: f,
+            score: dot(queryVec, f.embedding),
+            pinned: false,
+          }))
+          .filter((r) => r.score >= threshold)
+          .sort((a, b) => b.score - a.score);
+
+        // Facts written before embeddings existed → keyword fill.
+        const keywordFloor = Math.min(0.25, threshold);
+        const keywordRanked = rankByKeyword(query, withoutVec, keywordFloor);
+
+        const merged = [...ranked, ...keywordRanked]
+          .sort((a, b) => b.score - a.score)
+          .slice(0, topK);
+        return [...scored, ...merged];
+      }
+    } catch {
+      // fall through to keyword
+    }
   }
 
-  const ranked = candidates
-    .map((f) => {
-      // Only score facts whose embedding matches the configured model.
-      if (f.embeddingModel !== model) return { fact: f, score: -1, pinned: false };
-      const score = dot(queryVec, f.embedding);
-      return { fact: f, score, pinned: false };
-    })
-    .filter((r) => r.score >= threshold)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK);
+  const keywordFloor =
+    opts.threshold !== undefined ? opts.threshold : 0.25;
+  const keywordRanked = rankByKeyword(query, candidates, keywordFloor).slice(
+    0,
+    topK,
+  );
+  return [...scored, ...keywordRanked];
+}
 
-  return [...scored, ...ranked];
+function rankByKeyword(
+  query: string,
+  facts: MemoryFact[],
+  floor: number,
+): RetrievedFact[] {
+  return facts
+    .map((f) => ({
+      fact: f,
+      score: keywordMemoryScore(query, f.text),
+      pinned: false,
+    }))
+    .filter((r) => r.score >= floor)
+    .sort((a, b) => b.score - a.score);
 }
 
 /** Dot product; assumes both vectors are L2-normalized (so dot == cosine). */
 function dot(a: number[], b: number[]): number {
   if (a.length !== b.length) return -1;
   let s = 0;
-  for (let i = 0; i < a.length; i++) s += a[i] * b[i];
+  for (let i = 0; i < a.length; i++) s += a[i]! * b[i]!;
   return s;
 }
 
@@ -122,6 +169,8 @@ export function formatPinnedFactsBlock(facts: MemoryFact[]): string {
   return `# 长期记忆（关于她，关于你们，一直记得的事）\n${lines.join('\n')}\n\n这些是你长期积累、反复确认过的记忆。请自然地用，不要刻意复述。`;
 }
 
-export async function checkEndpointSupportsEmbedding(ep: Endpoint): Promise<boolean> {
+export async function checkEndpointSupportsEmbedding(
+  ep: Endpoint,
+): Promise<boolean> {
   return ep.format === 'openai';
 }
