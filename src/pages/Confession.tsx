@@ -241,29 +241,31 @@ export default function ConfessionPage() {
           className="cf-booth"
           onClick={() => setView('booth')}
         >
-          <ArchSvg lit />
-          <div className="cf-well">
-            <div className="cf-prose">
-              {archives.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`cf-chip ${shown?.id === a.id ? 'cf-chip--on' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setArchiveFocus(a);
-                  }}
-                >
-                  {a.date.slice(5)}
-                </button>
-              ))}
-              {shown &&
-                toParagraphs(shown.confession).map((p, i) => (
-                  <div key={i}>
-                    {i > 0 && <StarDivider />}
-                    <p className="cf-para">{p}</p>
-                  </div>
+          <div className="cf-vault">
+            <ArchSvg lit />
+            <div className="cf-well">
+              <div className="cf-prose">
+                {archives.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className={`cf-chip ${shown?.id === a.id ? 'cf-chip--on' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setArchiveFocus(a);
+                    }}
+                  >
+                    {a.date.slice(5)}
+                  </button>
                 ))}
+                {shown &&
+                  toParagraphs(shown.confession).map((p, i) => (
+                    <div key={i}>
+                      {i > 0 && <StarDivider />}
+                      <p className="cf-para">{p}</p>
+                    </div>
+                  ))}
+              </div>
             </div>
           </div>
         </button>
@@ -295,21 +297,23 @@ export default function ConfessionPage() {
         onClick={onBoothActivate}
         aria-label="告解室"
       >
-        <ArchSvg lit={triggered || phase === 'approaching'} />
+        <div className="cf-vault">
+          <ArchSvg lit={triggered || phase === 'approaching'} />
 
-        <div className="cf-well">
-          {!triggered && <StarCurtain />}
+          <div className="cf-well">
+            {!triggered && <StarCurtain />}
 
-          {triggered && prose.length > 0 && (
-            <div className="cf-prose">
-              {prose.map((p, i) => (
-                <div key={`${phase}-${enactIdx}-${i}`}>
-                  {i > 0 && <StarDivider />}
-                  <p className="cf-para">{p}</p>
-                </div>
-              ))}
-            </div>
-          )}
+            {triggered && prose.length > 0 && (
+              <div className="cf-prose">
+                {prose.map((p, i) => (
+                  <div key={`${phase}-${enactIdx}-${i}`}>
+                    {i > 0 && <StarDivider />}
+                    <p className="cf-para">{p}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </button>
     </div>
@@ -356,17 +360,21 @@ function ArchSvg({ lit }: { lit: boolean }) {
             <stop offset="0.48" stopColor="#fff" stopOpacity="0.16" />
             <stop offset="0.58" stopColor="#fff" stopOpacity="0" />
           </linearGradient>
+          {/* clips star curtain / prose to the inner vault (objectBoundingBox) */}
+          <clipPath id="cfWellClip" clipPathUnits="objectBoundingBox">
+            <path d="M0.133 1 L0.133 0.347 Q0.18 0.07 0.5 0.037 Q0.82 0.07 0.867 0.347 L0.867 1 Z" />
+          </clipPath>
         </defs>
-        {/* outer — slightly pointed gothic crown (not a round dome) */}
+        {/* outer — soft ︿ crown (gentle tip, not a round dome) */}
         <path
-          d="M26 640 V225 Q70 55 150 2 Q230 55 274 225 V640"
+          d="M26 640 V220 Q42 34 150 8 Q258 34 274 220 V640"
           fill="none"
           stroke="url(#cfArchOuter)"
           strokeWidth="1.5"
         />
         {/* inner */}
         <path
-          d="M40 640 V227 Q80 68 150 20 Q220 68 260 227 V640"
+          d="M40 640 V222 Q54 48 150 24 Q246 48 260 222 V640"
           fill="none"
           stroke="url(#cfArchInner)"
           strokeWidth="1"
@@ -435,23 +443,30 @@ const CSS = `
   animation-duration: 0.9s !important;
 }
 
-.cf-arch {
+/* vault: arch + apex + curtain/prose share one box and translate together */
+.cf-vault {
   position: absolute;
-  /* narrow phone-like vault; legs fade mid-way (stroke gradient) */
   left: 50%;
   transform: translateX(-50%);
   /* clear status bar — crown sits a bit lower */
   top: max(56px, calc(env(safe-area-inset-top, 0px) + 40px));
   bottom: 0;
   width: min(100%, 360px);
-  height: auto;
+  z-index: 2;
+}
+
+.cf-arch {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   z-index: 3;
   pointer-events: none;
 }
 
 .cf-apex {
   position: absolute;
-  top: max(58px, calc(env(safe-area-inset-top, 0px) + 42px));
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
@@ -463,16 +478,13 @@ const CSS = `
   filter: drop-shadow(0 0 9px rgba(220,120,70,0.72));
 }
 
-/* prose well: inside the double line */
+/* same box as the arch SVG; clipped to inner vault path */
 .cf-well {
   position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(72%, 260px);
-  top: max(88px, calc(env(safe-area-inset-top, 0px) + 72px));
-  bottom: 0;
+  inset: 0;
   z-index: 2;
   overflow: hidden;
+  clip-path: url(#cfWellClip);
 }
 
 .cf-curtain {
@@ -535,8 +547,8 @@ const CSS = `
   position: absolute;
   inset: 0;
   overflow-y: auto;
-  /* sit in the upper/mid vault like the reference frame */
-  padding: 10% 4px 28%;
+  /* sit inside the inner vault (arch-shaped clip handles the crown) */
+  padding: 12% 18% 30%;
   scrollbar-width: none;
   animation: cfIn 0.45s ease both;
   box-sizing: border-box;
