@@ -294,7 +294,7 @@ export default function MessageBubble({
                 : isUser && !editing
                   ? {
                       width:
-                        rawText.length > 180 || rawText.split('\\n').length >= 4
+                        rawText.length > 180 || rawText.split('\n').length >= 4
                           ? '100%'
                           : 'fit-content',
                       maxWidth: '100%',
@@ -357,7 +357,7 @@ export default function MessageBubble({
                 aria-hidden="true"
               >
                 <span className="min-w-0 flex-1 border-b border-lavender-300/80" />
-                {!(rawText.length > 180 || rawText.split('\\n').length >= 4) && (
+                {!(rawText.length > 180 || rawText.split('\n').length >= 4) && (
                   <Pencil
                     size={12}
                     strokeWidth={1.6}
