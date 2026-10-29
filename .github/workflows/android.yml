@@ -40,6 +40,9 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default "tools" package is obsolete and no longer exists.
+          packages: platform-tools
 
       - name: Initialize Capacitor Android project
         run: |
