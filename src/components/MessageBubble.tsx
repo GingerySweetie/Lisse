@@ -39,6 +39,8 @@ interface Props {
   disabled?: boolean;
   /** Conversation accent color used for the user bubble. Defaults to sky. */
   accentColor?: string | null;
+  /** Use the underline treatment for user messages in the consultation room only. */
+  userBubbleVariant?: 'underline' | 'default';
   /** When true, the choices widget buttons are clickable (no user reply yet). */
   isChoicesClickable?: boolean;
   onEdit?: (newText: string) => void;
@@ -54,6 +56,7 @@ export default function MessageBubble({
   streamingThinking,
   disabled,
   accentColor,
+  userBubbleVariant = 'default',
   isChoicesClickable,
   onEdit,
   onRegenerate,
@@ -280,18 +283,18 @@ export default function MessageBubble({
           <div
             className={
               isUser
-                ? editing
+                ? editing || userBubbleVariant !== 'underline'
                   ? 'wis-user-bubble prose-msg'
                   : 'wis-user-line prose-msg'
                 : 'min-w-0 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[15px] leading-relaxed text-rose-700'
             }
             style={
-              isUser && editing && accentColor
+              isUser && (editing || userBubbleVariant !== 'underline') && accentColor
                 ? {
                     background: `${accent}73`,
                     boxShadow: `inset 0 0 0 1px ${accent}40`,
                   }
-                : isUser && !editing
+                : isUser && !editing && userBubbleVariant === 'underline'
                   ? {
                       width:
                         rawText.length > 180 || rawText.split('\\n').length >= 4
@@ -351,7 +354,7 @@ export default function MessageBubble({
                 preserveSoftBreaks
               />
             )}
-            {isUser && !editing && (
+            {isUser && !editing && userBubbleVariant === 'underline' && (
               <div
                 className="mt-1 flex w-full items-center gap-1"
                 aria-hidden="true"
