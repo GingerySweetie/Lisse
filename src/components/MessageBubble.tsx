@@ -280,16 +280,31 @@ export default function MessageBubble({
           <div
             className={
               isUser
-                ? 'wis-user-bubble prose-msg'
+                ? editing
+                  ? 'wis-user-bubble prose-msg'
+                  : 'wis-user-line prose-msg'
                 : 'min-w-0 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[15px] leading-relaxed text-rose-700'
             }
             style={
-              isUser && accentColor
+              isUser && editing && accentColor
                 ? {
                     background: `${accent}73`,
                     boxShadow: `inset 0 0 0 1px ${accent}40`,
                   }
-                : undefined
+                : isUser && !editing
+                  ? {
+                      width:
+                        rawText.length > 180 || rawText.split('\\n').length >= 4
+                          ? '100%'
+                          : 'fit-content',
+                      maxWidth: '100%',
+                      marginLeft: 'auto',
+                      paddingBottom: '5px',
+                      background: 'transparent',
+                      boxShadow: 'none',
+                      borderRadius: 0,
+                    }
+                  : undefined
             }
           >
             {editing ? (
@@ -335,6 +350,21 @@ export default function MessageBubble({
                 rawLen={rawText.length}
                 preserveSoftBreaks
               />
+            )}
+            {isUser && !editing && (
+              <div
+                className="mt-1 flex w-full items-center gap-1"
+                aria-hidden="true"
+              >
+                <span className="min-w-0 flex-1 border-b border-lavender-300/80" />
+                {!(rawText.length > 180 || rawText.split('\\n').length >= 4) && (
+                  <Pencil
+                    size={12}
+                    strokeWidth={1.6}
+                    className="shrink-0 text-lavender-500"
+                  />
+                )}
+              </div>
             )}
           </div>
         )}
