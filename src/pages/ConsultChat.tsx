@@ -520,6 +520,7 @@ export default function ConsultChatPage() {
                   }
                   disabled={loading}
                   accentColor={accent}
+                  userBubbleVariant="underline"
                   isChoicesClickable={
                     msg.role === 'assistant' &&
                     msg.id === lastId &&
