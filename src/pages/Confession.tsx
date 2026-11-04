@@ -455,6 +455,24 @@ const CSS = `
   z-index: 2;
 }
 
+/* Phone portrait: use the available screen width instead of keeping the
+   desktop booth's narrow 360px column. Keep the crown below the status bar
+   and respect the bottom gesture area. */
+@media (max-width: 600px) {
+  .cf-root {
+    height: 100dvh;
+    min-height: 100%;
+  }
+  .cf-vault {
+    top: max(48px, calc(env(safe-area-inset-top, 0px) + 32px));
+    bottom: env(safe-area-inset-bottom, 0px);
+    width: min(100%, 430px);
+  }
+  .cf-prose {
+    padding: 14% 15% 28%;
+  }
+}
+
 .cf-arch {
   position: absolute;
   inset: 0;
