@@ -92,6 +92,8 @@ function StarCurtain() {
       [76, 56, 2.5, 'dot'], [90, 48, 5, 'cross'], [22, 32, 2, 'dot'],
       [46, 54, 3, 'dot'], [68, 24, 2.5, 'dot'], [38, 74, 5, 'cross'],
       [54, 44, 2, 'dot'], [78, 18, 3, 'dot'], [30, 56, 2.5, 'dot'],
+      [12, 91, 2, 'dot'], [27, 96, 4, 'cross'], [44, 89, 2, 'dot'],
+      [61, 97, 2, 'dot'], [83, 92, 3, 'dot'], [94, 85, 2, 'dot'],
     ];
     return seed.map(([x, y, size, kind], i) => ({
       x,
@@ -343,9 +345,7 @@ function ArchSvg({ lit }: { lit: boolean }) {
             y2="640"
           >
             <stop offset="0" stopColor="#fff" stopOpacity="0.92" />
-            <stop offset="0.34" stopColor="#fff" stopOpacity="0.92" />
-            <stop offset="0.48" stopColor="#fff" stopOpacity="0.35" />
-            <stop offset="0.58" stopColor="#fff" stopOpacity="0" />
+            <stop offset="1" stopColor="#fff" stopOpacity="0.92" />
           </linearGradient>
           <linearGradient
             id="cfArchInner"
@@ -356,25 +356,23 @@ function ArchSvg({ lit }: { lit: boolean }) {
             y2="640"
           >
             <stop offset="0" stopColor="#fff" stopOpacity="0.42" />
-            <stop offset="0.34" stopColor="#fff" stopOpacity="0.42" />
-            <stop offset="0.48" stopColor="#fff" stopOpacity="0.16" />
-            <stop offset="0.58" stopColor="#fff" stopOpacity="0" />
+            <stop offset="1" stopColor="#fff" stopOpacity="0.42" />
           </linearGradient>
           {/* clips star curtain / prose to the inner vault (objectBoundingBox) */}
           <clipPath id="cfWellClip" clipPathUnits="objectBoundingBox">
-            <path d="M0.133 1 L0.133 0.347 Q0.18 0.07 0.5 0.037 Q0.82 0.07 0.867 0.347 L0.867 1 Z" />
+            <path d="M0.067 1 L0.067 0.347 Q0.12 0.07 0.5 0.037 Q0.88 0.07 0.933 0.347 L0.933 1 Z" />
           </clipPath>
         </defs>
         {/* outer — soft ︿ crown (gentle tip, not a round dome) */}
         <path
-          d="M26 640 V220 Q42 34 150 8 Q258 34 274 220 V640"
+          d="M13 640 V220 Q28 34 150 8 Q272 34 287 220 V640"
           fill="none"
           stroke="url(#cfArchOuter)"
           strokeWidth="1.5"
         />
         {/* inner */}
         <path
-          d="M40 640 V222 Q54 48 150 24 Q246 48 260 222 V640"
+          d="M20 640 V222 Q36 48 150 24 Q264 48 280 222 V640"
           fill="none"
           stroke="url(#cfArchInner)"
           strokeWidth="1"
@@ -508,9 +506,7 @@ const CSS = `
 .cf-curtain {
   position: absolute;
   inset: 0;
-  /* match arch fade — star curtain softens with the legs */
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 48%, transparent 72%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 48%, transparent 72%);
+  /* fill the entire inner vault, down to the foot of the arch */
 }
 .cf-curtain-svg {
   position: absolute;
